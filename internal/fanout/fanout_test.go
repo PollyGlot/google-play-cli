@@ -11,8 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/fanout"
 )
 
-// TestEach_callsEveryIndexOnce: each index runs exactly once, whatever n is
-// relative to Limit, and results written by index keep the input order.
 func TestEach_callsEveryIndexOnce(t *testing.T) {
 	for _, n := range []int{0, 1, fanout.Limit - 1, fanout.Limit, fanout.Limit + 1, 100} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
@@ -37,10 +35,6 @@ func TestEach_callsEveryIndexOnce(t *testing.T) {
 	}
 }
 
-// TestEach_keepsExactlyLimitInFlight proves the bound both ways without a
-// timing guess: the first calls block until Limit of them are inside at once
-// (a pool narrower than Limit never opens the gate and fails on the timeout),
-// and the peak never exceeds Limit.
 func TestEach_keepsExactlyLimitInFlight(t *testing.T) {
 	var (
 		inflight, peak atomic.Int32
@@ -74,9 +68,6 @@ func TestEach_keepsExactlyLimitInFlight(t *testing.T) {
 	}
 }
 
-// TestEach_returnsLowestIndexError: index 7 fails first in time, index 5 fails
-// later; the serial loop would have stopped at 5, so 5's error must win, and no
-// index is started once the failure is known beyond those already in flight.
 func TestEach_returnsLowestIndexError(t *testing.T) {
 	err5, err7 := errors.New("five"), errors.New("seven")
 	var started atomic.Int32
@@ -99,9 +90,6 @@ func TestEach_returnsLowestIndexError(t *testing.T) {
 	}
 }
 
-// TestEach_repanicsOnCallerGoroutine: a panic in fn must surface where the
-// caller's defers can see it (edits.WithReadOnlyEdit discards its Edit in a
-// defer), not crash the process from a worker goroutine.
 func TestEach_repanicsOnCallerGoroutine(t *testing.T) {
 	defer func() {
 		if r := recover(); r != "boom" {

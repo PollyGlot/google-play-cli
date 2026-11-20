@@ -1,8 +1,3 @@
-// Package mappings_test exercises `gplay releases mappings upload` at the
-// kernel level: a RunContext built by hand, a RoundTripper injected via
-// the oauth2.HTTPClient context key, and Run invoked directly. The
-// RoundTripper sees both the /token exchange and the androidpublisher
-// calls (edits.insert, deobfuscationfiles.upload, edits.commit/delete).
 package mappings_test
 
 import (
@@ -25,10 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newMappingTransport routes the Edit lifecycle calls a standalone mapping
-// upload makes. The Fake records every call; the wrapper only adds the
-// session URI (Location) to the resumable initiate, which a responder cannot
-// express.
 func newMappingTransport(editID string) (*testkit.Fake, http.RoundTripper) {
 	f := testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -45,7 +36,6 @@ func newMappingTransport(editID string) (*testkit.Fake, http.RoundTripper) {
 		}
 		return 0, "", false
 	}, "Location", func(c testkit.Call, status int) string {
-		// Resumable initiate: the session URI goes in Location.
 		if c.Method == http.MethodPost && strings.Contains(c.Path, "/deobfuscationFiles/") {
 			return "https://" + c.Host + c.Path + "?upload_id=session-" + editID
 		}
@@ -54,7 +44,6 @@ func newMappingTransport(editID string) (*testkit.Fake, http.RoundTripper) {
 	return f, f
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -63,8 +52,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// touched reports whether anything reached the transport, token exchange
-// included.
 func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func writeFakeMapping(t *testing.T) string {
@@ -89,9 +76,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_happyPath_beginUploadCommit_andConfirms asserts a standalone
-// mapping upload opens its own Edit, POSTs the mapping keyed by the given
-// --version-code + proguard, commits, and prints a ✓ confirmation (#250).
 func TestRun_happyPath_beginUploadCommit_andConfirms(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newMappingTransport("edit-map")
@@ -133,8 +117,6 @@ func TestRun_happyPath_beginUploadCommit_andConfirms(t *testing.T) {
 	}
 }
 
-// TestRun_missingVersionCode_exit2_noHTTP asserts --version-code is
-// required: omitting it is a CLI misuse (exit 2) before any HTTP.
 func TestRun_missingVersionCode_exit2_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newMappingTransport("")
@@ -155,8 +137,6 @@ func TestRun_missingVersionCode_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_nativeCodeType_inPath asserts --type nativeCode lands verbatim
-// in the deobfuscationFiles path segment.
 func TestRun_nativeCodeType_inPath(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newMappingTransport("edit-map")
@@ -181,8 +161,6 @@ func TestRun_nativeCodeType_inPath(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmation_noHTTP asserts --dry-run validates the
-// file and emits no ✓ and no network calls (not even the /token exchange).
 func TestRun_dryRun_noConfirmation_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newMappingTransport("")
@@ -206,8 +184,6 @@ func TestRun_dryRun_noConfirmation_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersExpectedFlags is a thin smoke test for the
-// cobra wiring.
 func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	cmd := mappings.NewCommand(kernel.Boot{})
 	for _, name := range []string{

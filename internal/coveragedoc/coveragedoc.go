@@ -1,19 +1,3 @@
-// Package coveragedoc renders docs/COVERAGE.md from code (PRD #513, slice
-// #514).
-//
-// COVERAGE.md used to be a hand-maintained table of ~43 *surface* rows standing
-// in for 181 Discovery methods, and it drifted: rows claimed ✅ for methods the
-// CLI never calls. The fix is to stop writing it. The universe of methods comes
-// from the committed existence index (docs/discovery/paths.txt), what the CLI
-// calls comes from internal/apiregistry, and what will never be wrapped comes
-// from apiregistry.Exclusions. Since ADR-0047 two more declared dispositions
-// sit in between: apiregistry.Redundancies (an equivalent shape whose canonical
-// is called) and apiregistry.Parkings (a decision deferred to a `type:parking`
-// issue). Everything else is uncovered, by subtraction, so no row can lie.
-//
-// Render is deterministic (same inputs, byte-identical output) so the freshness
-// test in this package can re-render and compare bytes, exactly like the Schema
-// index gate in internal/schemaindex.
 package coveragedoc
 
 import (
@@ -28,31 +12,18 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/discovery"
 )
 
-// State is one of the five answers a method can get (ADR-0026 amended by
-// ADR-0047). There is no sixth: a method is called, excluded by nature,
-// redundant with a called method, parked behind an issue, or a gap.
 type State int
 
 const (
-	// Uncovered: in scope under ADR-0026, no command calls it, no disposition.
 	Uncovered State = iota
-	// Called: at least one shipped command calls it (apiregistry.Entries).
 	Called
-	// Excluded: never to be wrapped (apiregistry.Exclusions).
 	Excluded
-	// Redundant: same resource in another shape, served by a called canonical
-	// (apiregistry.Redundancies).
 	Redundant
-	// Parked: decision deferred to a `type:parking` issue
-	// (apiregistry.Parkings). Still a gap, but a traced one.
 	Parked
 )
 
-// issueURL is the tracker a parked row links to.
 const issueURL = "https://github.com/PollyGlot/google-play-cli/issues/"
 
-// dispositions is every hand-written answer, indexed by method id, so the
-// renderer asks one value per state instead of threading four maps.
 type dispositions struct {
 	called    map[string]apiregistry.Entry
 	excluded  map[string]string
@@ -74,9 +45,6 @@ func (d dispositions) state(id string) State {
 	return Uncovered
 }
 
-// Render produces the full contents of docs/COVERAGE.md. paths is the raw
-// docs/discovery/paths.txt (`id⇥verb⇥path` per line), the same artefact the
-// registry tests anchor to.
 func Render(paths []byte) ([]byte, error) {
 	ids, err := methodIDs(paths)
 	if err != nil {
@@ -102,11 +70,6 @@ func Render(paths []byte) ([]byte, error) {
 		d.parked[p.MethodID] = p
 	}
 
-	// An id in any list that paths.txt does not know would silently vanish
-	// from the rendered file, and a method with two dispositions would render
-	// as whichever wins the switch: refuse to render instead. (The registry
-	// tests catch it too; failing here keeps the generator from committing a
-	// quietly incomplete document.)
 	known := map[string]bool{}
 	for _, id := range ids {
 		known[id] = true
@@ -140,8 +103,6 @@ func Render(paths []byte) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// methodIDs parses paths.txt and returns its ids sorted. paths.txt is already
-// sorted, but sorting here makes the rendering independent of the producer.
 func methodIDs(paths []byte) ([]string, error) {
 	var ids []string
 	seen := map[string]bool{}
@@ -211,7 +172,6 @@ func writeHeadline(b *bytes.Buffer, ids []string, d dispositions) {
 	b.WriteString("| Service | Methods | ✅ called | ⚪ redundant | ⚫️ excluded | 🔴 parked | 🔴 uncovered |\n")
 	b.WriteString("|---|---:|---:|---:|---:|---:|---:|\n")
 
-	// One counter per State (indexed by its value), per service then summed.
 	var tot [Parked + 1]int
 	var totMethods int
 	for _, svc := range discovery.Services {
@@ -275,8 +235,6 @@ func writeService(b *bytes.Buffer, svc discovery.Service, ids []string, d dispos
 	b.WriteString("\n")
 }
 
-// calledDetail renders the commands (and the entry's "why" note, when it has
-// one) as one cell.
 func calledDetail(e apiregistry.Entry) string {
 	cmds := make([]string, 0, len(e.Commands))
 	for _, c := range e.Commands {
@@ -284,8 +242,6 @@ func calledDetail(e apiregistry.Entry) string {
 	}
 	detail := strings.Join(cmds, ", ")
 	if e.Note != "" {
-		// A semicolon, not parentheses: several notes already carry their own
-		// parenthesised ADR reference, and nesting them reads badly.
 		detail += "; " + escapeCell(e.Note)
 	}
 	return detail
@@ -313,15 +269,11 @@ file fails ` + "`go test ./internal/coveragedoc/`" + ` offline.
 `)
 }
 
-// serviceOf returns the leading segment of a method id, which Discovery uses as
-// the service discriminator.
 func serviceOf(id string) string {
 	svc, _, _ := strings.Cut(id, ".")
 	return svc
 }
 
-// escapeCell keeps free prose from breaking the Markdown table: a pipe would
-// open a new column, a newline would end the row.
 func escapeCell(s string) string {
 	s = strings.ReplaceAll(s, "|", `\|`)
 	return strings.Join(strings.Fields(s), " ")

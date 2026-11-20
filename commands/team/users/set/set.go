@@ -1,14 +1,3 @@
-// Package set implements `gplay team users set <email>`: replace a member's
-// account-wide permissions declaratively via users.patch (like `testers set`).
-// It is the routine tier (ADR-0017): --role XOR --permissions, no confirmation
-// gate for a normal replace, even a permission-REDUCING set is a previewable
-// declarative statement, not a separately gated event.
-//
-// A bare `set` (neither --role nor --permissions nor --clear) is a misuse
-// (exit 2) so permissions can never be silently blanked; emptying on purpose is
-// the explicit --clear. Conferring admin still requires the named --grant-admin
-// (exit 3). Reuses the write scaffold (dry-run / `requires` / gate detection)
-// from #152.
 package set
 
 import (
@@ -26,7 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// Input is the request-shaped struct cobra builds from flags + the email arg.
 type Input struct {
 	Email       string
 	DeveloperID string
@@ -39,7 +27,6 @@ type Input struct {
 	DryRun      bool
 }
 
-// Payload renders what set did (or, on --dry-run, would do).
 type Payload struct {
 	Email       string
 	Permissions []string
@@ -127,8 +114,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return err
 }
 
-// selectorCount counts how many of the mutually-exclusive permission
-// selectors were set.
 func selectorCount(in Input) int {
 	n := 0
 	for _, set := range []bool{in.RoleSet, in.PermsSet, in.Clear} {
@@ -139,9 +124,6 @@ func selectorCount(in Input) int {
 	return n
 }
 
-// Run is the business function the kernel invokes. It enforces the declarative
-// footgun guard, resolves the replacement permission set, applies the gate, and
-// (unless --dry-run short-circuits) replaces the member's permissions.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
@@ -150,9 +132,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	switch selectorCount(in) {
 	case 1:
-		// ok
 	case 0:
-		// Footgun guard: a bare set must never silently blank permissions.
 		return nil, exit.Usagef("refusing to change permissions without --role, --permissions, or --clear (a forgotten flag must not silently blank the set); pass --role <bundle> / --permissions <alias,…> to declare them, or --clear to empty them")
 	default:
 		return nil, exit.Usagef("--role, --permissions, and --clear are mutually exclusive")
@@ -196,7 +176,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Email: email, Permissions: enums, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team users set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

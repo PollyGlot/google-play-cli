@@ -1,10 +1,3 @@
-// Package list implements `gplay reviews list`: a read-only listing of the
-// user reviews the Google Play API exposes for a package. The API serves
-// only the last 7 days (docs/DESIGN.md §5), so the command always prints a
-// stderr warning to that effect. It is thin glue: resolve --package, build
-// an authenticated client, consume internal/play/reviews.List (which owns
-// auto-pagination), apply the client-side --stars filter and --limit cap,
-// then render. No Edit, no mutation.
 package list
 
 import (
@@ -24,23 +17,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/reviews/filter"
 )
 
-// sevenDayWarning is printed to stderr on every successful invocation: the
-// reviews API only exposes the last 7 days, so a quiet empty result would
-// otherwise read as "no reviews" when it really means "none in the window".
 const sevenDayWarning = "the Google Play reviews API only returns reviews from the last 7 days; older reviews are not available here: use `gplay reviews history` for the full history from the monthly CSV reports."
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-	Stars   string // --stars selector (e.g. "1", "1-2", "1,3,5"); "" = no filter
-	Limit   int    // --limit cap on the final count; 0 = no cap
-	Columns string // --columns override; "" = the default set
+	Stars   string
+	Limit   int
+	Columns string
 }
 
-// Canonical --columns keys. reviewId and stars/locale match the API
-// vocabulary (per ADR-0003 the JSON view is pass-through) so an operator who
-// has seen the JSON can name the same columns; date and summary are
-// gplay-derived presentation of the latest user comment.
 const (
 	colDate     = "date"
 	colStars    = "stars"
@@ -49,11 +34,6 @@ const (
 	colSummary  = "summary"
 )
 
-// columns is the single source of truth for the reviews table: its
-// declaration order is both the set of valid --columns keys and the default
-// column order. The shared output.ColumnSet owns selection (--columns
-// parsing) and the table/markdown rendering once shared across list commands
-// (see docs/adr/0018-shared-list-table-machinery.md).
 var columns = output.NewColumnSet(
 	output.Column[reviews.Review]{Key: colDate, Header: "DATE", Value: func(r reviews.Review) string { return formatDate(r.LastModified()) }},
 	output.Column[reviews.Review]{Key: colStars, Header: "STARS", Value: func(r reviews.Review) string { return strconv.Itoa(r.Stars()) }},
@@ -62,15 +42,10 @@ var columns = output.NewColumnSet(
 	output.Column[reviews.Review]{Key: colSummary, Header: "SUMMARY", Value: func(r reviews.Review) string { return summary(r.Text()) }},
 )
 
-// maxSummaryLen caps the SUMMARY cell so a long comment does not blow out the
-// table; the first line is taken, then truncated with an ellipsis.
 const maxSummaryLen = 60
 
-// dateLayout renders a review's last-modified instant compactly in UTC.
 const dateLayout = "2006-01-02 15:04"
 
-// formatDate renders t in UTC, or "" for the zero Time (no user comment / no
-// timestamp).
 func formatDate(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -78,12 +53,6 @@ func formatDate(t time.Time) string {
 	return t.Format(dateLayout)
 }
 
-// summary is a one-line, table-friendly digest of a comment: the first line
-// that carries visible text (so a comment opening with a blank line is not
-// summarized as empty), with interior whitespace: tabs, stray carriage
-// returns, runs of spaces: collapsed to single spaces so the cell cannot
-// inject an extra tabwriter column or break a Markdown row, then truncated
-// to maxSummaryLen runes with an ellipsis.
 func summary(text string) string {
 	line := strings.Join(strings.Fields(firstNonEmptyLine(text)), " ")
 	runes := []rune(line)
@@ -93,8 +62,6 @@ func summary(text string) string {
 	return line
 }
 
-// firstNonEmptyLine returns the first line of text whose content is not
-// blank/whitespace-only, or "" when every line is blank.
 func firstNonEmptyLine(text string) string {
 	for _, ln := range strings.Split(text, "\n") {
 		if strings.TrimSpace(ln) != "" {
@@ -104,18 +71,11 @@ func firstNonEmptyLine(text string) string {
 	return ""
 }
 
-// Payload satisfies output.Renderable. Reviews is the (filtered, capped) set
-// to render; each review keeps its verbatim JSON for the ADR-0003 JSON
-// pass-through. Columns is the resolved, validated display order.
 type Payload struct {
 	Reviews []reviews.Review
 	Columns []output.Column[reviews.Review]
 }
 
-// Renderers satisfies output.Renderable with one renderer per Format. The
-// JSON form re-emits the surviving reviews under the API's {"reviews":[...]}
-// envelope (ADR-0003); table and markdown are the human-shaped views drawn
-// by the shared column helper.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return output.RenderTable(w, p.Columns, p.Reviews) },
@@ -124,10 +84,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// renderJSON wraps the surviving reviews' verbatim JSON objects in the
-// {"reviews":[...]} envelope. After pagination + filtering there is no single
-// upstream body to echo, so we rebuild the envelope from each review's
-// preserved Raw rather than reshaping fields.
 func renderJSON(w io.Writer, p Payload) error {
 	raws := make([]json.RawMessage, 0, len(p.Reviews))
 	for _, r := range p.Reviews {
@@ -138,9 +94,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	}{Reviews: raws})
 }
 
-// Run is the business function the kernel invokes. It resolves the package,
-// builds an authenticated client, lists every review (auto-paginated), and
-// always warns about the 7-day window.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -177,18 +130,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			kept = append(kept, r)
 		}
 	}
-	// --limit caps the final count, applied after pagination and filtering.
-	// Here the whole set was already fetched (reviews.List exhausts the token),
-	// so "truncated" means the CAP dropped rows we were holding: say so on
-	// stderr rather than let the shortened list read as the whole match
-	// (PRD #446). stdout is untouched.
 	truncated := in.Limit > 0 && len(kept) > in.Limit
 	if truncated {
 		kept = kept[:in.Limit]
 	}
 
-	// Always warn: an empty result inside the 7-day window must not read as
-	// "this app has no reviews".
 	warn(rc)
 	if truncated {
 		rc.WarnTruncated(len(kept), "reviews", "limit")
@@ -197,12 +143,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Reviews: kept, Columns: cols}, nil
 }
 
-// warn prints the 7-day window notice to stderr.
 func warn(rc *kernel.RunContext) {
 	rc.Warnf("%s", sevenDayWarning)
 }
 
-// NewCommand returns the cobra command for `gplay reviews list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -17,16 +17,8 @@ const opListVoided = "purchases.voidedpurchases.list"
 
 var mListVoided = apiregistry.MustResolve("androidpublisher.purchases.voidedpurchases.list")
 
-// MaxVoidedLookback is how far back voidedpurchases.list accepts a startTime
-// (Discovery: "cannot be older than 30 days"). The command refuses a longer
-// window before any request rather than relaying the API's 400.
 const MaxVoidedLookback = 30 * 24 * time.Hour
 
-// VoidedListOptions shapes one voidedpurchases.list walk. Start is the oldest
-// voided record to return (the API filters on when its systems saw the record
-// as voided, not on voidedTimeMillis); the end is left to the API default
-// (now). IncludeSubscriptions maps to type=1, otherwise type=0 (in-app
-// products only). Limit caps the total item count, 0 = every page.
 type VoidedListOptions struct {
 	Start                 time.Time
 	IncludeSubscriptions  bool
@@ -34,10 +26,6 @@ type VoidedListOptions struct {
 	Limit                 int
 }
 
-// VoidedPurchase is the subset of the VoidedPurchase schema the human views
-// read. The int fields are pointers so an absent code renders blank instead of
-// as code 0 (which means "user" / "other"). The complete item is always in
-// VoidedList.Raw (ADR-0003).
 type VoidedPurchase struct {
 	OrderID            string `json:"orderId,omitempty"`
 	PurchaseToken      string `json:"purchaseToken,omitempty"`
@@ -48,21 +36,11 @@ type VoidedPurchase struct {
 	VoidedQuantity     *int   `json:"voidedQuantity,omitempty"`
 }
 
-// VoidedList is a completed walk: the parsed items for the human views and
-// Raw, the {"voidedPurchases":[...]} envelope rebuilt from the verbatim item
-// objects of every page (the convention of the other auto-paginated reads:
-// per-page pageInfo/tokenPagination are walk state, not data).
 type VoidedList struct {
 	Purchases []VoidedPurchase
 	Raw       json.RawMessage
 }
 
-// ListVoided lists the purchases voided (refunded, charged back, revoked) for
-// pkg via purchases.voidedpurchases.list, following
-// tokenPagination.nextPageToken (carried back as `token`) until exhausted or
-// opts.Limit items are held. truncated reports that the limit hid items; the
-// command turns it into the stderr warning. No Edit: an application-scoped
-// GET. Reading requires CAN_VIEW_FINANCIAL_DATA, like the other order reads.
 func ListVoided(ctx context.Context, hc *http.Client, pkg string, opts VoidedListOptions) (VoidedList, bool, error) {
 	base := url.Values{}
 	base.Set("startTime", strconv.FormatInt(opts.Start.UnixMilli(), 10))
@@ -98,8 +76,6 @@ func ListVoided(ctx context.Context, hc *http.Client, pkg string, opts VoidedLis
 			if err != nil {
 				return nil, "", err
 			}
-			// An empty body (a window with nothing voided) is an empty last
-			// page, not a decode error.
 			if len(raw) == 0 {
 				return nil, "", nil
 			}

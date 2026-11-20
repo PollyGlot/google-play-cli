@@ -98,6 +98,9 @@ Three realities shape the design:
    A missing `state:` declares nothing (missing = unmanaged, the
    metadata stance); an unreachable declaration (`DRAFT` from anything,
    `INACTIVE` from `DRAFT`) is a usage error naming the transition.
+   A base plan, offer or purchase option the same plan creates has no live
+   state yet and is treated as `DRAFT`, so a declared `state: ACTIVE` is
+   activated in the same run.
    State changes are listed prominently in every plan view — they move
    buyer availability — but are **not** gated behind `--confirm`:
    activate/deactivate are reversible, deletion is not.
@@ -200,6 +203,8 @@ Three realities shape the design:
   key (`basePlanId` for subscriptions, `purchaseOptionId` for one-time
   products), only one of which is ever set. A migrating product create is
   shown as its own `migrate` op in every view, so the one-way door is visible.
+- **`dryRun` reports the invocation, not the branch taken**: a real apply
+  with nothing to change still answers `"dryRun": false`.
 - **A change carries a typed identity** (product, middle level, offer), never
   a composite string split again later, and a patch's changed fields are both
   the summary shown and the exact `updateMask` sent.

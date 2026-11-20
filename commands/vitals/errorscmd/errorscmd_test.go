@@ -20,7 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// lastCall returns the last API call the fake recorded.
 func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -54,8 +53,6 @@ func newRC(t *testing.T, body string) (*kernel.RunContext, *testkit.Fake, *bytes
 	return newFakeRC(t, testkit.NewFake(testkit.Any(http.StatusOK, body)))
 }
 
-// newFakeRC wires a RunContext onto fake, for a test whose fake answers each
-// call differently.
 func newFakeRC(t *testing.T, fake *testkit.Fake) (*kernel.RunContext, *testkit.Fake, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(saJSON(t))
@@ -80,10 +77,6 @@ func TestRunCounts_queriesErrorCountSet(t *testing.T) {
 	}
 }
 
-// TestRunCounts_byCountry_rejectedFriendly pins the set-aware --by behavior:
-// the errorCount set has no countryCode dimension, so `--by country` must be
-// rejected (exit 2) with a message naming the user's token "country" (not the
-// internal "countryCode") and listing only the set's valid choices.
 func TestRunCounts_byCountry_rejectedFriendly(t *testing.T) {
 	rc, _, _ := newRC(t, `{}`)
 	_, err := runCounts(rc, countsInput{Package: "com.example.app", By: "country"})
@@ -106,8 +99,6 @@ func TestRunCounts_byCountry_rejectedFriendly(t *testing.T) {
 	}
 }
 
-// TestRunCounts_byDevice_isAccepted confirms a dimension the errorCount set DOES
-// support (--by device → deviceModel) passes validation and issues the query.
 func TestRunCounts_byDevice_isAccepted(t *testing.T) {
 	rc, fake, _ := newRC(t, `{"rows":[]}`)
 	if _, err := runCounts(rc, countsInput{Package: "com.example.app", By: "device"}); err != nil {
@@ -170,7 +161,6 @@ func TestRunReports_searchesAndKeepsFrames(t *testing.T) {
 		t.Errorf("reports = %+v", p.Reports)
 	}
 
-	// Table REPORT column shows the (obfuscated) first frame line.
 	var buf bytes.Buffer
 	if err := p.Renderers().Table(&buf); err != nil {
 		t.Fatalf("table: %v", err)

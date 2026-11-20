@@ -1,8 +1,3 @@
-// Package cancel implements `gplay recovery cancel <appRecoveryId>`: terminate an
-// app recovery action. The action persists with status CANCELED and CANNOT be
-// resumed: irreversible. DESTRUCTIVE tier (ADR-0017): requires --confirm
-// (missing → exit 3), MarkMutating. `cancel` is a domain verb admitted under
-// ADR-0019 §2 (see ADR-0030), not `remove`, since the resource is not deleted.
 package cancel
 
 import (
@@ -15,7 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	Package string
 	ID      string
@@ -23,7 +17,6 @@ type Input struct {
 	DryRun  bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ID == "" {
 		return nil, exit.Usagef("missing recovery id: gplay recovery cancel <appRecoveryId>")
@@ -50,7 +43,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return recoverycmd.LifecyclePayload{Verb: "cancel", RecoveryID: in.ID, Package: pkg, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay recovery cancel`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

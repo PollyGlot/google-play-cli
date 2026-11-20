@@ -10,7 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// pages serves n pages of two items each; the token of page i is "t<i>".
 func pages(n int, tokens *[]string) func(string, int) ([]string, string, error) {
 	return func(token string, _ int) ([]string, string, error) {
 		*tokens = append(*tokens, token)
@@ -43,9 +42,9 @@ func TestPaginate_limit(t *testing.T) {
 		want      []string
 		truncated bool
 	}{
-		{limit: 4, n: 3, want: []string{"0", "1", "2", "3"}, truncated: true}, // a token was left
-		{limit: 3, n: 3, want: []string{"0", "1", "2"}, truncated: true},      // page overshot the limit
-		{limit: 2, n: 1, want: []string{"0", "1"}, truncated: false},          // exact, last page
+		{limit: 4, n: 3, want: []string{"0", "1", "2", "3"}, truncated: true},
+		{limit: 3, n: 3, want: []string{"0", "1", "2"}, truncated: true},
+		{limit: 2, n: 1, want: []string{"0", "1"}, truncated: false},
 		{limit: 9, n: 2, want: []string{"0", "1", "2", "3"}, truncated: false},
 	} {
 		var tokens []string
@@ -92,7 +91,6 @@ func TestPaginate_maxPagesFailsLoudly(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "apps.search still had pages after 2 requests") || len(tokens) != 2 {
 		t.Fatalf("err=%v after %d requests, want a loud stop after 2", err, len(tokens))
 	}
-	// The bound is not a failure when the listing ends within it.
 	tokens = nil
 	items, _, err := api.Paginate(api.Pager{MaxPages: 2}, pages(2, &tokens))
 	if err != nil || len(items) != 4 {

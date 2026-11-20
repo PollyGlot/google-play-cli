@@ -11,17 +11,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// failRemoveFS is an OSFS whose Remove always fails, so the pin survives a
-// commit that Google accepted.
 type failRemoveFS struct{ config.FS }
 
 func (failRemoveFS) Remove(string) error { return errors.New("permission denied") }
 
-// TestRun_commitSucceedsButPinClearFails_saysTheChangeIsLive drives the
-// branch where edits.commit returned 200 and only the local cleanup failed.
-// The error must not read as a failed commit (a retry would hit a committed
-// Edit): it says the Edit is committed and names the stale pin to delete,
-// since that leftover pin would block the next `gplay edits begin`.
 func TestRun_commitSucceedsButPinClearFails_saysTheChangeIsLive(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if strings.HasSuffix(c.Path, "/edits/edit-9:commit") {

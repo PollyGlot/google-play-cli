@@ -78,9 +78,10 @@ comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
 
 ### The report
 
-- **The `ran` section names the apps and checks that executed.** Without it,
-  "no Findings" cannot tell a clean set of apps from a sweep that covered
-  nothing. The table and markdown views print it, with the per-app failures,
+- **The `ran` section names the apps and checks that executed** (in the
+  JSON; the table and markdown views print the number of apps and the checks).
+  Without it, "no Findings" cannot tell a clean set of apps from a sweep that
+  covered nothing. The human views print it, with the per-app failures,
   under the Findings table for the same reason.
 - **The command renders its report before returning a non-zero exit.** The
   kernel renders only on the success path, so a command that exits non-zero

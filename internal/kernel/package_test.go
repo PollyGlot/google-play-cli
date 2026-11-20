@@ -9,9 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestPackage pins the one precedence every package-axis command shares:
-// trimmed --package, else the trimmed Project pin, else exit 2 with the
-// canonical message. The nil cases are the bare contexts tests build.
 func TestPackage(t *testing.T) {
 	withPin := func(pin string) *kernel.RunContext {
 		return &kernel.RunContext{Resolved: &config.Resolved{Pin: pin}}

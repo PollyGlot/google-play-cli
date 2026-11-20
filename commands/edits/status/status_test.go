@@ -17,8 +17,6 @@ import (
 
 const pkg = "com.example.app"
 
-// newRC builds a network-free RunContext (status is a local read) pinned to a
-// project whose .gplay/ is a fresh temp dir.
 func newRC(t *testing.T) (*kernel.RunContext, string) {
 	t.Helper()
 	gplayDir := filepath.Join(t.TempDir(), ".gplay")
@@ -71,7 +69,7 @@ func TestRun_none_reportsNoOpenEdit(t *testing.T) {
 
 func TestRun_noProject_exit2(t *testing.T) {
 	rc, _ := newRC(t)
-	rc.Resolved = &config.Resolved{Pin: pkg} // no ProjectSharedPath
+	rc.Resolved = &config.Resolved{Pin: pkg}
 
 	_, err := statuscmd.Run(rc, statuscmd.Input{Package: pkg})
 	var c interface{ ExitCode() int }

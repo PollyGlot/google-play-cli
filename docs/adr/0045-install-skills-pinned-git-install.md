@@ -246,3 +246,6 @@ dead end.
 - **The fixture repository sets `uploadpack.allowAnySHA1InWant`.** A local
   `upload-pack` refuses a fetch by object name without it; public forges
   allow it by default.
+- **A test sets `GIT_DIR` only after its fixtures are built.** The fixture
+  helpers run `git` with the process environment, so a `GIT_DIR` set earlier
+  would point them at the wrong repository.

@@ -11,15 +11,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// jsonOnly adapts a WriteJSON call to output.Renderable so GoldenJSON can
-// drive it like a command payload.
 type jsonOnly func(io.Writer) error
 
 func (f jsonOnly) Renderers() output.Renderers { return output.Renderers{JSON: f} }
 
-// TestWriteJSON_keepsHTMLCharactersLiteral pins COH-15: <, > and & reach
-// stdout as themselves, in gplay-authored strings AND inside a passthrough
-// json.RawMessage (which the encoder re-indents, and used to re-escape).
 func TestWriteJSON_keepsHTMLCharactersLiteral(t *testing.T) {
 	v := struct {
 		Permission string          `json:"permission"`
@@ -35,9 +30,6 @@ func TestWriteJSON_keepsHTMLCharactersLiteral(t *testing.T) {
 	}))
 }
 
-// TestWriteErrorEnvelope_golden freezes the envelope bytes (ADR-0023/0044): a
-// usage error whose message quotes a placeholder, and an API failure carrying
-// the fields a consumer branches on.
 func TestWriteErrorEnvelope_golden(t *testing.T) {
 	cases := []struct {
 		name string
@@ -62,9 +54,6 @@ func TestWriteErrorEnvelope_golden(t *testing.T) {
 	}
 }
 
-// TestMarshal_keepsRawMessageVerbatim covers the envelope builders (merged
-// vitals pages, team users, the apps view composite): json.Marshal would bake
-// an escaped ampersand into the bytes before WriteJSON ever sees them.
 func TestMarshal_keepsRawMessageVerbatim(t *testing.T) {
 	got, err := output.Marshal(struct {
 		Items []json.RawMessage `json:"items"`

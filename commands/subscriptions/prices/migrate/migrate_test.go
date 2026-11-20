@@ -51,8 +51,6 @@ func validInput() migratecmd.Input {
 	}
 }
 
-// TestRun_dryRun_offlinePreview asserts --dry-run makes no HTTP call and lists
-// the confirm gate in requires.
 func TestRun_dryRun_offlinePreview(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -85,7 +83,6 @@ func TestRun_dryRun_offlinePreview(t *testing.T) {
 	}
 }
 
-// TestRun_refusesWithoutConfirm asserts exit 3 naming --confirm, no network.
 func TestRun_refusesWithoutConfirm(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -99,8 +96,6 @@ func TestRun_refusesWithoutConfirm(t *testing.T) {
 	}
 }
 
-// TestRun_confirmed_migrates asserts the confirmed run POSTs :migratePrices
-// with one RegionalPriceMigration per region and the path identity echoed.
 func TestRun_confirmed_migrates(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -129,8 +124,6 @@ func TestRun_confirmed_migrates(t *testing.T) {
 	}
 }
 
-// TestRun_validation_exit2_noNetwork asserts each bad input is CLI misuse
-// caught offline.
 func TestRun_validation_exit2_noNetwork(t *testing.T) {
 	cases := []func(*migratecmd.Input){
 		func(in *migratecmd.Input) { in.Product = "" },

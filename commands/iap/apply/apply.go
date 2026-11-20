@@ -1,20 +1,3 @@
-// Package apply implements `gplay iap apply`: compute the Reconciliation plan
-// between the on-disk one-time-product catalog (--dir) and the live one, print
-// it, and execute it: writing the v2 model ONLY. Creates ride
-// onetimeproducts.patch with allowMissing (the API has no insert); offer
-// writes ride the per-purchase-option batch endpoints. Legacy inappproducts
-// are inert: an edited, omitted or locally-created legacy file is refused with
-// a message naming the way out (the one-way --migrate promotion arrives with
-// slice #372): gplay never writes the legacy surface in place (ADR-0041 §8).
-// A declared lifecycle state on a purchase option or an offer (slice #541) is
-// reconciled through the dedicated state verbs, never a patch: purchase
-// options via purchaseOptions:batchUpdateStates (their only write path),
-// offers via :activate / :deactivate / :cancel. Any plan containing a delete
-// or an offer cancel (irreversible: pending pre-orders are cancelled too)
-// refuses without --confirm (exit 3). Edit-free, package axis. MarkMutating so
-// GPLAY_READONLY refuses it (exit 4).
-// --output json emits the plan (gplay-owned shape, the recorded ADR-0003
-// exception family). Ships [experimental] (ADR-0010).
 package apply
 
 import (
@@ -40,14 +23,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
-// managedFields is the v2 product-level projection apply reconciles, and the
-// widest updateMask a product patch can ever send (ADR-0041 §5).
-// purchaseOptions is declarable config riding the product patch (the
-// sub-resource only has batch state/delete endpoints); its output-only state
-// is reconciled through batchUpdateStates by planStates instead (kept out of
-// the diff so a state change never doubles as a phantom patch, the
-// subscriptions stance), and the embedded offers array (a catalog-file
-// construct) is normalized out.
 var managedFields = []reconcile.Field{
 	{Name: "listings"},
 	{Name: "offerTags"},
@@ -56,11 +31,6 @@ var managedFields = []reconcile.Field{
 	{Name: "purchaseOptions", Normalize: reconcile.StripKeys("state", "offers")},
 }
 
-// offerManagedFields is the offer-level projection: everything declarable on a
-// OneTimeProductOffer. Identity, the server-stamped regionsVersion and the
-// output-only state (reconciled by planStates through the state verbs) are
-// simply not listed, so they can never diff. TestOfferManagedFields_matchDiscovery
-// pins this list to the Discovery schema (#537).
 var offerManagedFields = []reconcile.Field{
 	{Name: "regionalPricingAndAvailabilityConfigs"},
 	{Name: "offerTags"},
@@ -69,7 +39,6 @@ var offerManagedFields = []reconcile.Field{
 	{Name: "gameRewardOffer"},
 }
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package          string
 	Dir              string
@@ -80,9 +49,6 @@ type Input struct {
 	Migrate          bool
 }
 
-// Payload renders the Reconciliation plan: planned under --dry-run, executed
-// otherwise. Migrating marks the creates that are one-way legacy→v2
-// promotions (slice #372), rendered as their own `migrate` op.
 type Payload struct {
 	Package   string
 	Dir       string
@@ -101,7 +67,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// stateKindLabel is the human name of a state change's kind.
 func stateKindLabel(kind string) string {
 	if kind == reconcile.KindOffer {
 		return "offer"
@@ -109,14 +74,6 @@ func stateKindLabel(kind string) string {
 	return "purchase option"
 }
 
-// guardLegacy enforces the legacy surface's inertness: every legacy file must
-// match its live row, every live legacy row must keep its file (unless the v2
-// model shadows it), and drives the one-way legacy→v2 promotion (slice #372):
-// a live legacy product redeclared as a v2 file migrates when --migrate is
-// passed (the returned list feeds the plan's migrate ops), previews under
-// --dry-run without it, and refuses with the named flag (exit 3) on a real
-// run. Editing a legacy file in place stays refused: the promotion gesture IS
-// rewriting the file in the v2 schema.
 func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []iap.LegacyItem, liveV2 map[string]json.RawMessage, migrate, dryRun bool) (migrating []string, err error) {
 	liveBySKU := map[string]json.RawMessage{}
 	for _, lg := range liveLegacy {
@@ -141,7 +98,7 @@ func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []i
 			continue
 		}
 		if _, inLiveV2 := liveV2[sku]; inLiveV2 {
-			continue // pre-migration shadow of a live v2 product: v2 owns it
+			continue
 		}
 		if _, redeclared := localV2[sku]; redeclared {
 			if !migrate && !dryRun {
@@ -155,8 +112,6 @@ func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []i
 	return migrating, nil
 }
 
-// legacyEqual compares a declared legacy file with its live row, ignoring the
-// packageName echo pull strips.
 func legacyEqual(local, live json.RawMessage) bool {
 	var l, v map[string]any
 	if json.Unmarshal(local, &l) != nil || json.Unmarshal(live, &v) != nil {
@@ -167,14 +122,6 @@ func legacyEqual(local, live json.RawMessage) bool {
 	return reflect.DeepEqual(l, v)
 }
 
-// planStates computes the lifecycle transitions (slice #541): for every
-// purchase option and offer whose file declares a state, compare with the
-// live state (DRAFT for anything this very plan creates) and plan the
-// matching verb. A file that omits state declares nothing (missing =
-// unmanaged, the metadata stance); a declared state the verbs cannot reach is
-// a usage error naming the impossible transition. Products the plan deletes
-// are skipped: the parent delete takes their options and offers. Output is
-// sorted by target so plans are stable.
 func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
 	deletedProducts := map[string]bool{}
 	for _, c := range plan.Deletes {
@@ -186,7 +133,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 			State            string `json:"state"`
 		} `json:"purchaseOptions"`
 	}
-	liveOptionState := map[string]string{} // productId/purchaseOptionId → state
+	liveOptionState := map[string]string{}
 	for productID, raw := range liveV2 {
 		var frag optionsFrag
 		if err := json.Unmarshal(raw, &frag); err != nil {
@@ -212,7 +159,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 		for _, po := range frag.PurchaseOptions {
 			live, ok := liveOptionState[productID+"/"+po.PurchaseOptionID]
 			if !ok {
-				live = iap.StateDraft // being created by this very plan
+				live = iap.StateDraft
 			}
 			sc, err := stateTransition("purchaseOption", productID, po.PurchaseOptionID, "", po.State, live)
 			if err != nil {
@@ -246,7 +193,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 		}
 		live, ok := liveOfferState[key]
 		if !ok {
-			live = iap.StateDraft // being created by this very plan
+			live = iap.StateDraft
 		}
 		sc, err := stateTransition("offer", key.ProductID, key.PurchaseOptionID, key.OfferID, frag.State, live)
 		if err != nil {
@@ -259,12 +206,6 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 	return nil
 }
 
-// stateTransition validates one declared-vs-live state pair and returns the
-// planned change (nil when nothing to do). Reachability follows the verbs:
-// ACTIVE from anything but CANCELLED (terminal on the API side), INACTIVE
-// only from ACTIVE (:deactivate, and purchaseOptions batch deactivate, both
-// refuse otherwise), CANCELLED only on an ACTIVE offer (:cancel exists for
-// pre-orders, purchase options have no such verb).
 func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live string) (*reconcile.StateChange, error) {
 	if declared == "" || declared == live {
 		return nil, nil
@@ -296,7 +237,6 @@ func stateTransition(kind, productID, purchaseOptionID, offerID, declared, live 
 	return &sc, nil
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	lt, err := latency.Parse(in.LatencyTolerance)
 	if err != nil {
@@ -353,8 +293,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.Notef(iapcmd.LegacyRetiredNote, pkg)
 	}
 
-	// Mis-pointed --dir guard (the subscriptions apply stance), against the
-	// union of both live surfaces.
 	if len(local) == 0 && (len(liveV2) > 0 || len(liveLegacy) > 0) {
 		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live one-time product(s): applying it would delete them all; run gplay iap pull first, or pass the right --dir", dir, pkg, len(liveV2)+len(liveLegacy))
 	}
@@ -388,7 +326,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	liveKeyed := map[reconcile.Key]json.RawMessage{}
 	for _, o := range liveOffers {
 		if deletedProducts[o.ProductID] {
-			continue // the parent delete takes its offers
+			continue
 		}
 		liveKeyed[reconcile.Key{ProductID: o.ProductID, ParentID: o.PurchaseOptionID, OfferID: o.OfferID}] = o.Raw
 	}
@@ -399,9 +337,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := planStates(localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
 		return nil, err
 	}
-	// An offer cancel is as irreversible as a delete (the offer never comes
-	// back and its pending pre-orders are cancelled), so it rides the same
-	// --confirm gate.
 	cancels := 0
 	for _, s := range plan.StateChanges {
 		if s.To == iap.StateCancelled {
@@ -428,11 +363,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if regionsVersion == "" {
 		regionsVersion = iapcmd.DefaultRegionsVersion
 	}
-	// Execution order: grow before shrinking: product upserts, offer batch
-	// upserts, offer batch deletes, product deletes. Not transactional; a
-	// failure surfaces immediately and a re-run converges. A batch over the
-	// API's 100 requests goes out in several calls (#807), and a failing one
-	// names what the calls before it applied (iap.BatchError).
 	for _, c := range plan.Creates {
 		body, err := iapcmd.StripOffersFromProduct(localV2[c.ProductID])
 		if err != nil {
@@ -451,7 +381,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
-	// Offer upserts, grouped per purchase option (the only write path).
 	type optionKey struct{ product, option string }
 	updates := map[optionKey][]iap.OfferUpdate{}
 	var updateOrder []optionKey
@@ -472,13 +401,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, iapcmd.Classify(pkg, err)
 		}
 	}
-	// State moves, after the upserts so a resource this run creates can be
-	// activated in the same pass. Activations first, then deactivations, then
-	// the irreversible cancels last. Within a phase the tree order follows the
-	// direction: parents before children when growing (an offer only goes
-	// ACTIVE under an active purchase option), children first when shrinking.
-	// Purchase options are grouped per product into one batchUpdateStates
-	// call, their only write path; offers ride their unary verbs.
 	for _, phase := range []string{iap.StateActive, iap.StateInactive, iap.StateCancelled} {
 		optionUpdates := map[string][]iap.PurchaseOptionStateUpdate{}
 		var (
@@ -549,7 +471,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Dir: dir, Plan: plan, Migrating: migratingSet}, nil
 }
 
-// NewCommand returns the cobra command for `gplay iap apply`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -8,10 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
 
-// TestRenderJSON_emptyRawResponse_fallsBackToPayloadShape pins the silent
-// fallback: a Payload that lost its tracks.get body renders the gplay
-// {track, releases} shape rather than nothing, through output.WriteJSON (no
-// HTML escaping of the release note text).
 func TestRenderJSON_emptyRawResponse_fallsBackToPayloadShape(t *testing.T) {
 	p := list.Payload{
 		Track: "production",

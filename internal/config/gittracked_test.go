@@ -11,7 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// gitRepo creates an empty throwaway git repository and returns its root.
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -22,8 +21,6 @@ func gitRepo(t *testing.T) string {
 	return repo
 }
 
-// gitRepoWithLocalConfig creates a throwaway git repository holding
-// .gplay/config.local.json, untracked, and returns the file's path.
 func gitRepoWithLocalConfig(t *testing.T) string {
 	t.Helper()
 	repo := gitRepo(t)
@@ -37,9 +34,6 @@ func gitRepoWithLocalConfig(t *testing.T) string {
 	return path
 }
 
-// runGit runs git in dir with every inherited GIT_* variable dropped, so a
-// test run from a git hook (which exports GIT_DIR) still builds its fixture in
-// dir and not in the repository the hook belongs to.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
@@ -69,9 +63,6 @@ func TestGitTracked_addedFile_true(t *testing.T) {
 	}
 }
 
-// TestGitTracked_ignoresInheritedGitDir asserts an inherited GIT_DIR (set by
-// git for every hook it runs) does not redirect the check to another
-// repository: the answer is about the repository around the file.
 func TestGitTracked_ignoresInheritedGitDir(t *testing.T) {
 	path := gitRepoWithLocalConfig(t)
 	runGit(t, filepath.Dir(filepath.Dir(path)), "add", "-f", ".gplay/config.local.json")
@@ -81,10 +72,6 @@ func TestGitTracked_ignoresInheritedGitDir(t *testing.T) {
 	}
 }
 
-// A repo that commits HEAD, objects/ and refs/ under .gplay/ makes that
-// directory look like a bare repository. Run from there, git discovers it
-// instead of the clone, answers "not tracked", and the #603 warning disappears
-// (#791). The answer must come from the repository the clone actually is.
 func TestGitTracked_gplayDirDisguisedAsBareRepo_stillTracked(t *testing.T) {
 	path := gitRepoWithLocalConfig(t)
 	gplayDir := filepath.Dir(path)

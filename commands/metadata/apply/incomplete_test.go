@@ -10,11 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 )
 
-// TestRun_createdLocaleWithoutTitle_warns: apply is additive, so a required
-// field missing from the tree is not a refusal, but a locale the apply CREATES
-// has no online value to keep: it goes out without a title, and stderr says
-// so, on a real apply and on its preview. A complete new locale, and a live
-// locale missing a field (its online value stays), are not flagged.
 func TestRun_createdLocaleWithoutTitle_warns(t *testing.T) {
 	dir := writeTree(t, listing.Tree{
 		"en-US": ml("en-US", "short", "S"),

@@ -1,11 +1,3 @@
-// Package listings reads and writes the per-locale Store front Listings of
-// a Google Play app within an open Edit. The operations exposed: List
-// (every locale's Listing), Get (one locale), Patch (write fields of an
-// existing locale), Update (create a locale that has no Listing yet), and
-// Delete (drop one locale's whole Listing): back the metadata
-// list / pull / apply commands. Every function runs inside an Edit the
-// caller has already opened (edits.WithEdit / edits.WithReadOnlyEdit);
-// none opens or commits an Edit of its own.
 package listings
 
 import (
@@ -25,10 +17,6 @@ const (
 	opListingsDelete = "listings.delete"
 )
 
-// Registry entries this package calls. Resolving them at init makes an
-// unregistered or vanished method a startup panic caught by CI rather than a
-// runtime surprise; verb and URL then come from the Discovery snapshot instead
-// of literals kept here (#513).
 var (
 	methodList   = apiregistry.MustResolve("androidpublisher.edits.listings.list")
 	methodGet    = apiregistry.MustResolve("androidpublisher.edits.listings.get")
@@ -37,10 +25,6 @@ var (
 	methodDelete = apiregistry.MustResolve("androidpublisher.edits.listings.delete")
 )
 
-// Listing is the API-shaped edits.listings resource: one per locale. The
-// json tags mirror the Google Play Developer API verbatim per ADR-0003
-// (JSON output is API pass-through). Only the text fields gplay manages
-// are modeled; store images (edits.images) are reserved future scope.
 type Listing struct {
 	Language         string `json:"language"`
 	Title            string `json:"title"`
@@ -49,11 +33,6 @@ type Listing struct {
 	Video            string `json:"video"`
 }
 
-// List fetches every locale's Listing at edits.listings.list. The API
-// envelope is {"listings":[ {...}, ... ], "kind":"..."}; List parses
-// `.listings` into a Listing slice and returns the raw body verbatim for
-// the --output json pass-through (ADR-0003). Like the rest of the package
-// it runs inside an Edit the caller has already opened.
 func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodList, Op: opListingsList, Target: pkg,
@@ -71,10 +50,6 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Listing, 
 	return parsed.Listings, raw, nil
 }
 
-// Get fetches a single locale's Listing at edits.listings.get. Returns the
-// parsed Listing and the raw JSON body for the --output json pass-through
-// (ADR-0003). A 404 here means "no Listing for this locale": the caller
-// maps it via the gplay exit-code taxonomy.
 func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*Listing, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodGet, Op: opListingsGet, Target: pkg,
@@ -90,32 +65,14 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, language string) (*L
 	return &parsed, raw, nil
 }
 
-// Patch writes fields of one EXISTING locale's Listing at
-// edits.listings.patch, sending the caller-built body verbatim. The body
-// carries exactly the fields the caller means to write; PATCH (not PUT) is
-// used on purpose so a field absent from the body is left untouched online:
-// the ADR-0011 "missing ≠ empty" rule, enforced at the wire level. PATCH
-// cannot create a locale: on a language with no Listing, Play answers 404
-// (#561), so a new locale goes through Update. Returns the raw response body
-// (the patched Listing) for the per-locale --output json pass-through
-// (ADR-0003).
 func Patch(ctx context.Context, hc *http.Client, pkg, editID, language string, body []byte) (json.RawMessage, error) {
 	return write(ctx, hc, methodPatch, opListingsPatch, pkg, editID, language, body)
 }
 
-// Update creates one locale's Listing at edits.listings.update (PUT), the
-// only Listings method that can create a language Play does not have yet
-// (#561). PUT replaces the whole resource, so the caller reserves it for a
-// locale absent online: there is no live field to preserve, and "missing ≠
-// empty" (ADR-0011) holds trivially. Same body and return contract as
-// Patch.
 func Update(ctx context.Context, hc *http.Client, pkg, editID, language string, body []byte) (json.RawMessage, error) {
 	return write(ctx, hc, methodUpdate, opListingsUpdate, pkg, editID, language, body)
 }
 
-// write is the shared body of Patch and Update: the two differ only by the
-// registry method (verb) and the operation name carried by *api.Error. The
-// body goes out verbatim; the answer is the ADR-0003 per-locale pass-through.
 func write(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, editID, language string, body []byte) (json.RawMessage, error) {
 	return api.Do(ctx, hc, api.Call{
 		Method: m, Op: op, Target: pkg,
@@ -124,13 +81,6 @@ func write(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, 
 	})
 }
 
-// Delete drops a whole locale's Listing at edits.listings.delete: every
-// managed field for that locale is removed online in one call. This is the
-// operation ADR-0011 calls "deletegroup": there is no separate
-// edits.listings.deletegroup endpoint; the real androidpublisher surface
-// that deletes a single locale's Listing is edits.listings.delete, and
-// that is what gplay calls. A 2xx/204 with no body is expected. Op
-// "listings.delete".
 func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string) error {
 	_, err := api.Do(ctx, hc, api.Call{
 		Method: methodDelete, Op: opListingsDelete, Target: pkg,
@@ -139,13 +89,10 @@ func Delete(ctx context.Context, hc *http.Client, pkg, editID, language string) 
 	return err
 }
 
-// localeParams addresses one locale's Listing inside an Edit.
 func localeParams(pkg, editID, language string) map[string]string {
 	return map[string]string{"packageName": pkg, "editId": editID, "language": language}
 }
 
-// decode unmarshals a 2xx body into out. A body that does not decode keeps
-// the 200 status tag it always had, so its exit code (30) is unchanged.
 func decode(op, pkg string, raw json.RawMessage, out any) error {
 	if err := json.Unmarshal(raw, out); err != nil {
 		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}

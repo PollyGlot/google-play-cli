@@ -1,22 +1,3 @@
-// Package apply implements `gplay metadata apply`: reconcile the local
-// Metadata tree with the Listings live on Google Play. It is thin glue:
-// resolve --package and --dir, read the tree off disk (internal/metadata/
-// tree), and hand it to internal/metadata/orchestrator, which owns the Edit
-// lifecycle, the diff, the --confirm gate, and the --prune deletegroup. The
-// command only resolves inputs and renders.
-//
-// Two modes (ADR-0011):
-//
-//   - --dry-run is ONLINE: it reads the live Listings and prints the
-//     per-locale/per-field delta without committing. --output json is the
-//     gplay diff schema {package, changes[], summary} so a CI gate is one
-//     jq line. This deliberately diverges from `releases upload --dry-run`
-//     (offline); the offline role is held by `metadata validate`.
-//   - --confirm performs the real publish (one Edit, one commit, atomic).
-//     --output json is the per-locale write response bodies
-//     (listings.patch for a live locale, listings.update for a new one).
-//     Without --confirm a real apply refuses (exit 3: safety flag
-//     required) and points at --dry-run; CI=true never auto-confirms.
 package apply
 
 import (
@@ -43,12 +24,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// DefaultDir is the metadata tree root used when --dir is unset. Shared by
-// the flag default and Run's fallback so direct callers (tests) get the
-// same default.
 const DefaultDir = "./metadata"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
 	Dir         string
@@ -59,8 +36,6 @@ type Input struct {
 	AllowLocale []string
 }
 
-// dirError signals an unreadable --dir (missing tree). It maps to exit 20
-// (client-side validation): the same family as a malformed tree.
 type dirError struct {
 	dir   string
 	cause error
@@ -72,10 +47,6 @@ func (e *dirError) Error() string {
 func (e *dirError) Unwrap() error { return e.cause }
 func (e *dirError) ExitCode() int { return 20 }
 
-// listingNotFoundError is the 404 of a per-locale Listing write or delete:
-// the package resolved (the Edit opened and the Listings were read), only
-// that language's Listing is missing. Pointing at `gplay apps list` there
-// sent the operator after the wrong cause (#561).
 type listingNotFoundError struct {
 	locale string
 	cause  error
@@ -86,12 +57,6 @@ func (e *listingNotFoundError) Error() string {
 }
 func (e *listingNotFoundError) Unwrap() error { return e.cause }
 
-// classifyApplyError adds the 404/403 hints, leaving the wrapped *api.Error
-// to drive the exit code. A 404 on a per-locale call (an
-// *orchestrator.LocaleError) is about that language's Listing, not the
-// package. The orchestrator's own errors (the --confirm safety refusal,
-// Validation, PruneDefaultLanguage) are not *api.Error, so they pass
-// through untouched with their own exit codes.
 func classifyApplyError(pkg string, err error) error {
 	var locErr *orchestrator.LocaleError
 	if apihint.Status(err) == http.StatusNotFound && errors.As(err, &locErr) {
@@ -100,9 +65,6 @@ func classifyApplyError(pkg string, err error) error {
 	return apihint.ForPackage(pkg, err)
 }
 
-// Payload renders an orchestrator.Result. The shape switches on Result.DryRun:
-// a dry-run renders the diff (JSON = gplay diff schema), a real apply renders
-// what was published (JSON = per-locale write bodies).
 type Payload struct {
 	Result *orchestrator.Result
 }
@@ -115,9 +77,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// diffHeaders / diffRows shape the dry-run change table (and its markdown
-// twin). LIVE/LOCAL are the online/local char counts; a locale-level record
-// (untouchedLocale/delete) leaves them blank and fills REASON.
 var diffHeaders = []string{"LOCALE", "FIELD", "OP", "LIVE", "LOCAL", "REASON"}
 
 func diffRows(d diff.Result) [][]string {
@@ -138,8 +97,6 @@ func ptrStr(n *int) string {
 	return strconv.Itoa(*n)
 }
 
-// applyHeaders / applyRows shape the real-apply report table: one row per
-// locale touched, with the action taken.
 var applyHeaders = []string{"LOCALE", "RESULT"}
 
 func applyRows(r *orchestrator.Result) [][]string {
@@ -160,7 +117,7 @@ func applyRows(r *orchestrator.Result) [][]string {
 		}
 		rows = append(rows, []string{loc, action})
 	}
-	for _, loc := range r.Pruned { // already sorted by the orchestrator
+	for _, loc := range r.Pruned {
 		rows = append(rows, []string{loc, "pruned (deleted)"})
 	}
 	return rows
@@ -199,7 +156,6 @@ func (p Payload) renderTable(w io.Writer) error {
 	return tw.Flush()
 }
 
-// writeSummary prints the one-line tally under the dry-run table.
 func writeSummary(w io.Writer, s diff.Summary) error {
 	_, err := fmt.Fprintf(w,
 		"summary: create=%d update=%d clear=%d unchanged=%d untouchedLocales=%d delete=%d\n",
@@ -213,8 +169,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 		if err := output.MarkdownTable(w, diffHeaders, diffRows(r.Diff)); err != nil {
 			return err
 		}
-		// Parity with renderTable: the dry-run human views both carry the
-		// summary tally under the table.
 		return writeSummary(w, r.Diff.Summary)
 	}
 	rows := applyRows(r)
@@ -225,15 +179,9 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, applyHeaders, rows)
 }
 
-// renderJSON emits the gplay diff schema for a dry-run (ADR-0011 §6), or the
-// per-locale write bodies for a real apply (listings.patch, or
-// listings.update for a created locale). A pruned locale is reported as
-// {"pruned":true}.
 func (p Payload) renderJSON(w io.Writer) error {
 	r := p.Result
 	if r.DryRun {
-		// Led by the dryRun marker every other mutating command's preview
-		// carries; the diff schema itself is unchanged.
 		return output.WriteJSON(w, struct {
 			DryRun bool `json:"dryRun"`
 			diff.Result
@@ -249,7 +197,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return output.WriteJSON(w, out)
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -265,17 +212,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &dirError{dir: dir, cause: err}
 	}
 
-	// Both dry-run (online preview) and real apply need an authenticated
-	// client: unlike `metadata validate`, apply always talks to Play.
 	httpClient, err := rc.AuthedClient()
 	if err != nil {
 		return nil, err
 	}
 
-	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-apply Edit. Skipped on --dry-run: the preview uses
-	// a separate read-only Edit and never reuses the pin, so a corrupt pin must
-	// not fail it.
 	var explicitEditID string
 	if !in.DryRun {
 		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
@@ -303,9 +244,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.Warnf("this apply %s locale %q on Play without %s, which `gplay metadata validate` requires: add %s under %s",
 			verb, inc.Locale, strings.Join(inc.Missing, " and "), missingFiles(inc.Missing), filepath.Join(dir, inc.Locale))
 	}
-	// DESIGN §8: a committed apply prints one ✓ line on stderr (never on a
-	// --dry-run), reporting how many locales were patched (and created or
-	// pruned, if any). Created locales are counted apart, not as patched.
 	if !in.DryRun {
 		detail := fmt.Sprintf("%d locale(s) patched", len(res.Patched))
 		if len(res.Created) > 0 {
@@ -319,7 +257,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Result: res}, nil
 }
 
-// missingFiles names the tree files that carry the given field keys.
 func missingFiles(keys []string) string {
 	files := make([]string, 0, len(keys))
 	for _, k := range keys {
@@ -330,7 +267,6 @@ func missingFiles(keys []string) string {
 	return strings.Join(files, " and ")
 }
 
-// NewCommand returns the cobra command for `gplay metadata apply`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

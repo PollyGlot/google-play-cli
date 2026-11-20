@@ -11,17 +11,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/coveragedoc"
 )
 
-// Paths relative to this package (go test runs with the package dir as cwd).
 var (
 	pathsIndex   = filepath.Join("..", "..", "docs", "discovery", "paths.txt")
 	coveragePath = filepath.Join("..", "..", "docs", "COVERAGE.md")
 )
 
-// TestCoverageDocMatchesSources is the freshness gate: the committed
-// docs/COVERAGE.md must be byte-equal to a re-render from the committed sources
-// (paths.txt, the registry, the exclusion list). A row edited by hand, a
-// registry entry added without regenerating, or a Discovery refresh left
-// half-applied fails here, offline and with no new CI step.
 func TestCoverageDocMatchesSources(t *testing.T) {
 	raw, err := os.ReadFile(pathsIndex)
 	if err != nil {
@@ -40,9 +34,6 @@ func TestCoverageDocMatchesSources(t *testing.T) {
 	}
 }
 
-// TestRenderIsDeterministic pins the property the gate above relies on: two
-// renders of the same inputs are byte-identical. Without it a map iteration
-// creeping into the renderer would turn the gate into a coin flip.
 func TestRenderIsDeterministic(t *testing.T) {
 	raw, err := os.ReadFile(pathsIndex)
 	if err != nil {
@@ -61,10 +52,6 @@ func TestRenderIsDeterministic(t *testing.T) {
 	}
 }
 
-// TestEveryMethodAppearsExactlyOnce is the completeness claim the document
-// makes: one row per method of paths.txt, no more, no less, in one of the
-// rendered marks. It reads the committed file, so it also catches a row
-// deleted by hand.
 func TestEveryMethodAppearsExactlyOnce(t *testing.T) {
 	raw, err := os.ReadFile(pathsIndex)
 	if err != nil {
@@ -111,11 +98,6 @@ func TestEveryMethodAppearsExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestNoUncoveredRowWithoutAnIssue is the promise of ADR-0047 read from the
-// committed file: every 🔴 row is parked behind an issue link. A new Discovery
-// method lands here as a bare 🔴 and fails this test until it is registered,
-// excluded, declared redundant or parked: that is the point, the table can no
-// longer lie by omission.
 func TestNoUncoveredRowWithoutAnIssue(t *testing.T) {
 	doc, err := os.ReadFile(coveragePath)
 	if err != nil {
@@ -136,9 +118,6 @@ func TestNoUncoveredRowWithoutAnIssue(t *testing.T) {
 	}
 }
 
-// TestExclusionsAreWellFormed guards the one hand-written input: every
-// exclusion names a method once and says why. An exclusion without a reason is
-// how "excluded by nature" silently becomes "we did not get to it".
 func TestExclusionsAreWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, x := range apiregistry.Exclusions() {

@@ -1,9 +1,3 @@
-// Package set_test exercises `gplay compliance datasafety set` at the kernel
-// level. This file covers the #141 surface: the --dry-run rehearsal (validate
-// + resolve package/account + report the target) which makes ZERO network
-// calls and needs no --confirm, plus the implicit-validate short-circuit and
-// package resolution. The live-POST path (#142) is exercised in
-// set_live_test.go with a mocked transport.
 package set_test
 
 import (
@@ -22,9 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// newOfflineRC builds a RunContext with NO Account and NO transport: a
-// dry-run must complete here, which proves it makes no network call and
-// needs no credentials.
 func newOfflineRC(t *testing.T) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	var stdout bytes.Buffer
@@ -56,8 +47,6 @@ func writeCSV(t *testing.T, content string) string {
 	return path
 }
 
-// validCSV returns a well-formed CSV (header matches the bundled reference)
-// with dataRows data rows, plus the byte length set would POST.
 func validCSV(t *testing.T, dataRows int) (path string, bytesLen, rows int) {
 	t.Helper()
 	hdr := strings.Join(datasafety.ReferenceHeader(), ",")
@@ -72,9 +61,6 @@ func validCSV(t *testing.T, dataRows int) (path string, bytesLen, rows int) {
 	return writeCSV(t, content), len(content), dataRows
 }
 
-// TestDryRun_valid_reportsTarget is the #141 tracer bullet: a valid CSV
-// dry-run resolves the package, makes zero network calls, and reports the
-// target: package + "would POST N bytes / N rows".
 func TestDryRun_valid_reportsTarget(t *testing.T) {
 	path, nbytes, rows := validCSV(t, 4)
 	rc, _ := newOfflineRC(t)
@@ -122,8 +108,6 @@ func TestDryRun_valid_reportsTarget(t *testing.T) {
 	_ = rows
 }
 
-// TestDryRun_invalidCSV_shortCircuits_exit20 asserts a structurally invalid
-// CSV fails the dry-run with exit 20 before claiming any success.
 func TestDryRun_invalidCSV_shortCircuits_exit20(t *testing.T) {
 	hdr := strings.Join(datasafety.ReferenceHeader(), ",")
 	path := writeCSV(t, hdr+"\nonly,two\n")
@@ -135,8 +119,6 @@ func TestDryRun_invalidCSV_shortCircuits_exit20(t *testing.T) {
 	}
 }
 
-// TestDryRun_missingFile_exit20 asserts an unreadable --file fails the
-// dry-run as a client-side validation error (exit 20).
 func TestDryRun_missingFile_exit20(t *testing.T) {
 	rc, _ := newOfflineRC(t)
 	_, err := setcmd.Run(rc, setcmd.Input{
@@ -149,8 +131,6 @@ func TestDryRun_missingFile_exit20(t *testing.T) {
 	}
 }
 
-// TestDryRun_packageFromProjectPin asserts the package is resolved from the
-// project pin when --package is omitted.
 func TestDryRun_packageFromProjectPin(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rc, _ := newOfflineRC(t)
@@ -169,8 +149,6 @@ func TestDryRun_packageFromProjectPin(t *testing.T) {
 	}
 }
 
-// TestDryRun_noPackage_exit2 asserts a dry-run with neither --package nor a
-// project pin is a CLI misuse (exit 2).
 func TestDryRun_noPackage_exit2(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rc, _ := newOfflineRC(t)
@@ -181,9 +159,6 @@ func TestDryRun_noPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestDryRun_reportsAccount asserts a resolved Account name is surfaced in
-// the rehearsal (ADR-0014: dry-run resolves account/package and reports the
-// target).
 func TestDryRun_reportsAccount(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rc, _ := newOfflineRC(t)
@@ -202,8 +177,6 @@ func TestDryRun_reportsAccount(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the #141 flag surface: --package, --file,
-// --dry-run and --output exist, and the command is named "set".
 func TestNewCommand_flags(t *testing.T) {
 	cmd := setcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"package", "file", "dry-run", "output"} {

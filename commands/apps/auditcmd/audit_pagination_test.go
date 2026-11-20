@@ -19,7 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// discoveryRC wires rt behind a service account, like the sweep tests do.
 func discoveryRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
@@ -32,8 +31,6 @@ func discoveryRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// searchOnly answers apps.search with page(n) for the n-th call and refuses
-// anything else: discovery must fail before a single app is read.
 func searchOnly(page func(n int) string) (*testkit.Fake, *atomic.Int64) {
 	var n atomic.Int64
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
@@ -44,8 +41,6 @@ func searchOnly(page func(n int) string) (*testkit.Fake, *atomic.Int64) {
 	}), &n
 }
 
-// A server that hands back the token it was just given would page forever:
-// discovery refuses the repeat instead of auditing until the quota runs out.
 func TestRun_discoveryRefusesARepeatedPageToken(t *testing.T) {
 	fake, calls := searchOnly(func(int) string {
 		return `{"apps":[{"packageName":"com.example.a"}],"nextPageToken":"same"}`
@@ -65,8 +60,6 @@ func TestRun_discoveryRefusesARepeatedPageToken(t *testing.T) {
 	}
 }
 
-// Past the page bound with a token still set, the account list is partial:
-// the audit fails loudly instead of sweeping a subset as if it were the whole.
 func TestRun_discoveryFailsAtThePageBound(t *testing.T) {
 	fake, calls := searchOnly(func(n int) string {
 		return `{"apps":[{"packageName":"com.example.a` + strconv.Itoa(n) + `"}],"nextPageToken":"t` + strconv.Itoa(n) + `"}`

@@ -1,10 +1,3 @@
-// Package output owns Format selection and rendering dispatch for gplay
-// commands. Every command supplies its three Renderers (table / json /
-// markdown) and calls Render; this package resolves the requested Format
-// against TTY state and the CI env var, then picks the matching Renderer.
-//
-// See docs/adr/0005-tty-aware-output.md for the design rationale and the
-// rejected alternatives.
 package output
 
 import (
@@ -21,9 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// Format is the user-facing output shape requested via --output. The empty
-// string (FormatAuto) is the flag default; the dispatcher resolves it
-// against the runtime context.
 type Format string
 
 const (
@@ -33,24 +23,12 @@ const (
 	FormatMarkdown Format = "markdown"
 )
 
-// EnvDefaultOutput names the env var that carries a personal default
-// Format. It sits between the flag and the auto-detection: a user who
-// always wants JSON exports it once instead of typing --output json on
-// every command.
 const EnvDefaultOutput = "GPLAY_DEFAULT_OUTPUT"
 
-// IsTerminalFn reports whether w is connected to a terminal. The default
-// implementation asks w for its file descriptor (an *os.File, or a wrapper
-// that forwards Fd, like the stdout byte tally in cmd/gplay) and calls
-// term.IsTerminal on it; writers without one are treated as non-TTY so JSON
-// wins under any test or pipe.
 type IsTerminalFn func(w io.Writer) bool
 
 var isTTY IsTerminalFn = defaultIsTTY
 
-// fileDescriptor is the one method TTY detection needs. Asserting it rather
-// than *os.File lets main count stdout bytes (#593) without every command
-// suddenly seeing a pipe and switching its default format to JSON.
 type fileDescriptor interface{ Fd() uintptr }
 
 func defaultIsTTY(w io.Writer) bool {
@@ -61,36 +39,20 @@ func defaultIsTTY(w io.Writer) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
-// IsTerminalFunc returns the current TTY-detection hook. Tests use it
-// alongside SetIsTerminalFunc to swap and restore the hook.
 func IsTerminalFunc() IsTerminalFn { return isTTY }
 
-// SetIsTerminalFunc installs a replacement TTY detector. Production code
-// never calls this; it exists so tests can force TTY/non-TTY without a
-// pty.
 func SetIsTerminalFunc(fn IsTerminalFn) { isTTY = fn }
 
-// Renderers carries one rendering function per Format. A nil field means
-// the command does not support that Format; Render returns a uniform
-// "unsupported" error when the resolved Format hits a nil field.
 type Renderers struct {
 	Table    func(io.Writer) error
 	JSON     func(io.Writer) error
 	Markdown func(io.Writer) error
 }
 
-// Renderable is what a command's business function returns to the
-// kernel: a payload that knows how to render itself in each Format.
-// The kernel calls Renderers() then output.Render against the resolved
-// Format on rc.
 type Renderable interface {
 	Renderers() Renderers
 }
 
-// Render resolves the requested Format for w, picks the matching field
-// from r, and runs it. A nil field surfaces the same uniform
-// "unsupported --output" error as an unknown Format, so a command that
-// ships without (say) a Markdown renderer behaves identically to a typo.
 func Render(w io.Writer, requested Format, r Renderers) error {
 	f, err := Resolve(requested, w)
 	if err != nil {
@@ -105,7 +67,6 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 	case FormatMarkdown:
 		fn = r.Markdown
 	case FormatAuto:
-		// Resolve never returns it; a nil fn reports it as unsupported below.
 	}
 	if fn == nil {
 		return unsupportedFormat(f)
@@ -116,12 +77,6 @@ func Render(w io.Writer, requested Format, r Renderers) error {
 	return renderHuman(w, fn)
 }
 
-// renderHuman is the one boundary every human view crosses: what the renderer
-// writes passes through SanitizeText before it reaches w. A hand-written
-// renderer (a FIELD<TAB>VALUE header row, a summary line) that prints an API
-// string with Fprintf is then as safe as a Column cell, without remembering to
-// call SanitizeCell. The renderer's own layout survives: gplay emits no escape
-// sequence or control rune besides \n and \t.
 func renderHuman(w io.Writer, fn func(io.Writer) error) error {
 	sw := &sanitizingWriter{w: w}
 	err := fn(sw)
@@ -131,12 +86,6 @@ func renderHuman(w io.Writer, fn func(io.Writer) error) error {
 	return err
 }
 
-// sanitizingWriter filters a human view line by line. Holding back the
-// unfinished line keeps a sequence or a multi-byte rune split across two
-// writes (tabwriter, bufio) whole for the filter, while a view of several
-// hundred MiB (a report in markdown) never sits in memory at once. An escape
-// sequence cannot survive a line break: its ESC is a control rune, dropped on
-// the line that holds it.
 type sanitizingWriter struct {
 	w    io.Writer
 	line []byte
@@ -162,17 +111,6 @@ func (s *sanitizingWriter) flush() error {
 	return err
 }
 
-// WriteJSON streams v to w as indented JSON using the gplay-wide
-// "2-space indent, trailing newline" shape. Every command's JSON
-// renderer should call this: keeping the encoder configuration in one
-// place stops the SetIndent setting from drifting between commands.
-//
-// HTML escaping is off: the encoder's default rewrites <, > and & as
-// \u003c, \u003e and \u0026, which only helps JSON inlined in an HTML
-// page. Here it made API passthrough strings (review text, listing copy,
-// a json.RawMessage re-indented on the way out) differ byte-wise from what
-// the API returned (ADR-0003), and turned "--package <pkg>" in an error
-// envelope into text grep and humans cannot read.
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -180,9 +118,6 @@ func WriteJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-// NonNil returns s, or an empty slice when s is nil, so a gplay-authored
-// array field encodes as [] and never as null: a consumer iterates it
-// without a guard (the `requires` array of every dry-run preview).
 func NonNil[T any](s []T) []T {
 	if s == nil {
 		return []T{}
@@ -190,13 +125,6 @@ func NonNil[T any](s []T) []T {
 	return s
 }
 
-// Marshal is json.Marshal without HTML escaping, for the compact JSON gplay
-// assembles from API bytes before it reaches WriteJSON: a merged page
-// envelope, a composite view. json.Marshal escapes <, > and & even inside a
-// json.RawMessage, and WriteJSON cannot undo an escape already baked into
-// the bytes, so such an envelope must be built here to stay verbatim. It is
-// the only marshal commands/ may call (encodergate_test.go): a request body
-// or catalog fragment built there can end up on stdout (a --dry-run preview).
 func Marshal(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -207,21 +135,11 @@ func Marshal(v any) ([]byte, error) {
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
-// RegisterFlag binds the standard --output flag to dest on cmd. Every
-// command should use this helper rather than calling StringVar directly,
-// so the flag name, default (empty = auto), and help text stay
-// consistent across commands and can evolve in one place.
 func RegisterFlag(cmd *cobra.Command, dest *string) {
 	cmd.Flags().StringVar(dest, "output", "",
 		"output format: table, json, or markdown (default: $GPLAY_DEFAULT_OUTPUT, else auto, meaning table on TTY and json in pipes/CI)")
 }
 
-// MarkdownTable writes a standard GitHub-Flavored Markdown table: one
-// header row, the `| --- | --- |` separator, then one row per data line.
-// Cell contents containing `|` are escaped to `\|` so the resulting
-// table is valid no matter what a caller passes in. A row whose width
-// does not match the header width is a programmer error and returns an
-// error mentioning the offending row index.
 func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 	if _, err := fmt.Fprintf(w, "| %s |\n", joinCells(headers)); err != nil {
 		return err
@@ -244,12 +162,6 @@ func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 	return nil
 }
 
-// joinCells sanitizes each cell (sanitizeCell: strips ANSI escapes and control
-// characters, the central markdown render boundary for untrusted API strings)
-// and escapes any literal `|` to `\|` (the GitHub Flavored Markdown convention)
-// before joining with ` | `. Centralising both here keeps every caller of
-// MarkdownTable safe by default. JSON output does not pass through here, so it
-// stays byte-faithful (ADR-0003).
 func joinCells(cells []string) string {
 	escaped := make([]string, len(cells))
 	for i, c := range cells {
@@ -258,15 +170,6 @@ func joinCells(cells []string) string {
 	return strings.Join(escaped, " | ")
 }
 
-// Resolve returns the concrete Format to use for w, layering three
-// sources, the most explicit winning: an explicit `requested` Format
-// (the --output flag), then $GPLAY_DEFAULT_OUTPUT, then the
-// auto-detection (CI env non-empty → JSON, non-TTY → JSON, else
-// table). The env var outranks the auto-detection on purpose: it is a
-// value the user typed, while CI and TTY state are guesses about
-// intent, so `GPLAY_DEFAULT_OUTPUT=table` still means table inside CI.
-// An unknown Format, from either the flag or the env var, returns a
-// usage error mentioning the three valid values.
 func Resolve(requested Format, w io.Writer) (Format, error) {
 	switch requested {
 	case FormatAuto:
@@ -293,16 +196,6 @@ func Resolve(requested Format, w io.Writer) (Format, error) {
 	}
 }
 
-// unsupportedFormat is the single source of truth for the "we cannot
-// give you that format" error. Both the unknown-format and nil-renderer
-// paths route through here so user-visible wording stays uniform and
-// ADR-0005 §"Renderer interface" stays in sync with the code.
-//
-// A bad --output value is CLI misuse, so this returns a *exit.UsageError
-// (ExitCode()=2) per docs/DESIGN.md §9: the same exit-2 path the sibling
-// --columns validator already uses for an unknown column. Validating the
-// value downstream (here, not in pflag.Set) is why this needs the explicit
-// typing: the root's FlagErrorFunc only sees pflag-level parse errors.
 func unsupportedFormat(f Format) error {
 	return exit.Usagef("unsupported --output %q (want table, json, or markdown)", string(f))
 }

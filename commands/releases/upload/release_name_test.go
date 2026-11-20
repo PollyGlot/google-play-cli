@@ -10,8 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_releaseName_sentOnTracksUpdate pins #665: --release-name names the
-// release the tracks.update PUT carries.
 func TestRun_releaseName_sentOnTracksUpdate(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-name", versionCode: 142})
 	rc, _ := newRC(t, transport)
@@ -26,8 +24,6 @@ func TestRun_releaseName_sentOnTracksUpdate(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_releaseName_previewed: the --dry-run preview shows the name
-// the live call would send.
 func TestRun_dryRun_releaseName_previewed(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -54,9 +50,6 @@ func TestRun_dryRun_releaseName_previewed(t *testing.T) {
 	}
 }
 
-// TestRun_blankReleaseName_exit2_noHTTP: an empty or whitespace-only
-// --release-name is a usage error before any request, token exchange
-// included.
 func TestRun_blankReleaseName_exit2_noHTTP(t *testing.T) {
 	for _, name := range []string{"", "   ", "\t"} {
 		rt, transport := newUploadTransport(uploadAPI{})
@@ -75,7 +68,6 @@ func TestRun_blankReleaseName_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersReleaseNameFlag pins the cobra wiring.
 func TestNewCommand_registersReleaseNameFlag(t *testing.T) {
 	if upload.NewCommand(kernel.Boot{}).Flags().Lookup("release-name") == nil {
 		t.Error("releases upload is missing --release-name")

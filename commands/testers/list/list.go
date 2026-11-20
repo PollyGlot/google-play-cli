@@ -1,12 +1,3 @@
-// Package list implements `gplay testers list`: a read-only view of the
-// authorized audience (Google Groups) of a single track. It is thin glue:
-// resolve --package, open a read-only Edit, consume
-// internal/play/testers.Get, and render. The Edit is opened and discarded
-// via edits.WithReadOnlyEdit, never committed.
-//
-// The testers resource exposes only googleGroups[]; individual tester
-// emails are not supported by the API, so this lists Google Groups
-// exclusively. Replacing the audience is the job of `gplay testers set`.
 package list
 
 import (
@@ -29,44 +20,28 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/testers"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 	Track   string
 }
 
-// trackNotFoundError wraps a testers.get 404 with an actionable hint
-// pointing at `gplay tracks list`. It carries no ExitCode of its own so
-// the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain: an unknown track is an API 4xx, not a CLI misuse.
 type trackNotFoundError struct {
 	track string
 	cause error
 }
 
-// Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
 	return fmt.Sprintf("track %q not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 404 to exit 30.
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
-// Payload satisfies output.Renderable. Raw carries the testers.get body
-// for the ADR-0003 JSON pass-through; Track is gplay-derived context shown
-// above the group list: never in the JSON, which stays a faithful
-// testers.get pass-through. Groups is the parsed googleGroups[] used by the
-// human views.
 type Payload struct {
 	Track  string          `json:"-"`
 	Groups []string        `json:"-"`
 	Raw    json.RawMessage `json:"-"`
 }
 
-// Renderers satisfies output.Renderable with one renderer per Format. The
-// JSON form is the ADR-0003 testers.get pass-through; table and markdown
-// are human-shaped views over the same Google Groups.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -75,10 +50,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// renderTable writes a one-line track-context header then one Google Group
-// per line under a GROUP header. An empty audience (a closed track with no
-// testers yet) renders a `(no testers)` line so the empty state reads
-// unambiguously rather than looking like a truncated table.
 func renderTable(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "Track: %s\n", p.Track); err != nil {
 		return err
@@ -100,11 +71,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
-// renderJSON emits the raw testers.get body verbatim (ADR-0003
-// pass-through). Raw is always populated on the Run path; an empty Raw
-// would mean we never captured the API body, so we error rather than emit
-// zero bytes (every Payload field is json:"-", so an empty Raw would
-// silently break the contract).
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw testers.get payload for --output json")
@@ -113,10 +79,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown writes the Google Groups as a GitHub-Flavored Markdown
-// table via output.MarkdownTable, preceded by the same track-context line
-// as the table view so a pasted report stands on its own. An empty audience
-// yields a header-only table (zero rows).
 func renderMarkdown(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "Track: %s\n\n", p.Track); err != nil {
 		return err
@@ -128,9 +90,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return output.MarkdownTable(w, []string{"GROUP"}, rows)
 }
 
-// isStatus reports whether err carries a *api.Error with the given HTTP
-// status: the signal used to attach actionable hints to a testers.get 404
-// (unknown track) or a 403 (service account not invited).
 func isStatus(err error, status int) bool {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
@@ -139,16 +98,6 @@ func isStatus(err error, status int) bool {
 	return false
 }
 
-// classifyTrackError attaches an actionable hint to the operator-facing
-// failures of a read-only testers read, while leaving the wrapped
-// *api.Error to drive the exit code. A testers.get 404 is already wrapped
-// as *trackNotFoundError inside the read closure (it carries the
-// `gplay tracks list` hint), so it is passed through untouched rather than
-// being re-classified as a package miss. Everything else is matched on the
-// underlying *api.Error: an edits.insert 404 means the package is unknown
-// (→ `gplay apps list` hint), a 403 means the service account was not
-// invited on the app. Every other failure (5xx, network, edit conflict)
-// propagates verbatim.
 func classifyTrackError(pkg string, err error) error {
 	var tnf *trackNotFoundError
 	if errors.As(err, &tnf) {
@@ -157,9 +106,6 @@ func classifyTrackError(pkg string, err error) error {
 	return apihint.ForPackage(pkg, err)
 }
 
-// Run is the business function the kernel invokes. It validates inputs,
-// resolves the package, builds an authenticated HTTP client, then opens a
-// read-only Edit and reads the track's testers.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
@@ -201,7 +147,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay testers list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -16,7 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newRC wires rt behind a service account and captures stderr.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
@@ -32,8 +31,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 
 const listBody = `{"deviceTierConfigs":[{"deviceTierConfigId":"7"},{"deviceTierConfigId":"8"}],"nextPageToken":"next"}`
 
-// TestRun_pagination_and_passthrough asserts page-size/page-token are sent and
-// the response (with nextPageToken) is passed through verbatim.
 func TestRun_pagination_and_passthrough(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, listBody))
 	rc, _ := newRC(t, fake)
@@ -56,9 +53,6 @@ func TestRun_pagination_and_passthrough(t *testing.T) {
 	}
 }
 
-// TestRun_nextPageTokenNote asserts a page carrying nextPageToken tells the
-// operator on stderr how to fetch the next one: a first page in table or
-// markdown would otherwise read as the whole list.
 func TestRun_nextPageTokenNote(t *testing.T) {
 	rc, stderr := newRC(t, testkit.NewFake(testkit.Any(http.StatusOK, listBody)))
 	if _, err := listcmd.Run(rc, listcmd.Input{Package: "com.example.app"}); err != nil {

@@ -11,31 +11,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// Removal kinds, the `replacement.kind` vocabulary of the JSON error envelope
-// (ADR-0051). Append-only.
 const (
 	RemovedCommand = "command"
 	RemovedFlag    = "flag"
 )
 
-// Removal is one row of the removed-surface table (ADR-0051): a verb or flag
-// gplay shipped, then removed without an alias, and what replaced it.
-//
-//   - Path is the command the removed token applied to, without the leading
-//     "gplay": the group that held a removed verb ("games achievements"), or
-//     the leaf that held a removed flag ("releases rollout").
-//   - Token is what the user typed there: a verb, possibly several words when
-//     a whole branch moved ("upload apk"), or a flag name ("--to").
-//   - Use is the replacement: a command path without "gplay" for a verb, a
-//     flag name on the same Path for a flag.
-//   - UseArgs, optional and for a verb only, are the positional arguments the
-//     replacement needs to do what the removed verb did, when the verb itself
-//     carried a value (`publish-status published` is `set published`): the
-//     envelope's `use` ends with them, so substituting `removed` by `use` in a
-//     command keeps that value.
-//   - RemovedIn is the gplay version that removed it.
-//   - Note, optional, says what a pure rename would not (a domain verb, an
-//     argument that moved).
 type Removal struct {
 	Kind      string
 	Path      string
@@ -46,17 +26,11 @@ type Removal struct {
 	Note      string
 }
 
-// removedSurface is the table itself. Every rename or removal of a verb or flag
-// adds its row in the same pull request (ADR-0051); TestRemovedSurface_table in
-// cmd/gplay fails on a row whose Use no longer resolves or whose removed path
-// resolves again. The human mirror is the website's migration guide.
 var removedSurface = []Removal{
-	// ADR-0019: one verb per intent.
 	{Kind: RemovedCommand, Path: "apps", Token: "info", Use: "apps view", RemovedIn: "0.4.1"},
 	{Kind: RemovedCommand, Path: "tracks", Token: "status", Use: "tracks view", RemovedIn: "0.4.1"},
 	{Kind: RemovedCommand, Path: "team grants", Token: "revoke", Use: "team grants remove", RemovedIn: "0.4.1"},
 
-	// ADR-0048 (#597): the 2.0.0 vocabulary pass.
 	{Kind: RemovedCommand, Path: "games achievements", Token: "update", Use: "games achievements set", RemovedIn: "2.0.0"},
 	{Kind: RemovedCommand, Path: "games achievements", Token: "delete", Use: "games achievements remove", RemovedIn: "2.0.0"},
 	{Kind: RemovedCommand, Path: "games leaderboards", Token: "update", Use: "games leaderboards set", RemovedIn: "2.0.0"},
@@ -77,10 +51,6 @@ var removedSurface = []Removal{
 	{Kind: RemovedCommand, Path: "appstore", Token: "upload image", Use: "appstore image upload", RemovedIn: "2.0.0"},
 	{Kind: RemovedCommand, Path: "appstore", Token: "upload policy", Use: "appstore policy upload", RemovedIn: "2.0.0"},
 
-	// ADR-0048 (#597): flags renamed on the leaf that holds them. A row names
-	// one leaf, so a flag renamed on several leaves takes one row per leaf.
-	// `games ... set --from-json` never shipped: set replaced update, which
-	// had it, so a 1.x script that fixed its verb meets the flag next.
 	{Kind: RemovedFlag, Path: "releases rollout", Token: "--to", Use: "--staged", RemovedIn: "2.0.0"},
 	{Kind: RemovedFlag, Path: "vitals anr", Token: "--version", Use: "--version-code", RemovedIn: "2.0.0"},
 	{Kind: RemovedFlag, Path: "vitals crashes", Token: "--version", Use: "--version-code", RemovedIn: "2.0.0"},
@@ -108,21 +78,14 @@ var removedSurface = []Removal{
 	{Kind: RemovedFlag, Path: "reviews history", Token: "--to", Use: "--until", RemovedIn: "2.0.0"},
 }
 
-// RemovedSurface returns a copy of the removed-surface table, for the
-// integrity test that walks it against the live command tree.
 func RemovedSurface() []Removal {
 	return append([]Removal(nil), removedSurface...)
 }
 
-// tablePath is cmd's path as a table row spells it: without the leading "gplay".
 func tablePath(cmd *cobra.Command) string {
 	return strings.TrimPrefix(strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()), " ")
 }
 
-// removedVerb looks up the verb the user called on group: args are the
-// positional tokens cobra left over after resolving group, so the removed path
-// is group's path followed by a prefix of args. Exact match only (ADR-0051): a
-// near miss is the Levenshtein suggestion's job, never the table's.
 func removedVerb(group *cobra.Command, args []string) (Removal, bool) {
 	path := tablePath(group)
 	for _, r := range removedSurface {
@@ -137,9 +100,6 @@ func removedVerb(group *cobra.Command, args []string) (Removal, bool) {
 	return Removal{}, false
 }
 
-// removedVerbError is the unknown-command error for a removed verb: the same
-// first line every unknown command gets, then the replacement, in text for
-// stderr and as a typed value for the JSON envelope.
 func removedVerbError(group *cobra.Command, r Removal) *exit.UsageError {
 	root := group.Root().Name()
 	use := strings.Join(append([]string{root, r.Use}, strings.Fields(r.UseArgs)...), " ")
@@ -160,28 +120,10 @@ func removedVerbError(group *cobra.Command, r Removal) *exit.UsageError {
 	}
 }
 
-// FlagErrorFunc is the root's cobra flag-error func, inherited by the whole
-// tree: a flag-parse failure is CLI misuse (exit 2, docs/DESIGN.md §9), not
-// the generic exit 1 a plain cobra error would map to.
-//
-// It also unmasks a removed verb. cobra resolves a command path before parsing
-// flags, so in `gplay games achievements update <id> --output json` the removed
-// `update` is not a child: cobra parses `--output` on the group, which has no
-// such flag, and the user would read `unknown flag: --output` for a command
-// that does take it. When the flags failed on a group whose leading positional
-// arguments are a removed verb, the removed-verb error wins (ADR-0051).
-//
-// Without the raw argv (see SetArgs) it only sees the positionals pflag read
-// before the failing flag, so a flag typed before the verb hides it.
 func FlagErrorFunc(cmd *cobra.Command, err error) error {
 	return flagError(cmd, err, nil)
 }
 
-// SetArgs hands argv to root, like cobra's own SetArgs, and keeps it for the
-// flag-error func: pflag stops on the first unknown flag, so in
-// `gplay games achievements --output json update <id>` the removed verb after
-// `--output` only exists in argv. main and the tests that drive the whole tree
-// call it instead of root.SetArgs.
 func SetArgs(root *cobra.Command, argv []string) {
 	root.SetArgs(argv)
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
@@ -205,16 +147,6 @@ func flagError(cmd *cobra.Command, err error, argv []string) error {
 	return exit.Usagef("%s", err)
 }
 
-// positionalsAfter reads argv the way cobra's Find did to resolve cmd, and
-// returns the positional tokens that follow cmd's path. Like cobra, it treats a
-// "--flag" or "-f" without "=" as taking the next token unless the flag is a
-// known boolean, so an unknown flag eats its value (`--output json`) and that
-// value is never mistaken for a verb; and, like pflag, it reads everything
-// after "--" and a bare "-" as positionals. The first
-// positionals are cmd's path (aliases included, hence counted, not compared).
-//
-// Limit (ADR-0051): an unknown flag that takes no value, typed before the
-// removed verb, eats the verb as cobra does, so that call keeps pflag's message.
 func positionalsAfter(cmd *cobra.Command, argv []string) []string {
 	flags := cmd.Flags()
 	var pos []string
@@ -222,7 +154,6 @@ func positionalsAfter(cmd *cobra.Command, argv []string) []string {
 		s := argv[i]
 		switch {
 		case s == "--":
-			// pflag hands every token after "--" over as a positional.
 			pos = append(pos, argv[i+1:]...)
 			i = len(argv)
 		case strings.HasPrefix(s, "--") && !strings.Contains(s, "="):
@@ -234,10 +165,8 @@ func positionalsAfter(cmd *cobra.Command, argv []string) []string {
 				i++
 			}
 		case s == "-":
-			// pflag reads a bare "-" as a positional (stdin, by convention).
 			pos = append(pos, s)
 		case s == "" || strings.HasPrefix(s, "-"):
-			// --flag=value or a shorthand group: no separate value.
 		default:
 			pos = append(pos, s)
 		}
@@ -249,12 +178,6 @@ func positionalsAfter(cmd *cobra.Command, argv []string) []string {
 	return pos[depth:]
 }
 
-// removedFlag looks up the unknown long flag err reports on cmd, the command
-// whose flags failed to parse. The row is scoped to that exact path, so a flag
-// removed from one leaf (`releases rollout --to`) is never reported on another
-// that still takes it (`releases promote --to`). pflag names the flag the same
-// way for `--to 0.1` and `--to=0.1`; a shorthand group (`-x`) never matches,
-// since no removed flag had a shorthand.
 func removedFlag(cmd *cobra.Command, err error) (Removal, bool) {
 	var unknown *pflag.NotExistError
 	if !errors.As(err, &unknown) || unknown.GetSpecifiedShortnames() != "" {
@@ -270,9 +193,6 @@ func removedFlag(cmd *cobra.Command, err error) (Removal, bool) {
 	return Removal{}, false
 }
 
-// removedFlagError keeps pflag's own message as its first words, then names the
-// replacement as the full command to run, in text for stderr and as a typed
-// value (flag names only) for the JSON envelope.
 func removedFlagError(cmd *cobra.Command, err error, r Removal) *exit.UsageError {
 	msg := fmt.Sprintf("%s: removed in %s, use `%s %s`", err, r.RemovedIn, cmd.CommandPath(), r.Use)
 	if r.Note != "" {

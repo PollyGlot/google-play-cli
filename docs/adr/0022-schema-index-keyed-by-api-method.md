@@ -116,7 +116,8 @@ sits on top of it, as foreseen.
   commands only. Every Edit-scoped command shares them, and which ones run
   depends on the Edit mode (implicit or explicit) and on whether the command
   mutates, so listing them on each command would be wrong half the time. A
-  note on stderr says so when they apply.
+  note on stderr says so whenever a listed method is an Edit call, including
+  for the `edits` commands themselves, which do list `edits.*`.
 - **Finding nothing is not a failure.** A query that matches nothing, and a
   `--command` whose command calls no API method (an offline command such as
   `auth list`, or `schema` itself), print a note on stderr and exit 0 with an

@@ -22,7 +22,7 @@ func TestClassify(t *testing.T) {
 		name     string
 		status   int
 		wantExit int
-		wantHint string // substring the message must contain ("" = passthrough)
+		wantHint string
 	}{
 		{"forbidden", 403, 11, "Reply to reviews"},
 		{"not found", 404, 30, "gplay apps list"},
@@ -39,7 +39,6 @@ func TestClassify(t *testing.T) {
 			if tc.wantHint != "" && !strings.Contains(got.Error(), tc.wantHint) {
 				t.Errorf("status %d message %q, want substring %q", tc.status, got.Error(), tc.wantHint)
 			}
-			// The wrapped *api.Error must remain reachable for the Coder chain.
 			var apiErr *api.Error
 			if !errors.As(got, &apiErr) {
 				t.Errorf("status %d: wrapped *api.Error no longer reachable via errors.As", tc.status)
@@ -53,12 +52,9 @@ func TestClassifyReply(t *testing.T) {
 		name     string
 		status   int
 		wantExit int
-		wantHint string // substring the message must contain ("" = passthrough)
+		wantHint string
 	}{
-		// 403 reuses the SHARED "Reply to reviews" grant hint (issue #62).
 		{"forbidden shares the grant hint", 403, 11, "Reply to reviews"},
-		// 404 on reply means the reviewId is unknown, NOT the package, so it
-		// must not point the operator at `gplay apps list`.
 		{"not found names the review", 404, 30, "review"},
 		{"server error passthrough", 500, 40, ""},
 	}
@@ -78,7 +74,6 @@ func TestClassifyReply(t *testing.T) {
 			}
 		})
 	}
-	// The 404 hint must NOT carry list's package-not-found guidance.
 	in := &api.Error{Operation: "reviews.reply", Package: "com.example.app", StatusCode: 404, Message: "boom"}
 	if got := ClassifyReply("com.example.app", "gp:REVIEW123", in); strings.Contains(got.Error(), "gplay apps list") {
 		t.Errorf("reply 404 must not borrow list's package hint, got %q", got.Error())
@@ -90,13 +85,9 @@ func TestClassifyView(t *testing.T) {
 		name     string
 		status   int
 		wantExit int
-		wantHint string // substring the message must contain ("" = passthrough)
+		wantHint string
 	}{
-		// 403 reuses the SHARED "Reply to reviews" grant hint (the permission
-		// gates reading and replying alike).
 		{"forbidden shares the grant hint", 403, 11, "Reply to reviews"},
-		// 404 on view means the reviewId is unknown OR expired, so the hint must
-		// name the 7-day window (and the review, not the package).
 		{"not found names the 7-day window", 404, 30, "7 days"},
 		{"server error passthrough", 500, 40, ""},
 	}
@@ -116,7 +107,6 @@ func TestClassifyView(t *testing.T) {
 			}
 		})
 	}
-	// The 404 hint must name the review and NOT borrow list's package guidance.
 	in := &api.Error{Operation: "reviews.get", Package: "com.example.app", StatusCode: 404, Message: "boom"}
 	got := ClassifyView("com.example.app", "gp:REVIEW123", in)
 	if !strings.Contains(got.Error(), "review") || strings.Contains(got.Error(), "gplay apps list") {

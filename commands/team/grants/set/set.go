@@ -1,15 +1,3 @@
-// Package set implements `gplay team grants set <email> --package <pkg>`:
-// grant or adjust a member's per-app access via an UPSERT by read-then-decide
-// (ADR-0007 instinct): read the member's current grants → grants.create if the
-// app grant is absent, grants.patch if present. Chosen over optimistic
-// create-then-patch to avoid betting on undocumented 404/409 semantics and to
-// enable an EXACT dry-run.
-//
-// Because the verb (create/update) and the permission diff are properties of
-// the current state, --dry-run performs the same idempotent READ the live path
-// does (it never writes), then reports the resolved verb + diff + the
-// `requires` array. Permissions resolve in APP scope (the vocabulary module
-// strips _GLOBAL). Admin-conferring grants still require --grant-admin (exit 3).
 package set
 
 import (
@@ -32,13 +20,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// Verbs for the read-then-decide upsert.
 const (
 	verbCreate = "create"
 	verbUpdate = "update"
 )
 
-// Input is the request-shaped struct cobra builds from flags + the email arg.
 type Input struct {
 	Email       string
 	Package     string
@@ -61,9 +47,6 @@ func (e *forbiddenError) Error() string {
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
-// notMemberError signals the target is not a member of the account, so there is
-// no User to attach a grant to. It is gplay-derived from a successful read, but
-// "target not found" maps to exit 30 (the API-4xx-not-found bucket).
 type notMemberError struct{ email string }
 
 func (e *notMemberError) Error() string {
@@ -81,7 +64,6 @@ func classifyError(developerID string, err error) error {
 	return err
 }
 
-// Payload renders what set did (or, on --dry-run, would do).
 type Payload struct {
 	Email    string
 	Package  string
@@ -102,7 +84,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// verbLabel is the human verb: "would create/update" on a dry-run.
 func (p Payload) verbLabel() string {
 	if p.DryRun {
 		return "would " + p.Verb
@@ -153,9 +134,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"FIELD", "VALUE"}, rows)
 }
 
-// dryRunView is the gplay-shaped --dry-run JSON: the resolved verb
-// (create/update), the permission diff (current → desired + add/remove), and
-// the machine-readable `requires` array (ADR-0017 §4).
 type dryRunView struct {
 	DryRun   bool     `json:"dryRun"`
 	Email    string   `json:"email"`
@@ -192,8 +170,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return err
 }
 
-// diff returns the sorted add (desired \ current) and remove (current \
-// desired) sets: the permission delta surfaced in the dry-run JSON.
 func diff(current, desired []string) (add, remove []string) {
 	cur := make(map[string]bool, len(current))
 	for _, c := range current {
@@ -220,8 +196,6 @@ func diff(current, desired []string) (add, remove []string) {
 	return add, remove
 }
 
-// currentGrant returns the user's existing app-level permissions on pkg and
-// whether such a grant exists.
 func currentGrant(u *playteam.User, pkg string) ([]string, bool) {
 	for _, g := range u.Grants {
 		if g.PackageName == pkg {
@@ -231,9 +205,6 @@ func currentGrant(u *playteam.User, pkg string) ([]string, bool) {
 	return nil, false
 }
 
-// Run is the business function the kernel invokes. It validates the flags,
-// resolves the desired app-scope permissions, reads the member's current grant
-// (read-then-decide), and either previews (--dry-run) or upserts.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	pkg := strings.TrimSpace(in.Package)
@@ -257,7 +228,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	teamcmd.EmitWarnings(rc, warnings)
 
 	gate := teamcmd.Gate{AdminConferring: vocab.IsAdminConferring(enums)}
-	// Fail the gate fast on the live path, before any network.
 	if !in.DryRun {
 		if err := gate.Verify(false, in.GrantAdmin); err != nil {
 			return nil, err
@@ -273,9 +243,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Read-then-decide: the user's grants are only readable through the User.
-	// This idempotent read runs on BOTH paths so the dry-run reports the exact
-	// verb + diff; only the create/patch WRITE is gated by --dry-run.
 	user, found, err := playteam.FindUser(rc.Ctx, httpClient, developerID, email)
 	if err != nil {
 		return nil, classifyError(developerID, err)
@@ -314,7 +281,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Email: email, Package: pkg, Verb: verb, Current: current, Desired: enums, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team grants set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

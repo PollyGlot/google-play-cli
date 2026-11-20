@@ -26,22 +26,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// examplePackage is the app every example targets: the Project pin each run
-// starts from, so an example without --package resolves as in a repo after
-// gplay init.
 const examplePackage = "com.example.app"
 
-// TestExamples_writeCommandsRunAgainstTheConstraints runs every Example line
-// of every write command (kernel.MarkMutating) against a fake Play, in a
-// fresh directory holding the files examples name (testdata/examples). The
-// fake checks each request body against the constraints table
-// (internal/testkit), so an example whose body Play refuses fails with the
-// rule's name (#776, #809).
-//
-// A non-preview example (no --dry-run, no --plan) must also send a write of
-// its own, or the table judged nothing. testdata/examples.allow names the
-// lines that do not run, each for a known defect: a listed line that runs, or
-// no longer exists, fails too. A write command must offer an example.
 func TestExamples_writeCommandsRunAgainstTheConstraints(t *testing.T) {
 	allowed := loadExampleAllowlist(t)
 	seen := map[string]bool{}
@@ -77,15 +63,10 @@ func TestExamples_writeCommandsRunAgainstTheConstraints(t *testing.T) {
 	}
 }
 
-// examplePlaceholders are the values a user sets before copying an Example
-// that reads a $NAME none of its lines sets.
 var examplePlaceholders = map[string]string{
 	"NEW_KMS_KEY": "projects/example/locations/global/keyRings/play/cryptoKeys/app-signing/cryptoKeyVersions/2",
 }
 
-// runExample runs r, an Example line of leaf, in a fresh directory against
-// exampleFake and returns why it failed, "" when it exited 0 with every body
-// inside the rules.
 func runExample(t *testing.T, leaf string, r exampleRun) string {
 	t.Helper()
 	args := r.args
@@ -113,8 +94,6 @@ func runExample(t *testing.T, leaf string, r exampleRun) string {
 		}
 	}
 	t.Chdir(dir)
-	// HOME apart from dir: the Project walk-up never takes ~/.gplay, the
-	// macOS config directory, for a Project.
 	home := t.TempDir()
 	for k, v := range map[string]string{
 		"HOME":                     home,
@@ -168,13 +147,8 @@ func runExample(t *testing.T, leaf string, r exampleRun) string {
 	return ""
 }
 
-// editLifecycle matches edits.insert, edits.commit and the discard of an
-// implicit Edit: every Edit-based command sends them, and none carries a body
-// the constraints table judges, so they prove no write of its own.
 var editLifecycle = regexp.MustCompile(`^(POST /androidpublisher/v3/applications/[^/]+/edits(/[^/]+:commit)?|DELETE /androidpublisher/v3/applications/[^/]+/edits/[^/]+)$`)
 
-// changedPlay reports whether calls hold a write of leaf's own. The Edit
-// lifecycle counts only for the edits leaves, whose write it is.
 func changedPlay(leaf string, calls []testkit.Call) bool {
 	for _, c := range calls {
 		if c.Method == http.MethodGet {
@@ -187,23 +161,15 @@ func changedPlay(leaf string, calls []testkit.Call) bool {
 	return false
 }
 
-// exampleWorld is the Play state an example runs against: what a write
-// command reads before it writes. The default is one app whose every track
-// serves one staged rollout (two releases would make every release verb ask
-// which one), and whose developer account holds the members the team
-// examples name.
 type exampleWorld struct {
-	track string // tracks.get body, %q the track name; "" answers 404
-	pin   bool   // an explicit Edit is open (gplay edits begin ran)
+	track string
+	pin   bool
 }
 
 var defaultWorld = exampleWorld{track: `{"track":%q,"releases":[
 	{"name":"2.4.0","versionCodes":["1042"],"status":"inProgress","userFraction":0.1,"releaseNotes":[{"language":"en-US","text":"Faster sync."}]}
 ]}`}
 
-// exampleWorlds holds the leaves whose Example states another starting
-// point than defaultWorld ("Resume a halted production rollout", "Publish
-// everything batched since gplay edits begin", a track not created yet).
 var exampleWorlds = map[string]exampleWorld{
 	"tracks create": {},
 	"releases resume": {track: `{"track":%q,"releases":[
@@ -213,7 +179,6 @@ var exampleWorlds = map[string]exampleWorld{
 	"edits discard": {track: defaultWorld.track, pin: true},
 }
 
-// exampleMembers answers users.list: the members the team examples act on.
 const exampleMembers = `{"users":[
 	{"name":"developers/1234567890/users/qa@example.com","email":"qa@example.com","accessState":"ACCESS_GRANTED"},
 	{"name":"developers/1234567890/users/dev@example.com","email":"dev@example.com","accessState":"ACCESS_GRANTED"},
@@ -222,12 +187,9 @@ const exampleMembers = `{"users":[
 	{"name":"developers/1234567890/users/former@example.com","email":"former@example.com","accessState":"ACCESS_GRANTED"}
 ]}`
 
-// exampleMedia answers a media upload, with the fields any uploader reads
-// from it.
 const exampleMedia = `{"versionCode":1042,"sha1":"da39a3ee5e6b4b0d3255bfef95601890afd80709","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",` +
 	`"downloadUrl":"https://play.google.com/apps/test/com.example.app/1042","certificateFingerprint":"00:11","apkId":"apk-1","imageId":"img-1","fileId":"file-1"}`
 
-// exampleFake serves w and accepts every write, echoing its body.
 func exampleFake(w exampleWorld) *testkit.Fake {
 	return testkit.NewFake(testkit.ReplyHeader(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -263,9 +225,6 @@ func exampleFake(w exampleWorld) *testkit.Fake {
 
 var trackPath = regexp.MustCompile(`/edits/[^/]+/tracks/[^/]+$`)
 
-// buildFixtures writes the files Examples name that are built rather than
-// committed: artifacts carrying a real manifest, images of the dimensions
-// Play requires, a certificate, a Data Safety CSV with today's header.
 func buildFixtures(t *testing.T, dir string) {
 	t.Helper()
 	for name, pkg := range map[string]string{
@@ -310,8 +269,6 @@ func mkdirFor(t *testing.T, dir, name string) {
 	}
 }
 
-// noKeyring keeps the OS keychain out of the run: the service account comes
-// from the environment.
 type noKeyring struct{}
 
 var errNoKeyring = errors.New("examples test: no keyring")
@@ -320,8 +277,6 @@ func (noKeyring) Set(string, string, string) error   { return errNoKeyring }
 func (noKeyring) Get(string, string) (string, error) { return "", errNoKeyring }
 func (noKeyring) Delete(string, string) error        { return errNoKeyring }
 
-// copyFixtures copies testdata/examples, the files Examples name, into dir
-// and pins examplePackage there.
 func copyFixtures(t *testing.T, dir string) {
 	t.Helper()
 	src, err := filepath.Abs(filepath.Join("testdata", "examples"))
@@ -355,8 +310,6 @@ func copyFixtures(t *testing.T, dir string) {
 	}
 }
 
-// loadExampleAllowlist reads testdata/examples.allow: one Example line (its
-// argv after gplay) per line, under `#` comments that give the reason.
 func loadExampleAllowlist(t *testing.T) map[string]bool {
 	t.Helper()
 	f, err := os.Open(filepath.Join("testdata", "examples.allow"))

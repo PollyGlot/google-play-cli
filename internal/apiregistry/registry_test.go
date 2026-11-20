@@ -1,6 +1,3 @@
-// Package apiregistry_test anchors the declarative registry of API methods
-// gplay calls to the offline Discovery artefacts. Everything here reads
-// committed files: no network, no auth, no binary.
 package apiregistry_test
 
 import (
@@ -15,13 +12,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// repoDocs is docs/ relative to this package (go test runs with the package
-// directory as the working directory).
 var repoDocs = filepath.Join("..", "..", "docs")
 
-// TestRegistryIsWellFormed guards the registry's own shape: no duplicate method
-// id, and every entry names at least one command. A duplicate would silently
-// hide one of the two mappings from the triage bot.
 func TestRegistryIsWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, e := range apiregistry.Entries() {
@@ -47,10 +39,6 @@ func TestRegistryIsWellFormed(t *testing.T) {
 	}
 }
 
-// TestRegisteredMethodsExistInSchemaIndex is the removal alarm: every method a
-// shipped command calls must still be in the Schema index compiled into the
-// binary. When Google drops a method, the Monday Discovery refresh regenerates
-// the index and this test names both the method and the command that breaks.
 func TestRegisteredMethodsExistInSchemaIndex(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
@@ -65,11 +53,6 @@ func TestRegisteredMethodsExistInSchemaIndex(t *testing.T) {
 	}
 }
 
-// TestRegisteredMethodsExistInPathsIndex is the same alarm read from the other
-// artefact: paths.txt is the existence index the Discovery refresh diffs to
-// classify a run as `surface`. Checking it too means a `surface` refresh that
-// deletes a method gplay calls goes red even before the Schema index is
-// regenerated.
 func TestRegisteredMethodsExistInPathsIndex(t *testing.T) {
 	known := methodIDsFromPaths(t)
 	for _, e := range apiregistry.Entries() {
@@ -81,9 +64,6 @@ func TestRegisteredMethodsExistInPathsIndex(t *testing.T) {
 	}
 }
 
-// TestRegisteredMethodsAreNotDeprecated is the deprecation alarm. Discovery
-// marks a doomed method `"deprecated": true` months before it disappears; that
-// window is exactly when a maintainer wants a ticket, not a broken release.
 func TestRegisteredMethodsAreNotDeprecated(t *testing.T) {
 	deprecated := deprecatedMethodIDs(t)
 	for _, e := range apiregistry.Entries() {
@@ -95,8 +75,6 @@ func TestRegisteredMethodsAreNotDeprecated(t *testing.T) {
 	}
 }
 
-// methodIDsFromPaths reads the committed existence index. Each line is
-// `id⇥verb⇥path` (docs/discovery/README.md).
 func methodIDsFromPaths(t *testing.T) map[string]bool {
 	t.Helper()
 	f, err := os.Open(filepath.Join(repoDocs, "discovery", "paths.txt"))
@@ -121,10 +99,6 @@ func methodIDsFromPaths(t *testing.T) map[string]bool {
 	return ids
 }
 
-// deprecatedMethodIDs walks every committed snapshot and collects the ids of
-// methods carrying `"deprecated": true`. The walk is generic (map[string]any)
-// rather than typed because schemaindex deliberately drops the flag: the index
-// is a trimmed projection, the snapshot is the full document.
 func deprecatedMethodIDs(t *testing.T) map[string]bool {
 	t.Helper()
 	dir := filepath.Join(repoDocs, "discovery")

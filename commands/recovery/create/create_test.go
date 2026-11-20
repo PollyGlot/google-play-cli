@@ -22,8 +22,6 @@ import (
 
 const draftBody = `{"appRecoveryId":"555","status":"RECOVERY_STATUS_DRAFT"}`
 
-// newFake serves the draft on the create POST; any other request fails the
-// round trip.
 func newFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return http.StatusOK, draftBody, c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/appRecoveries")
@@ -63,8 +61,6 @@ func exitOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// TestRun_happyPath_postsDraft asserts a draft is posted with the targeting and
-// the response passes through, with a ✓ line.
 func TestRun_happyPath_postsDraft(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -94,7 +90,6 @@ func TestRun_happyPath_postsDraft(t *testing.T) {
 	}
 }
 
-// TestRun_missingVersionCode_exit2 asserts the bad version is required, offline.
 func TestRun_missingVersionCode_exit2(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -107,7 +102,6 @@ func TestRun_missingVersionCode_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingTargeting_exit2 asserts an audience selector is required, offline.
 func TestRun_missingTargeting_exit2(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -120,7 +114,6 @@ func TestRun_missingTargeting_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noNetwork_noConfirm asserts --dry-run rehearses offline.
 func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)

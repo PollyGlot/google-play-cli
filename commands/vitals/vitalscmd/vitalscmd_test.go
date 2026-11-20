@@ -68,11 +68,8 @@ func TestBuildBody_hourlyCarriesHour_andFilter(t *testing.T) {
 	}
 }
 
-// TestBuildBody_hourlyMidnightKeepsZeroHour pins the *int fix: an HOURLY window
-// whose boundary lands on midnight must carry an explicit "hours":0, not omit it
-// (which would send a date-only datetime for an HOURLY request).
 func TestBuildBody_hourlyMidnightKeepsZeroHour(t *testing.T) {
-	now := time.Date(2026, 6, 16, 0, 30, 0, 0, time.UTC) // 00:30 → end truncates to 00:00
+	now := time.Date(2026, 6, 16, 0, 30, 0, 0, time.UTC)
 	body, err := buildBody([]string{"crashRate"}, nil, "HOURLY", "", "", time.Hour, now, time.Time{})
 	if err != nil {
 		t.Fatalf("buildBody: %v", err)

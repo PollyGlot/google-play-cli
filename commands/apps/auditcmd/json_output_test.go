@@ -8,9 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRenderJSON_clean_golden freezes a clean sweep: findings is [] (not
-// null) and errors is omitted, so "nothing found" is an explicit empty list
-// next to the what-ran section that proves the sweep covered something.
 func TestRenderJSON_clean_golden(t *testing.T) {
 	p := auditcmd.Payload{Report: auditcmd.Report{
 		Ran:      auditcmd.Ran{Apps: []string{"com.example.app"}, Checks: []string{"lingering-drafts", "no-production-release"}},
@@ -20,9 +17,6 @@ func TestRenderJSON_clean_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "clean.json.golden", p)
 }
 
-// TestRenderJSON_findingsAndErrors_golden freezes the full report: findings
-// with evidence (a map, which encoding/json emits in sorted key order, so the
-// golden is stable) plus an unread app under errors with its exit code.
 func TestRenderJSON_findingsAndErrors_golden(t *testing.T) {
 	p := auditcmd.Payload{Report: auditcmd.Report{
 		Ran: auditcmd.Ran{

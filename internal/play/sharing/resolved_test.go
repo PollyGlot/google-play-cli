@@ -1,8 +1,3 @@
-// Migration proof for #518: sharing now takes its verb and its media-upload
-// URL from internal/apiregistry instead of local literals. sharing_test.go is
-// untouched; what is added here is the ABSOLUTE URL (the /upload/ host path,
-// which is a genuinely different endpoint and not a suffix of the data plane)
-// and the verb of both artifact kinds.
 package sharing_test
 
 import (
@@ -17,10 +12,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/sharing"
 )
 
-// pinned answers {} to every call and records what was sent.
 func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-// first is the first call f recorded, or the zero Call when none was sent.
 func first(f *testkit.Fake) testkit.Call {
 	if calls := f.Calls(); len(calls) > 0 {
 		return calls[0]

@@ -9,15 +9,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// Synthetic, format-faithful fixtures of the #695 families: the headers of
-// Play's exports, invented values.
 const (
 	ratingsOverview = "Date,Package Name,Daily Average Rating,Total Average Rating\n" +
 		"2026-09-01,com.example.app,4.50,4.31\n"
 	crashesAppVersion = "Date,Package Name,App Version Code,Daily Crashes,Daily ANRs\n" +
 		"2026-09-01,com.example.app,0042,3,1\n"
-	// Store performance quotes its fields; a search term may hold a comma, a
-	// tab or a line break.
 	storeTraffic = "\"Date\",\"Package name\",\"Traffic source\",\"Search term\",\"Store listing acquisitions\",\"Store listing visitors\"\n" +
 		"\"2026-09-01\",\"com.example.app\",\"Google Play search\",\"photo, editor\",\"12\",\"40\"\n" +
 		"\"2026-09-01\",\"com.example.app\",\"Google Play search\",\"tab\there\",\"3\",\"9\"\n" +
@@ -35,9 +31,7 @@ func familiesBucket() reportstest.Bucket {
 		"stats/store_performance/store_performance_com.example.app_202609_traffic_source.csv": []byte(storeTraffic),
 		"stats/store_performance/store_performance_com.example.app_202609_country.csv":        []byte("\"Date\",\"Country / region\"\n\"2026-09-01\",\"FR\"\n"),
 		subsPrefix + "premium_monthly_v2_202609_country.csv":                                  []byte(subsCountry),
-		// A product whose id starts with the one asked: the listing prefix
-		// matches it, the parsed product does not.
-		subsPrefix + "premium_monthly_v2_trial_202610_country.csv": []byte(subsCountry),
+		subsPrefix + "premium_monthly_v2_trial_202610_country.csv":                            []byte(subsCountry),
 	}}
 }
 
@@ -76,9 +70,6 @@ func TestRun_crashesKeepVersionCodesVerbatim(t *testing.T) {
 	}
 }
 
-// TestRun_storePerformanceQuotedCellsRoundTrip is the acceptance criterion:
-// commas, tabs, line breaks and escaped quotes inside quoted cells come out
-// as the cell's exact text.
 func TestRun_storePerformanceQuotedCellsRoundTrip(t *testing.T) {
 	fake := testkit.NewFake(familiesBucket().Responder())
 	rc, _, _ := reportstest.NewRC(t, fake)
@@ -128,7 +119,6 @@ func TestRun_subscriptionStatsReadsOneProduct(t *testing.T) {
 			t.Errorf("JSON lacks %s:\n%s", want, got)
 		}
 	}
-	// The longer product's later month must not count as the latest.
 	if strings.Contains(got, "2026-10") || strings.Contains(got, "_trial") {
 		t.Errorf("another product's export leaked in:\n%s", got)
 	}

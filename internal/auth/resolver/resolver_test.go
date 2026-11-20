@@ -21,17 +21,10 @@ const fakeSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-// saWithEmail returns fakeSAJSON with client_email replaced: useful in
-// precedence cases where every layer needs a distinguishable winner.
 func saWithEmail(email string) string {
 	return strings.Replace(fakeSAJSON, "ci@p.iam.gserviceaccount.com", email, 1)
 }
 
-// setup returns a Deps wired to a fresh file-backed keystore (caller
-// stashes any bytes it needs). The returned *config.Resolved is the
-// layer-5 surface tests mutate to emulate "this account is active in
-// config". Env vars are no longer touched: the resolver reads its
-// EnvServiceAccount / EnvAccount from Inputs.
 func setup(t *testing.T) (resolver.Deps, *config.Resolved, keystore.Backend) {
 	t.Helper()
 	resolved := &config.Resolved{}
@@ -39,15 +32,11 @@ func setup(t *testing.T) (resolver.Deps, *config.Resolved, keystore.Backend) {
 	return resolver.Deps{Resolved: resolved, Keystore: be}, resolved, be
 }
 
-// TestResolve_cascade walks the five precedence layers documented in
-// DESIGN.md §1, one row per layer, each row asserting that the named
-// layer wins when every higher-priority layer is unset. Layer-overlap
-// (multiple sources set; highest wins) gets a separate group below.
 func TestResolve_cascade(t *testing.T) {
 	cases := []struct {
 		name   string
 		setup  func(t *testing.T, deps *resolver.Deps, resolved *config.Resolved, be keystore.Backend) resolver.Inputs
-		want   string // expected ClientEmail
+		want   string
 		wantOK bool
 	}{
 		{
@@ -157,9 +146,6 @@ func TestResolve_cascade(t *testing.T) {
 	}
 }
 
-// TestResolve_precedence asserts the *order* of layers when several are
-// set simultaneously: i.e. the layer that "wins" against every layer
-// below it.
 func TestResolve_precedence(t *testing.T) {
 	type seed struct {
 		flagSA   string
@@ -175,7 +161,7 @@ func TestResolve_precedence(t *testing.T) {
 	}
 	cases := []struct {
 		name string
-		drop seed // layers set to zero for this case
+		drop seed
 		want string
 	}{
 		{
@@ -206,13 +192,11 @@ func TestResolve_precedence(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			deps, resolved, be := setup(t)
-			// Seed every layer; drop overrides selectively below.
 			mustSave(t, be, "acct-flag", saWithEmail("acctflag@x"))
 			mustSave(t, be, "acct-env", saWithEmail("acctenv@x"))
 			mustSave(t, be, "acct-active", saWithEmail("active@x"))
 			resolved.ConfigAccount = "acct-active"
 
-			// Apply drops: a non-empty drop field clears that layer.
 			in := resolver.Inputs{
 				ServiceAccountFlag: allLayers.flagSA,
 				AccountFlag:        allLayers.flagAcct,
@@ -243,8 +227,6 @@ func TestResolve_precedence(t *testing.T) {
 	}
 }
 
-// TestResolve_emptyEnvVars_areIgnored: an explicitly empty env var must
-// fall through, not short-circuit a higher-priority layer.
 func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
 	deps, resolved, be := setup(t)
 	mustSave(t, be, "active", fakeSAJSON)
@@ -259,9 +241,6 @@ func TestResolve_emptyEnvVars_areIgnored(t *testing.T) {
 	}
 }
 
-// TestResolve_envServiceAccount_missingPath_failsLoudly: setting layer
-// 3 to a path that doesn't exist must surface the underlying error
-// rather than silently falling through to ErrNoSource.
 func TestResolve_envServiceAccount_missingPath_failsLoudly(t *testing.T) {
 	deps, _, _ := setup(t)
 	missingPath := filepath.Join(t.TempDir(), "missing.json")
@@ -275,8 +254,6 @@ func TestResolve_envServiceAccount_missingPath_failsLoudly(t *testing.T) {
 	}
 }
 
-// TestResolve_noSourceHint asserts the actionable hint stays in the
-// ErrNoSource message: users land on this in the cold-start state.
 func TestResolve_noSourceHint(t *testing.T) {
 	deps, _, _ := setup(t)
 	_, err := resolver.Resolve(context.Background(), deps, resolver.Inputs{})
@@ -290,8 +267,6 @@ func TestResolve_noSourceHint(t *testing.T) {
 	}
 }
 
-// explodingKeystore fails the test if any Backend method is called: it
-// guards the promise that ResolveName never touches the keystore.
 type explodingKeystore struct{ t *testing.T }
 
 func (e explodingKeystore) Save(context.Context, string, []byte) error {
@@ -314,7 +289,7 @@ func (e explodingKeystore) List(context.Context) ([]string, error) {
 func TestResolveName_precedenceAndKeystoreFree(t *testing.T) {
 	deps := resolver.Deps{
 		Resolved: &config.Resolved{ConfigAccount: "cascade"},
-		Keystore: explodingKeystore{t: t}, // any access fails the test
+		Keystore: explodingKeystore{t: t},
 	}
 	cases := []struct {
 		name string

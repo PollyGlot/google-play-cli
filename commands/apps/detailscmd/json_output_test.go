@@ -8,10 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
 )
 
-// TestRenderJSON_view_emptyRawResponse_fallsBackToPayloadShape pins the
-// silent fallback of `apps details view`: a Payload that lost its details.get
-// body renders the typed record rather than nothing, through
-// output.WriteJSON (no HTML escaping of the website query string).
 func TestRenderJSON_view_emptyRawResponse_fallsBackToPayloadShape(t *testing.T) {
 	p := detailscmd.Payload{
 		Package:         "com.example.app",
@@ -23,9 +19,6 @@ func TestRenderJSON_view_emptyRawResponse_fallsBackToPayloadShape(t *testing.T) 
 	outputtest.GoldenJSON(t, "view_fallback.json.golden", p)
 }
 
-// TestRenderJSON_set_dryRun_golden freezes the gplay-authored `apps details
-// set --dry-run` preview: only the fields the patch would touch, tagged
-// dryRun so it cannot pass for a real details.patch echo.
 func TestRenderJSON_set_dryRun_golden(t *testing.T) {
 	email := "dev@example.com"
 	website := "https://example.com/support?lang=en&ref=<play>"

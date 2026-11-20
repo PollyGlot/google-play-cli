@@ -147,7 +147,9 @@ than *absent*, see Considered options.
   `--dry-run` preview get it for free, while the keyring probe, the macOS
   "keychain locked" dialog included, waits for a command that asks for a
   token. A pre-auth failure (a bad `--package`, a missing `--confirm`),
-  `--dry-run` and `--help` never touch the keyring.
+  `--help` and an offline `--dry-run` (the `releases` verbs) never touch the
+  keyring; an online dry-run (`metadata apply`, `images apply`) reads the API
+  and loads the credential.
 - **The lazy fields are read through their accessors.** The resolved
   Account and the selected keystore stay zero until the first call that needs
   them, so a direct field read on the production path sees nothing. The

@@ -7,10 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
 )
 
-// TestBuildRows_flattensEveryArtifact asserts the grouped-by-signing-key envelope
-// flattens to one row per downloadable artifact, with the right type, the natural
-// secondary id, the downloadId, and a short cert hash: including the unprotected
-// split/standalone lists (they carry downloadIds too).
 func TestBuildRows_flattensEveryArtifact(t *testing.T) {
 	lr := generatedapks.ListResponse{
 		GeneratedApks: []generatedapks.PerSigningKey{{
@@ -63,7 +59,6 @@ func TestBuildRows_flattensEveryArtifact(t *testing.T) {
 	}
 }
 
-// TestBuildRows_empty returns no rows for an empty response (no panic).
 func TestBuildRows_empty(t *testing.T) {
 	if rows := generatedcmd.BuildRows(generatedapks.ListResponse{}); len(rows) != 0 {
 		t.Errorf("rows = %d, want 0", len(rows))

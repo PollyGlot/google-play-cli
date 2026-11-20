@@ -1,10 +1,5 @@
 package upload_test
 
-// Artifact preflight (PRD #448) on `gplay releases expansion-files upload`.
-// There is no package name to read out of an .obb, so this surface gets the
-// container check only, and it catches the mistake that actually happens
-// here: handing the command the app's build instead of its asset sidecar.
-
 import (
 	"bytes"
 	"path/filepath"
@@ -44,9 +39,6 @@ func TestRun_preflight_refusesAnAndroidPackageWhereAnOBBBelongs(t *testing.T) {
 	}
 }
 
-// TestRun_skipPreflight_uploadsAnAABAsAnExpansionFile asserts the escape
-// hatch bypasses the container check here too: an unusual but legitimate
-// artifact must never be blocked by gplay's own classifier.
 func TestRun_skipPreflight_uploadsAnAABAsAnExpansionFile(t *testing.T) {
 	rt, transport := newEFTransport()
 	rc := newRC(t, transport)
@@ -64,12 +56,6 @@ func TestRun_skipPreflight_uploadsAnAABAsAnExpansionFile(t *testing.T) {
 	}
 }
 
-// TestRun_preflight_overTheMemberCapDegradesInsteadOfPassingAsAnOBB is the
-// mirror image of the false refusal on `releases upload`: here the
-// expectation IS "neither an AAB nor an APK", so an over-cap archive that
-// answered "unknown" satisfied the check by accident, checked in name only.
-// Unclassified is now its own state: the container check is skipped, and the
-// user is told so rather than left believing gplay vouched for the file.
 func TestRun_preflight_overTheMemberCapDegradesInsteadOfPassingAsAnOBB(t *testing.T) {
 	_, transport := newEFTransport()
 	rc := newRC(t, transport)
@@ -83,19 +69,11 @@ func TestRun_preflight_overTheMemberCapDegradesInsteadOfPassingAsAnOBB(t *testin
 	}); err != nil {
 		t.Fatalf("Run: %v, want an unclassified container to degrade rather than be refused", err)
 	}
-	// The outcome cannot change here (refusing would be the false refusal
-	// this fix removes), so what the fix buys is honesty: the note has to say
-	// the container went unchecked, not merely that it was not classified
-	// while the expectation quietly counted as met.
 	if !strings.Contains(stderr.String(), "unchecked") {
 		t.Errorf("stderr %q should say the container check did not happen, not let it pass as satisfied", stderr.String())
 	}
 }
 
-// TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact asserts
-// --skip-preflight lifts the container check and nothing else: this surface
-// stat'd the file on --dry-run before the preflight existed, and a missing
-// path must not become exit 0 with a payload preview.
 func TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	rt, transport := newEFTransport()
 	rc := newRC(t, transport)

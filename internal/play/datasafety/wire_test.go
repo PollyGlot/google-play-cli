@@ -9,9 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire pins every request this package sends and how each answer maps to
-// a result or an error, byte for byte: testdata/wire.golden was recorded
-// before the move onto the executor (#586) and must not move with it.
 func TestWire(t *testing.T) {
 	ctx := context.Background()
 	sends := []testkit.Send{

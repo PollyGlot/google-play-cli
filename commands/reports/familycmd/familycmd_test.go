@@ -19,7 +19,6 @@ const (
 	prefix = "stats/installs/installs_com.example.app_"
 )
 
-// Synthetic, format-faithful fixtures: the header of Play's installs export.
 const (
 	countrySep = "Date,Package Name,Country,Daily Device Installs,Daily Device Uninstalls,Daily User Installs,Daily User Uninstalls,Active Device Installs,Install events\n" +
 		"2026-09-01,com.example.app,FR,12,3,11,2,1840,14\n" +
@@ -32,10 +31,9 @@ const (
 
 func installsBucket() reportstest.Bucket {
 	return reportstest.Bucket{Objects: map[string][]byte{
-		prefix + "202608_country.csv":  reportstest.UTF16LE(countryAug),
-		prefix + "202609_country.csv":  reportstest.UTF16LE(countrySep),
-		prefix + "202609_overview.csv": reportstest.UTF16LE(overviewSep),
-		// Another package whose name the com.example.app prefix also matches.
+		prefix + "202608_country.csv":                                     reportstest.UTF16LE(countryAug),
+		prefix + "202609_country.csv":                                     reportstest.UTF16LE(countrySep),
+		prefix + "202609_overview.csv":                                    reportstest.UTF16LE(overviewSep),
 		"stats/installs/installs_com.example.app_pro_202610_overview.csv": reportstest.UTF16LE(overviewSep),
 	}}
 }
@@ -75,10 +73,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_monthAndDimension_endToEnd reads one month of one dimension and
-// pins the whole JSON document: the envelope, the header-derived columns and
-// the verbatim string values. The fixture's "Install events" column is not
-// known to gplay anywhere: it flows through from the header.
 func TestRun_monthAndDimension_endToEnd(t *testing.T) {
 	r, fake, _, err := run(t, installsBucket(), Input{Package: pkg, Month: "2026-09", Dimension: "country"})
 	if err != nil {
@@ -97,9 +91,6 @@ func TestRun_monthAndDimension_endToEnd(t *testing.T) {
 	}
 }
 
-// TestRun_newColumnFlowsThrough is the acceptance criterion as a test: a
-// column Google adds appears in the JSON, keyed by the header rule, with no
-// code change.
 func TestRun_newColumnFlowsThrough(t *testing.T) {
 	b := installsBucket()
 	b.Objects[prefix+"202609_country.csv"] = reportstest.UTF16LE(
@@ -133,7 +124,6 @@ func TestRun_latestMonthDefaultsToOverview(t *testing.T) {
 	if !strings.Contains(got, `"split": "overview"`) || !strings.Contains(got, `"2026-09"`) || !strings.Contains(got, `"dailyDeviceInstalls": "19"`) {
 		t.Errorf("default read is not the 2026-09 overview:\n%s", got)
 	}
-	// com.example.app_pro's later month must not count as the latest.
 	if strings.Contains(got, "2026-10") {
 		t.Errorf("another package's export leaked in:\n%s", got)
 	}
@@ -175,7 +165,6 @@ func TestRun_rangeMergesWithColumnUnionAndWarnsOnGaps(t *testing.T) {
 	if !strings.Contains(got, "\"months\": [\n      \"2026-08\",\n      \"2026-09\"\n    ]") {
 		t.Errorf("months read should be 2026-08 and 2026-09:\n%s", got)
 	}
-	// August predates "Install events": its row has no such key, September's has.
 	aug := got[strings.Index(got, `"date": "2026-08-31"`):]
 	aug = aug[:strings.Index(aug, "}")]
 	if strings.Contains(aug, "installEvents") {
@@ -209,10 +198,6 @@ func TestRun_noReport_notFoundNamesPackageFamilyBucket(t *testing.T) {
 	}
 }
 
-// TestRun_exportVanishedAfterTheListing covers a 404 on an export the listing
-// has just named (Play republishes an export now and then): it is no missing
-// permission nor wrong bucket, so the message says what happened and to run
-// again, and the exit stays the 404's (30).
 func TestRun_exportVanishedAfterTheListing(t *testing.T) {
 	b := installsBucket()
 	b.Deny = map[string]int{prefix + "202609_country.csv": 404}
@@ -233,9 +218,6 @@ func TestRun_exportVanishedAfterTheListing(t *testing.T) {
 	}
 }
 
-// TestRun_exportVanishedInARangeIsAMissingMonth covers the same 404 inside a
-// range: the month is skipped with a warning, like a month never published,
-// and the rest of the range is read.
 func TestRun_exportVanishedInARangeIsAMissingMonth(t *testing.T) {
 	b := installsBucket()
 	b.Deny = map[string]int{prefix + "202609_country.csv": 404}

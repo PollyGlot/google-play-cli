@@ -10,10 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire_listObjects pins the paginated listing, which moves onto the
-// shared paginator (#586), byte for byte: testdata/wire.golden was recorded
-// before the move and changes only where the copies disagreed (the loop
-// error names nextPageToken, the field the server repeated, like the others).
 func TestWire_listObjects(t *testing.T) {
 	ctx := context.Background()
 	list := []testkit.Send{{Name: "ListObjects", Fn: func(hc *http.Client) (any, error) {

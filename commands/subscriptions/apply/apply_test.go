@@ -24,17 +24,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// liveCatalog is what subscriptions.list serves: premium (patchable) and gone
-// (delete candidate). premium's base plan carries the output-only state the
-// files never declare: the engine normalizer must keep it out of every diff.
 const liveCatalog = `{"subscriptions":[
   {"productId":"premium","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]},
   {"productId":"gone","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Gone"}]}
 ]}`
 
-// subsRT terminates /token, serves the live catalog on the subscriptions GET
-// and offersBody on the wildcard offers GET, echoes writes, and records every
-// mutation (method + URL + body).
 type subsRT struct {
 	mu         sync.Mutex
 	calls      []string
@@ -42,9 +36,7 @@ type subsRT struct {
 	bodies     map[string]string
 	offersBody string
 	liveBody   string
-	// refuse maps a "METHOD /path-suffix" to the status + error body the
-	// mock answers instead of the echo: the hook for a server-side refusal.
-	refuse map[string]scriptedRefusal
+	refuse     map[string]scriptedRefusal
 }
 
 type scriptedRefusal struct {
@@ -152,7 +144,6 @@ func writeCatalog(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// matchedCatalog mirrors liveCatalog exactly (as a pull would have written it).
 func matchedCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -161,8 +152,6 @@ func matchedCatalog(t *testing.T) string {
 	})
 }
 
-// driftedCatalog declares one new product, one edited listing (basePlans kept
-// as pulled, so only listings drift), and omits "gone" (a delete).
 func driftedCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -171,8 +160,6 @@ func driftedCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_noChanges_isNoOp asserts a catalog matching live plans nothing and
-// mutates nothing: the pull-then-apply invariant.
 func TestRun_noChanges_isNoOp(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
@@ -190,8 +177,6 @@ func TestRun_noChanges_isNoOp(t *testing.T) {
 	if !strings.Contains(out.String(), "no changes to apply") {
 		t.Errorf("table %q should say no changes", out.String())
 	}
-	// The json contract reflects the invocation: this was a real apply, not a
-	// --dry-run, so dryRun is false even though nothing ran.
 	var js bytes.Buffer
 	if err := r.Renderers().JSON(&js); err != nil {
 		t.Fatalf("JSON: %v", err)
@@ -211,9 +196,6 @@ func TestRun_noChanges_isNoOp(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_printsPlanWithoutMutating asserts --dry-run computes the full
-// create/patch/delete plan online but issues no write, and the json view is
-// the flat plan schema with requires.
 func TestRun_dryRun_printsPlanWithoutMutating(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
@@ -250,7 +232,6 @@ func TestRun_dryRun_printsPlanWithoutMutating(t *testing.T) {
 	if len(view.Requires) != 1 || view.Requires[0] != "confirm" {
 		t.Errorf("requires = %v, want [confirm] (plan has a delete)", view.Requires)
 	}
-	// Human view names the plan.
 	var tbl bytes.Buffer
 	if err := r.Renderers().Table(&tbl); err != nil {
 		t.Fatalf("Table: %v", err)
@@ -263,8 +244,6 @@ func TestRun_dryRun_printsPlanWithoutMutating(t *testing.T) {
 	}
 }
 
-// TestRun_destructivePlan_refusesWithoutConfirm asserts a plan containing a
-// delete exits 3 naming --confirm and mutates nothing.
 func TestRun_destructivePlan_refusesWithoutConfirm(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
@@ -278,9 +257,6 @@ func TestRun_destructivePlan_refusesWithoutConfirm(t *testing.T) {
 	}
 }
 
-// TestRun_confirmedPlan_executesInOrder asserts the confirmed plan creates with
-// the regions-version pin, patches with the scoped updateMask, deletes the
-// live-only product, and confirms on stderr.
 func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 	rt := &subsRT{}
 	rc, stderr := newRC(t, rt)
@@ -309,8 +285,6 @@ func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 	if !strings.Contains(stderr.String(), "1 created, 1 patched, 1 deleted") {
 		t.Errorf("stderr %q should confirm the applied plan", stderr.String())
 	}
-	// The PRD #51 invariant: apply never reprices an existing subscriber: no
-	// plan, whatever it contains, may reach basePlans.migratePrices.
 	for _, c := range rt.calls {
 		if strings.Contains(c, ":migratePrices") {
 			t.Fatalf("apply must never call migratePrices; calls=%v", rt.calls)
@@ -327,16 +301,11 @@ func TestRun_confirmedPlan_executesInOrder(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanPriceDrift_patchesBasePlans asserts a base-plan edit (price)
-// produces a patch whose updateMask carries basePlans, while a live-only
-// output-only state never does (covered by the engine normalizer): the file
-// here omits state, live carries state=ACTIVE, and only the price difference
-// drives the diff.
 func TestRun_basePlanPriceDrift_patchesBasePlans(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","regionalConfigs":[{"regionCode":"US","price":{"currencyCode":"USD","units":"9"}}]}]}`,
 		"gone.json":    `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
-	}) // file omits state; live carries state=ACTIVE: only the price drives the diff
+	})
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
 	if _, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir}); err != nil {
@@ -353,8 +322,6 @@ func TestRun_basePlanPriceDrift_patchesBasePlans(t *testing.T) {
 	}
 }
 
-// TestRun_nonDestructivePlan_runsWithoutConfirm asserts creates/patches alone
-// need no --confirm (the gate is for deletes).
 func TestRun_nonDestructivePlan_runsWithoutConfirm(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}],"basePlans":[{"basePlanId":"monthly"}]}`,
@@ -370,14 +337,10 @@ func TestRun_nonDestructivePlan_runsWithoutConfirm(t *testing.T) {
 	}
 }
 
-// liveOffers is the wildcard offers body for the level-3 tests: one ACTIVE
-// intro offer under premium/monthly.
 const liveOffers = `{"subscriptionOffers":[
   {"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}
 ]}`
 
-// offersCatalog mirrors liveCatalog + liveOffers exactly (as a pull would have
-// written it: offers embedded, packageName stripped, states carried).
 func offersCatalog(t *testing.T, introFragment string) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -388,9 +351,6 @@ func offersCatalog(t *testing.T, introFragment string) string {
 
 const introAsPulled = `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}`
 
-// TestRun_offersMatch_isNoOp asserts the pull-then-apply invariant holds at
-// level 3: embedded offers matching live (modulo the stripped packageName and
-// the declared state) plan nothing.
 func TestRun_offersMatch_isNoOp(t *testing.T) {
 	rt := &subsRT{offersBody: liveOffers}
 	rc, _ := newRC(t, rt)
@@ -410,8 +370,6 @@ func TestRun_offersMatch_isNoOp(t *testing.T) {
 	}
 }
 
-// TestRun_offerPatch_scopedMask asserts an edited offer phase patches the
-// offer with a mask limited to the changed fields.
 func TestRun_offerPatch_scopedMask(t *testing.T) {
 	edited := `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P2W"}]}`
 	rt := &subsRT{offersBody: liveOffers}
@@ -430,10 +388,6 @@ func TestRun_offerPatch_scopedMask(t *testing.T) {
 	}
 }
 
-// TestRun_offerCreateAndStates asserts a declared new offer is created after
-// its parent exists, a DRAFT base plan declared ACTIVE is activated, and an
-// ACTIVE offer declared INACTIVE is deactivated: with the plan surfacing all
-// of it under distinct ops in the json view.
 func TestRun_offerCreateAndStates(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE","offers":[
@@ -442,8 +396,6 @@ func TestRun_offerCreateAndStates(t *testing.T) {
 		]},{"basePlanId":"yearly","state":"ACTIVE"}]}`,
 		"gone.json": `{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`,
 	})
-	// live: monthly ACTIVE (matches), yearly DRAFT (declared ACTIVE → activate),
-	// intro ACTIVE (declared INACTIVE → deactivate), neo absent (→ create).
 	rt := &subsRT{offersBody: liveOffers}
 	live := `{"subscriptions":[
 	  {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"yearly","state":"DRAFT"}]},
@@ -478,16 +430,12 @@ func TestRun_offerCreateAndStates(t *testing.T) {
 	}
 }
 
-// liveOfferIn is the wildcard offers body with the intro offer of
-// premium/monthly in the given live state.
 func liveOfferIn(state string) string {
 	return `{"subscriptionOffers":[
   {"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"` + state + `","phases":[{"duration":"P1W"}]}
 ]}`
 }
 
-// droppedIntroCatalog keeps premium/monthly and gone but drops the intro
-// offer: the only destructive change is the offer delete.
 func droppedIntroCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -496,8 +444,6 @@ func droppedIntroCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_offerDelete_gated asserts omitting a live DRAFT offer is
-// destructive: exit 3 without --confirm, the DELETE runs with it.
 func TestRun_offerDelete_gated(t *testing.T) {
 	dir := droppedIntroCatalog(t)
 	rt := &subsRT{offersBody: liveOfferIn("DRAFT")}
@@ -518,11 +464,6 @@ func TestRun_offerDelete_gated(t *testing.T) {
 	}
 }
 
-// TestRun_offerDelete_active_refusedAtPlan asserts an ACTIVE offer dropped
-// from the file is refused while planning, from the state the offers list
-// already returned: exit 2 before any write, under --dry-run and --confirm
-// alike, with the converging action (keep it, declare state: INACTIVE).
-// offers.delete documents DRAFT as the only deletable state (#790).
 func TestRun_offerDelete_active_refusedAtPlan(t *testing.T) {
 	dir := droppedIntroCatalog(t)
 	for _, in := range []applycmd.Input{
@@ -544,9 +485,6 @@ func TestRun_offerDelete_active_refusedAtPlan(t *testing.T) {
 	}
 }
 
-// TestRun_offerDelete_inactive_acceptedByAPI asserts an INACTIVE offer
-// dropped from the file is not refused while planning: the DELETE is sent,
-// and when Play accepts it the run exits 0.
 func TestRun_offerDelete_inactive_acceptedByAPI(t *testing.T) {
 	rt := &subsRT{offersBody: liveOfferIn("INACTIVE")}
 	rc, _ := newRC(t, rt)
@@ -558,16 +496,10 @@ func TestRun_offerDelete_inactive_acceptedByAPI(t *testing.T) {
 	}
 }
 
-// TestRun_offerDelete_refusedByAPI_continues asserts a 400 on the offer
-// DELETE (an INACTIVE offer Play will not delete) does not abort the
-// independent subscription delete, is warned on stderr, and drives the final
-// error: exit 30 with the dedicated OFFER_NOT_DRAFT code (not the generic
-// INVALID_ARGUMENT) on the offers.delete operation, with the
-// keep-as-INACTIVE hint (#790, ADR-0044).
 func TestRun_offerDelete_refusedByAPI_continues(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
-	}) // intro dropped AND gone dropped: one offer delete, one subscription delete
+	})
 	rt := &subsRT{offersBody: liveOfferIn("INACTIVE"), refuse: map[string]scriptedRefusal{
 		"DELETE /offers/intro": {400, `{"error":{"code":400,"message":"Offer is not in draft state","errors":[{"reason":"badRequest"}]}}`},
 	}}
@@ -594,9 +526,6 @@ func TestRun_offerDelete_refusedByAPI_continues(t *testing.T) {
 	}
 }
 
-// TestRun_offerDelete_notFound_aborts asserts a 404 on the offer DELETE is
-// not the non-DRAFT refusal: the run aborts (exit 30, NOT_FOUND) before the
-// subscription delete, so OFFER_NOT_DRAFT is reserved for the 400.
 func TestRun_offerDelete_notFound_aborts(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
@@ -615,11 +544,6 @@ func TestRun_offerDelete_notFound_aborts(t *testing.T) {
 	}
 }
 
-// TestRun_offerDelete_followingHint_converges follows the hint from both
-// refusals: the file keeps the offer with state: INACTIVE. From ACTIVE, the
-// next run deactivates it (no delete) and the run after that has nothing to
-// do; from INACTIVE (refused by the API), the next run has nothing to do at
-// once (#790).
 func TestRun_offerDelete_followingHint_converges(t *testing.T) {
 	kept := offersCatalog(t, `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"INACTIVE","phases":[{"duration":"P1W"}]}`)
 
@@ -646,8 +570,6 @@ func TestRun_offerDelete_followingHint_converges(t *testing.T) {
 	}
 }
 
-// TestRun_impossibleStateTransition_exit2 asserts a declared INACTIVE over a
-// live DRAFT refuses with a usage error naming the transition.
 func TestRun_impossibleStateTransition_exit2(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"INACTIVE"}]}`,
@@ -666,9 +588,6 @@ func TestRun_impossibleStateTransition_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_emptyLocalNonEmptyLive_refuses asserts the mis-pointed --dir guard:
-// an empty catalog dir against a live catalog refuses (exit 2) even in
-// dry-run, instead of planning a delete-everything.
 func TestRun_emptyLocalNonEmptyLive_refuses(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
@@ -679,15 +598,11 @@ func TestRun_emptyLocalNonEmptyLive_refuses(t *testing.T) {
 	}
 }
 
-// liveWithDraftPlan is the live catalog of the base-plan delete tests (slice
-// #542): premium carries an ACTIVE monthly plan and a DRAFT trial plan.
 const liveWithDraftPlan = `{"subscriptions":[
   {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"trial","state":"DRAFT"}]},
   {"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}
 ]}`
 
-// droppedTrialCatalog declares premium with monthly only (trial removed) and
-// keeps gone, so the only destructive change is the base-plan delete.
 func droppedTrialCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -696,11 +611,6 @@ func droppedTrialCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_basePlanDelete_plannedAndGated asserts a base plan dropped from the
-// file is a delete of kind basePlan in the plan (dry-run json and table, with
-// requires: confirm), that the plan refuses with exit 3 and no write without
-// --confirm, and that with --confirm the DELETE hits the base plan URL after
-// the parent patch.
 func TestRun_basePlanDelete_plannedAndGated(t *testing.T) {
 	dir := droppedTrialCatalog(t)
 
@@ -783,16 +693,10 @@ func TestRun_basePlanDelete_plannedAndGated(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanDelete_refusedByAPI_continues asserts a 400 on the base
-// plan DELETE (a published plan) does not abort the independent subscription
-// delete, is warned on stderr, and drives the final error: exit 30 with the
-// dedicated BASE_PLAN_NOT_DRAFT diagnostic code (not the generic
-// INVALID_ARGUMENT bucket, #555) on the basePlans.delete operation and the
-// keep-as-INACTIVE hint (ADR-0044).
 func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
-	}) // trial dropped AND gone dropped: one base-plan delete, one subscription delete
+	})
 	rt := &subsRT{refuse: map[string]scriptedRefusal{
 		"DELETE /subscriptions/premium/basePlans/trial": {400, `{"error":{"code":400,"message":"Base plan is not in draft state","errors":[{"reason":"badRequest"}]}}`},
 	}}
@@ -819,10 +723,6 @@ func TestRun_basePlanDelete_refusedByAPI_continues(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanDelete_notFound_keepsNotFound asserts a 404 on the base
-// plan DELETE is not the published-plan refusal: the run aborts (exit 30) and
-// the envelope keeps the generic NOT_FOUND code, so BASE_PLAN_NOT_DRAFT is
-// reserved for the 400 an agent resolves by keeping the plan as INACTIVE (#555).
 func TestRun_basePlanDelete_notFound_keepsNotFound(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
@@ -841,10 +741,6 @@ func TestRun_basePlanDelete_notFound_keepsNotFound(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanDelete_forbidden_keepsPermissionDenied asserts the 403
-// variant of the refusal is still warned and continued past, but keeps exit
-// 11 / PERMISSION_DENIED: the wrapper cannot rule out a genuine permission
-// problem, so it does not claim BASE_PLAN_NOT_DRAFT there.
 func TestRun_basePlanDelete_forbidden_keepsPermissionDenied(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
@@ -863,12 +759,6 @@ func TestRun_basePlanDelete_forbidden_keepsPermissionDenied(t *testing.T) {
 	}
 }
 
-// TestRun_mixedDeleteRefusals_permissionWins drives an offer delete and a base
-// plan delete that Play both refuses, for different reasons, in both orders:
-// the 403 (exit 11, PERMISSION_DENIED) drives the final error whether it came
-// first or last, because a missing grant cannot be resolved by the file and a
-// re-run would hit it again, while the 400 state refusal (exit 30) has its
-// keep-as-INACTIVE hint on stderr. The count still names the other refusal.
 func TestRun_mixedDeleteRefusals_permissionWins(t *testing.T) {
 	const (
 		badRequest = `{"error":{"code":400,"message":"not in draft state","errors":[{"reason":"badRequest"}]}}`
@@ -886,7 +776,7 @@ func TestRun_mixedDeleteRefusals_permissionWins(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := writeCatalog(t, map[string]string{
 				"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
-			}) // intro, trial and gone dropped: one offer, one base plan, one subscription delete
+			})
 			rt := &subsRT{offersBody: liveOfferIn("INACTIVE"), refuse: map[string]scriptedRefusal{
 				"DELETE /offers/intro":                          tc.offer,
 				"DELETE /subscriptions/premium/basePlans/trial": tc.plan,
@@ -914,9 +804,6 @@ func TestRun_mixedDeleteRefusals_permissionWins(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanDelete_serverError_aborts asserts a 5xx on the base plan
-// DELETE is not the published-plan refusal: it aborts the run like any other
-// write (exit 40) and the subscription delete after it does not run.
 func TestRun_basePlanDelete_serverError_aborts(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
@@ -932,19 +819,10 @@ func TestRun_basePlanDelete_serverError_aborts(t *testing.T) {
 	}
 }
 
-// liveWithPublishedPlans is a premium subscription whose monthly plan is
-// ACTIVE and yearly plan INACTIVE: basePlans.delete never takes the ACTIVE
-// one, and Discovery contradicts itself on the INACTIVE one (#778).
 const liveWithPublishedPlans = `{"subscriptions":[
   {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"yearly","state":"INACTIVE"}]}
 ]}`
 
-// TestRun_basePlanDelete_active_refusedAtPlan asserts an ACTIVE base plan
-// dropped from the file is refused while planning, from the state the list
-// already returned: exit 2 before any write, under --dry-run and --confirm
-// alike, naming the ACTIVE plan alone and the converging action (keep it,
-// declare state: INACTIVE). The INACTIVE plan dropped alongside is not part
-// of the refusal: the API decides that one (#778).
 func TestRun_basePlanDelete_active_refusedAtPlan(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}`,
@@ -973,9 +851,6 @@ func TestRun_basePlanDelete_active_refusedAtPlan(t *testing.T) {
 	}
 }
 
-// liveWithInactivePlan is premium with an ACTIVE monthly plan kept by the
-// file and an INACTIVE yearly plan the file drops, plus a gone subscription
-// the file also drops: the rest of the plan around the INACTIVE delete.
 const liveWithInactivePlan = `{"subscriptions":[
   {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"yearly","state":"INACTIVE"}]},
   {"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}
@@ -988,9 +863,6 @@ func droppedInactiveCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_basePlanDelete_inactive_acceptedByAPI asserts an INACTIVE base plan
-// dropped from the file is not refused while planning: the DELETE is sent,
-// and when Play accepts it the run exits 0 (#778, BasePlan.state reading).
 func TestRun_basePlanDelete_inactive_acceptedByAPI(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRCWithLive(t, rt, liveWithInactivePlan)
@@ -1002,10 +874,6 @@ func TestRun_basePlanDelete_inactive_acceptedByAPI(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanDelete_inactive_refusedByAPI asserts the other Discovery
-// reading: Play answers 400 to the INACTIVE plan's DELETE. The run still
-// applies the rest of the plan (the subscription delete), then exits 30 with
-// BASE_PLAN_NOT_DRAFT and the keep-as-INACTIVE hint.
 func TestRun_basePlanDelete_inactive_refusedByAPI(t *testing.T) {
 	rt := &subsRT{refuse: map[string]scriptedRefusal{
 		"DELETE /subscriptions/premium/basePlans/yearly": {400, `{"error":{"code":400,"message":"Base plan is not in draft state","errors":[{"reason":"badRequest"}]}}`},
@@ -1026,11 +894,6 @@ func TestRun_basePlanDelete_inactive_refusedByAPI(t *testing.T) {
 	}
 }
 
-// TestRun_basePlanDelete_followingHint_converges follows the hint from both
-// refusals: the file keeps the plan with state: INACTIVE. From ACTIVE, the
-// next run deactivates it (no delete, exit 0) and the run after that has
-// nothing to do; from INACTIVE (refused by the API), the next run has nothing
-// to do at once: the file converged in both cases (#778).
 func TestRun_basePlanDelete_followingHint_converges(t *testing.T) {
 	const liveActive = `{"subscriptions":[
   {"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}
@@ -1080,8 +943,6 @@ func TestRun_basePlanDelete_followingHint_converges(t *testing.T) {
 	}
 }
 
-// TestRun_missingDir_exit2 asserts a nonexistent --dir is CLI misuse with the
-// pull hint, before any network call.
 func TestRun_missingDir_exit2(t *testing.T) {
 	rt := &subsRT{}
 	rc, _ := newRC(t, rt)
@@ -1106,8 +967,6 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 }
 
-// TestRun_latencyTolerance_ridesThePatchesAndStates: the offer create carries
-// no latencyTolerance because Play's create method takes no such parameter.
 func TestRun_latencyTolerance_ridesThePatchesAndStates(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium+"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE","offers":[

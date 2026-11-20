@@ -1,9 +1,3 @@
-// Package orchestrator_test drives the apply orchestrator against a testkit.Fake
-// (no /token exchange: Apply receives the *http.Client
-// directly). It exercises the three paths that matter: the read-only
-// dry-run, the --confirm gate, the atomic single-Edit publish, the no-op
-// quota conservation, and the --prune deletegroup plus its defaultLanguage
-// guard.
 package orchestrator_test
 
 import (
@@ -20,19 +14,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fakeRT configures the testkit.Fake that routes the androidpublisher Edit +
-// listings sequence. Canned online Listings come from listingsBody;
-// defaultLanguage from detailsLang. failPatchLoc / failDeleteLoc inject a 500
-// on a given locale to test atomicity (failPatchLoc covers both Listing
-// writes, PATCH and PUT); notFoundLoc answers 404 to either write on that
-// locale. Any unexpected call fails the test.
 type fakeRT struct {
 	editID        string
-	listingsBody  string // edits.listings.list response
-	detailsLang   string // defaultLanguage for edits.details.get
-	failPatchLoc  string // locale whose PATCH returns 500
-	failDeleteLoc string // locale whose DELETE returns 500
-	notFoundLoc   string // locale whose PATCH/PUT returns 404
+	listingsBody  string
+	detailsLang   string
+	failPatchLoc  string
+	failDeleteLoc string
+	notFoundLoc   string
 }
 
 func newFake(t *testing.T, r fakeRT) *testkit.Fake {
@@ -64,14 +52,13 @@ func newFake(t *testing.T, r fakeRT) *testkit.Fake {
 			}
 			return 204, ``, true
 		case c.Method == http.MethodDelete && strings.Contains(path, "/edits/"):
-			return 204, ``, true // Edit discard
+			return 204, ``, true
 		}
 		t.Errorf("unexpected request: %s %s", c.Method, path)
 		return 0, "", false
 	})
 }
 
-// calls lists the recorded requests as "METHOD path" lines.
 func calls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -89,7 +76,6 @@ func saw(f *testkit.Fake, method, substr string) bool {
 	return false
 }
 
-// sentBody returns the raw body of the last method write on locale's Listing.
 func sentBody(f *testkit.Fake, method, locale string) string {
 	var body string
 	for _, c := range f.Calls() {
@@ -141,12 +127,10 @@ func asCoder(err error, target *interface{ ExitCode() int }) bool {
 	return false
 }
 
-// TestApply_dryRun_readsDiffsDiscards: dry-run opens a read-only Edit,
-// lists, computes the diff, and discards: never commits, never patches.
 func TestApply_dryRun_readsDiffsDiscards(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "New", "full", "Body")}
 	rt := newFake(t, fakeRT{editID: "e1",
-		listingsBody: `{"listings":[{"language":"en-US","fullDescription":"Body"}]}`}) // title create, full unchanged
+		listingsBody: `{"listings":[{"language":"en-US","fullDescription":"Body"}]}`})
 	res, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", DryRun: true})
 	if err != nil {
@@ -166,14 +150,11 @@ func TestApply_dryRun_readsDiffsDiscards(t *testing.T) {
 	}
 }
 
-// TestApply_confirmRequired: a real apply without --confirm fails exit 3
-// (safety flag required, docs/DESIGN.md §9, NOT the generic usage exit 2,
-// #408) before any HTTP, naming --confirm for the JSON envelope's requires[].
 func TestApply_confirmRequired(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
 	rt := newFake(t, fakeRT{editID: "e1"})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
-		orchestrator.Opts{Package: "com.x"}) // DryRun=false, Confirm=false
+		orchestrator.Opts{Package: "com.x"})
 	if code := exitCode(t, err); code != 3 {
 		t.Errorf("exit = %d, want 3", code)
 	}
@@ -186,14 +167,11 @@ func TestApply_confirmRequired(t *testing.T) {
 	}
 }
 
-// TestApply_confirmRequired_prune asserts the --prune variant of the refusal
-// carries the same exit 3 + named flag, and states the destructive delete in
-// its message (the two branches of the confirm gate are distinct strings).
 func TestApply_confirmRequired_prune(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
 	rt := newFake(t, fakeRT{editID: "e1"})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
-		orchestrator.Opts{Package: "com.x", Prune: true}) // DryRun=false, Confirm=false
+		orchestrator.Opts{Package: "com.x", Prune: true})
 	if code := exitCode(t, err); code != 3 {
 		t.Errorf("exit = %d, want 3", code)
 	}
@@ -209,9 +187,8 @@ func TestApply_confirmRequired_prune(t *testing.T) {
 	}
 }
 
-// TestApply_validation_exit20: a char-limit overflow blocks before network.
 func TestApply_validation_exit20(t *testing.T) {
-	long := strings.Repeat("x", 31) // title limit is 30
+	long := strings.Repeat("x", 31)
 	local := listing.Tree{"en-US": ml("en-US", "title", long, "full", "F")}
 	rt := newFake(t, fakeRT{editID: "e1"})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
@@ -224,17 +201,15 @@ func TestApply_validation_exit20(t *testing.T) {
 	}
 }
 
-// TestApply_publishesAtomically: a create + update across two locales are
-// patched inside one Edit, then committed once. Patched bodies are returned.
 func TestApply_publishesAtomically(t *testing.T) {
 	local := listing.Tree{
-		"en-US": ml("en-US", "title", "Hello", "full", "Long"), // title create, full unchanged
+		"en-US": ml("en-US", "title", "Hello", "full", "Long"),
 		"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc"),
 	}
 	rt := newFake(t, fakeRT{editID: "e9",
 		listingsBody: `{"listings":[` +
 			`{"language":"en-US","fullDescription":"Long"},` +
-			`{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`}) // en-US title create, fr-FR title update
+			`{"language":"fr-FR","title":"Salut","fullDescription":"Desc"}]}`})
 	res, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true})
 	if err != nil {
@@ -243,9 +218,6 @@ func TestApply_publishesAtomically(t *testing.T) {
 	if !saw(rt, "PATCH", "/listings/en-US") || !saw(rt, "PATCH", "/listings/fr-FR") {
 		t.Errorf("expected PATCH on both locales; calls=%v", calls(rt))
 	}
-	// en-US carries a field-level `create` (title absent online) but the
-	// locale is live: it must stay a PATCH, never a PUT that would blank
-	// the unchanged fullDescription.
 	if saw(rt, "PUT", "/listings/") {
 		t.Errorf("a live locale was written with PUT; calls=%v", calls(rt))
 	}
@@ -258,8 +230,6 @@ func TestApply_publishesAtomically(t *testing.T) {
 	if len(res.Patched) != 2 {
 		t.Errorf("Patched = %v, want 2 locales", res.Patched)
 	}
-	// The en-US body must carry only the changed field (title) + language,
-	// never the unchanged fullDescription (PATCH = missing≠empty).
 	var enBody map[string]string
 	_ = json.Unmarshal([]byte(sentBody(rt, http.MethodPatch, "en-US")), &enBody)
 	if enBody["title"] != "Hello" || enBody["language"] != "en-US" {
@@ -270,15 +240,13 @@ func TestApply_publishesAtomically(t *testing.T) {
 	}
 }
 
-// TestApply_atomicFailure_discardsZeroPublished: when the second locale's
-// write fails, the Edit auto-discards and nothing is committed.
 func TestApply_atomicFailure_discardsZeroPublished(t *testing.T) {
 	local := listing.Tree{
 		"en-US": ml("en-US", "title", "Hello", "full", "Long"),
 		"fr-FR": ml("fr-FR", "title", "Bonjour", "full", "Desc"),
 	}
 	rt := newFake(t, fakeRT{editID: "eX", failPatchLoc: "fr-FR",
-		listingsBody: `{"listings":[]}`}) // both locales are creates
+		listingsBody: `{"listings":[]}`})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true})
 	if err == nil {
@@ -292,12 +260,10 @@ func TestApply_atomicFailure_discardsZeroPublished(t *testing.T) {
 	}
 }
 
-// TestApply_noChanges_discardsNoCommit: an apply whose diff is a no-op
-// discards the Edit rather than committing an empty one (quota).
 func TestApply_noChanges_discardsNoCommit(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
 	rt := newFake(t, fakeRT{editID: "e0",
-		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`}) // identical
+		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`})
 	res, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true})
 	if err != nil {
@@ -317,14 +283,12 @@ func TestApply_noChanges_discardsNoCommit(t *testing.T) {
 	}
 }
 
-// TestApply_prune_deletesOnlineOnly: --prune removes a locale live on Play
-// but absent on disk, inside the same committed Edit.
 func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
 	rt := newFake(t, fakeRT{editID: "ep", detailsLang: "en-US",
 		listingsBody: `{"listings":[` +
-			`{"language":"en-US","title":"T","fullDescription":"F"},` + // unchanged
-			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`}) // online-only -> prune
+			`{"language":"en-US","title":"T","fullDescription":"F"},` +
+			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`})
 	res, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true, Prune: true})
 	if err != nil {
@@ -341,15 +305,12 @@ func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	}
 }
 
-// TestApply_atomicFailure_deleteFails_discards: when a prune DELETE fails
-// AFTER an earlier locale PATCH succeeded, the whole Edit auto-discards:
-// the successful patch is rolled back with it, nothing is committed.
 func TestApply_atomicFailure_deleteFails_discards(t *testing.T) {
-	local := listing.Tree{"en-US": ml("en-US", "title", "NewT", "full", "F")} // title update
+	local := listing.Tree{"en-US": ml("en-US", "title", "NewT", "full", "F")}
 	rt := newFake(t, fakeRT{editID: "eD", detailsLang: "en-US", failDeleteLoc: "it-IT",
 		listingsBody: `{"listings":[` +
-			`{"language":"en-US","title":"T","fullDescription":"F"},` + // update target
-			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`}) // prune target (DELETE fails)
+			`{"language":"en-US","title":"T","fullDescription":"F"},` +
+			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true, Prune: true})
 	if err == nil {
@@ -366,14 +327,11 @@ func TestApply_atomicFailure_deleteFails_discards(t *testing.T) {
 	}
 }
 
-// TestApply_dryRunPrune_refusesDefaultLanguage: the defaultLanguage prune
-// guard fires in dry-run too (before the user ever reaches --confirm), so a
-// preview of a prune that would remove the default Listing fails exit 2.
 func TestApply_dryRunPrune_refusesDefaultLanguage(t *testing.T) {
 	local := listing.Tree{"it-IT": ml("it-IT", "title", "Ciao", "full", "Lunga")}
 	rt := newFake(t, fakeRT{editID: "edg", detailsLang: "en-US",
 		listingsBody: `{"listings":[` +
-			`{"language":"en-US","title":"T","fullDescription":"F"},` + // default, online-only -> would prune
+			`{"language":"en-US","title":"T","fullDescription":"F"},` +
 			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", DryRun: true, Prune: true})
@@ -385,13 +343,11 @@ func TestApply_dryRunPrune_refusesDefaultLanguage(t *testing.T) {
 	}
 }
 
-// TestApply_prune_refusesDefaultLanguage: --prune that would delete the
-// defaultLanguage Listing is refused (exit 2), nothing committed/deleted.
 func TestApply_prune_refusesDefaultLanguage(t *testing.T) {
 	local := listing.Tree{"it-IT": ml("it-IT", "title", "Ciao", "full", "Lunga")}
 	rt := newFake(t, fakeRT{editID: "eg", detailsLang: "en-US",
 		listingsBody: `{"listings":[` +
-			`{"language":"en-US","title":"T","fullDescription":"F"},` + // default, online-only -> would prune
+			`{"language":"en-US","title":"T","fullDescription":"F"},` +
 			`{"language":"it-IT","title":"Ciao","fullDescription":"Lunga"}]}`})
 	_, err := orchestrator.Apply(context.Background(), client(rt), local,
 		orchestrator.Opts{Package: "com.x", Confirm: true, Prune: true})
@@ -406,10 +362,6 @@ func TestApply_prune_refusesDefaultLanguage(t *testing.T) {
 	}
 }
 
-// TestApply_prune_emptyTreeRefused: --prune against an empty local tree is
-// refused (exit 2) BEFORE any network: an empty tree would otherwise
-// classify every online locale as a delete and wipe the app's Store
-// presence (the classic mis-pointed --dir). Covers the real-apply path.
 func TestApply_prune_emptyTreeRefused(t *testing.T) {
 	rt := newFake(t, fakeRT{editID: "e1"})
 	_, err := orchestrator.Apply(context.Background(), client(rt), listing.Tree{},
@@ -426,8 +378,6 @@ func TestApply_prune_emptyTreeRefused(t *testing.T) {
 	}
 }
 
-// TestApply_dryRunPrune_emptyTreeRefused: the empty-tree prune guard fires
-// in dry-run too, so a preview never renders a delete-everything plan.
 func TestApply_dryRunPrune_emptyTreeRefused(t *testing.T) {
 	rt := newFake(t, fakeRT{editID: "e1"})
 	_, err := orchestrator.Apply(context.Background(), client(rt), listing.Tree{},
@@ -440,9 +390,6 @@ func TestApply_dryRunPrune_emptyTreeRefused(t *testing.T) {
 	}
 }
 
-// TestApply_emptyTreeNoPrune_isNoop: an empty tree WITHOUT --prune is a
-// legitimate no-op (nothing on disk to upsert, nothing pruned): it must
-// NOT be refused. It lists, finds no changes, and discards.
 func TestApply_emptyTreeNoPrune_isNoop(t *testing.T) {
 	rt := newFake(t, fakeRT{editID: "e0",
 		listingsBody: `{"listings":[{"language":"en-US","title":"T","fullDescription":"F"}]}`})
@@ -459,8 +406,6 @@ func TestApply_emptyTreeNoPrune_isNoop(t *testing.T) {
 	}
 }
 
-// TestApply_dryRunPrune_showsDeleteNoExecute: dry-run + prune surfaces the
-// delete op in the diff but performs no DELETE and no commit.
 func TestApply_dryRunPrune_showsDeleteNoExecute(t *testing.T) {
 	local := listing.Tree{"en-US": ml("en-US", "title", "T", "full", "F")}
 	rt := newFake(t, fakeRT{editID: "ed", detailsLang: "en-US",
@@ -480,13 +425,9 @@ func TestApply_dryRunPrune_showsDeleteNoExecute(t *testing.T) {
 	}
 }
 
-// TestApply_newLocale_createdByPUT_liveLocalePatched is the #561 fix: a
-// locale absent from the listings.list read is created with
-// edits.listings.update (PUT) carrying its complete Listing, while a live
-// locale keeps edits.listings.patch with only its changed fields.
 func TestApply_newLocale_createdByPUT_liveLocalePatched(t *testing.T) {
 	local := listing.Tree{
-		"en-US": ml("en-US", "title", "New title", "full", "Long"), // live: title update, full unchanged
+		"en-US": ml("en-US", "title", "New title", "full", "Long"),
 		"de-DE": ml("de-DE", "title", "Meine App", "short", "Kurz", "full", "Lange Beschreibung"),
 	}
 	rt := newFake(t, fakeRT{editID: "e561",
@@ -510,7 +451,6 @@ func TestApply_newLocale_createdByPUT_liveLocalePatched(t *testing.T) {
 		t.Error("expected exactly one commit")
 	}
 
-	// The PUT body is the complete new Listing.
 	var deBody map[string]string
 	if err := json.Unmarshal([]byte(sentBody(rt, http.MethodPut, "de-DE")), &deBody); err != nil {
 		t.Fatalf("de-DE PUT body is not JSON: %v (%q)", err, sentBody(rt, http.MethodPut, "de-DE"))
@@ -527,7 +467,6 @@ func TestApply_newLocale_createdByPUT_liveLocalePatched(t *testing.T) {
 			t.Errorf("de-DE PUT body[%s] = %q, want %q", k, deBody[k], v)
 		}
 	}
-	// The PATCH body still carries only the changed field.
 	var enBody map[string]string
 	_ = json.Unmarshal([]byte(sentBody(rt, http.MethodPatch, "en-US")), &enBody)
 	if enBody["title"] != "New title" {
@@ -545,9 +484,6 @@ func TestApply_newLocale_createdByPUT_liveLocalePatched(t *testing.T) {
 	}
 }
 
-// TestApply_localeWrite404_isLocaleError: a 404 on a per-locale write comes
-// back as a *orchestrator.LocaleError naming the language, with the
-// *api.Error still reachable (exit 30 unchanged), and the Edit discarded.
 func TestApply_localeWrite404_isLocaleError(t *testing.T) {
 	local := listing.Tree{"de-DE": ml("de-DE", "title", "Meine App", "full", "Lang")}
 	rt := newFake(t, fakeRT{editID: "e404", notFoundLoc: "de-DE",

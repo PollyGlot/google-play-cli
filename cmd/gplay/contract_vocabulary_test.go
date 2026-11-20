@@ -1,27 +1,12 @@
 package main
 
-// Tables and ratchet allowlists for TestLeafContract (contract_test.go).
-//
-// Keys are leaf paths without the root ("releases upload") and, for flags,
-// "<leaf path> --<flag>". A global flag is keyed "--<flag>".
-
-// flagVocabulary maps each canonical flag name to its concept: one concept,
-// one name. It was seeded from the flags shipped at 1.6.1; where one concept
-// had several names, the name used on frozen leaves (or on the most leaves)
-// became canonical, and 2.0.0 removed the other names without an alias
-// (decision #597, ADR-0048). The groups still undecided sit in flagNameDrift.
-//
-// A new flag either reuses the canonical name of its concept or adds a new
-// concept here, in review, where the collision with an existing one is seen.
 var flagVocabulary = map[string]string{
-	// Global flags (root persistent).
 	"service-account": "service-account JSON, as a path or inline content",
 	"account":         "name of a stored Account",
 	"verbose":         "log flow steps to stderr",
 	"timeout":         "per-request API timeout",
 	"retry":           "retry transient failures up to N times",
 
-	// Addressing: which object the command acts on.
 	"package":            "Android package name the command acts on (Project pin and env fill it)",
 	"store-package":      "package name of the alternative app store (appstore axis)",
 	"developer-id":       "Play Console developer account ID",
@@ -46,18 +31,15 @@ var flagVocabulary = map[string]string{
 	"scope":              "permission scope: account or app",
 	"form-factor":        "device form factor a created track targets: default, wear or automotive",
 
-	// System APK variant device spec and build options (#296).
 	"abi":                      "ABI a built APK supports, as the platform reports it (repeatable, in order of preference)",
 	"screen-density":           "screen density in dpi a built APK targets",
 	"rotated-key":              "sign a built APK with the rotated app signing key",
 	"uncompressed-dex":         "store dex files uncompressed in a built APK",
 	"uncompressed-native-libs": "store native libraries uncompressed in a built APK",
 
-	// Release contents.
 	"retain-version-code": "Retained version code: an already-uploaded versionCode the release created keeps serving (repeatable)",
 	"externally-hosted":   "ExternallyHostedApk resource file: an APK served from the organisation's own host, added to the release instead of uploaded bytes",
 
-	// Input and output.
 	"output":            "structured output format (output.RegisterFlag)",
 	"columns":           "table columns to render",
 	"dir":               "local directory tree read or written",
@@ -73,64 +55,53 @@ var flagVocabulary = map[string]string{
 	"kms-cert":          "certificate of the Cloud KMS signing key",
 	"kms-key":           "Cloud KMS signing key resource name",
 
-	// Listing, filtering and time windows.
-	"page-size":  "server-side page size",
-	"page-token": "server-side page token to resume from",
-	"limit":      "client-side cap on the result count",
-	"filter":     "AIP-160 filter expression",
-	"order-by":   "sort order expression",
-	"stars":      "star-rating filter",
-	"since":      "start of the time window (a length back from now, or an absolute bound where the command takes one)",
-	"until":      "end of the time window, the absolute bound paired with --since",
-	"month":      "one calendar month to read (YYYY-MM), not a window",
-	"period":     "aggregation period",
-	"by":         "dimension to slice a timeline by",
-	"dimension":  "which per-dimension file of a Bulk report to read (country, device, ...), not a grouping",
-	"family":     "Bulk report family to keep in an inventory",
-	"dimensions": "dimensions of a raw metric query",
-	"metrics":    "metrics of a raw metric query",
-	"check":      "check to run (repeatable)",
-	"skip-check": "check to skip (repeatable)",
-	"method":     "HTTP method filter for the API index",
-	"list":       "print the compact catalog",
-	"codes":      "print the diagnostic-code catalog",
-	"command":    "gplay command path whose API methods the API index shows",
-	"oldest":     "cutoff before which price cohorts migrate",
-	"describe":   "describe the metric set instead of querying it",
-	// #784: Discovery's userCohort and sampleErrorReportLimit.
+	"page-size":      "server-side page size",
+	"page-token":     "server-side page token to resume from",
+	"limit":          "client-side cap on the result count",
+	"filter":         "AIP-160 filter expression",
+	"order-by":       "sort order expression",
+	"stars":          "star-rating filter",
+	"since":          "start of the time window (a length back from now, or an absolute bound where the command takes one)",
+	"until":          "end of the time window, the absolute bound paired with --since",
+	"month":          "one calendar month to read (YYYY-MM), not a window",
+	"period":         "aggregation period",
+	"by":             "dimension to slice a timeline by",
+	"dimension":      "which per-dimension file of a Bulk report to read (country, device, ...), not a grouping",
+	"family":         "Bulk report family to keep in an inventory",
+	"dimensions":     "dimensions of a raw metric query",
+	"metrics":        "metrics of a raw metric query",
+	"check":          "check to run (repeatable)",
+	"skip-check":     "check to skip (repeatable)",
+	"method":         "HTTP method filter for the API index",
+	"list":           "print the compact catalog",
+	"codes":          "print the diagnostic-code catalog",
+	"command":        "gplay command path whose API methods the API index shows",
+	"oldest":         "cutoff before which price cohorts migrate",
+	"describe":       "describe the metric set instead of querying it",
 	"user-cohort":    "user view of a vitals metric query: OS_PUBLIC, APP_TESTERS or OS_BETA",
 	"sample-reports": "sample error reports to attach to each error issue",
 
-	// Commerce reads.
 	"include-partial-refunds": "also list quantity-based partial refunds (voided purchases)",
 
-	// Bulk report reads.
 	"include-buyer-location": "show the buyer city, state and postcode a finance Bulk report hides by default (ADR-0050)",
 
-	// Safety and execution control.
-	"dry-run":              "plan and print without writing",
-	"plan":                 "read the live state and show what a write would change, without writing",
-	"confirm":              "consent to an irreversible or production-impacting write",
-	"grant-admin":          "consent to granting admin permissions",
-	"keep-edit-on-failure": "keep the Edit open on failure for debugging",
-	// ADR-0050: read-before-create policy of a create whose identity the
-	// caller supplies; each command offers its own subset of skip|update|fail.
-	"if-exists": "what a create does when its resource already exists: skip, update or fail",
-	// Edit commit opt-ins (#598): Discovery's edits.commit query parameters.
+	"dry-run":                     "plan and print without writing",
+	"plan":                        "read the live state and show what a write would change, without writing",
+	"confirm":                     "consent to an irreversible or production-impacting write",
+	"grant-admin":                 "consent to granting admin permissions",
+	"keep-edit-on-failure":        "keep the Edit open on failure for debugging",
+	"if-exists":                   "what a create does when its resource already exists: skip, update or fail",
 	"changes-in-review":           "what an Edit commit does with changes already in review: cancel or error",
 	"changes-not-sent-for-review": "commit an Edit without sending its changes for review",
 	"skip-preflight":              "skip the local check before an upload or write",
 	"no-verify":                   "skip the remote access probe",
 	"live":                        "also check server-side state",
 
-	// Release state.
-	"staged":   "rollout user fraction of a staged release",
-	"complete": "force the release status to completed",
-	"draft":    "force the release status to draft",
-	// #664: Google's TrackRelease.inAppUpdatePriority, read by the app.
+	"staged":          "rollout user fraction of a staged release",
+	"complete":        "force the release status to completed",
+	"draft":           "force the release status to draft",
 	"update-priority": "in-app update priority (0..5) of a release",
 
-	// Field values written by the command.
 	"name":                  "name given to the object created or registered",
 	"title":                 "display title",
 	"description":           "localized description",
@@ -168,23 +139,13 @@ var flagVocabulary = map[string]string{
 	"new-app":               "the app has never published to Open testing or Production",
 }
 
-// flagNameDrift lists today's flags that name a concept already in
-// flagVocabulary under another name (or reuse a canonical name for another
-// concept). 2.0.0 settled every group #597 decided (--staged, --version-code,
-// --page-size, --file, --regions, --skip-preflight, --format, and the time
-// window --since/--until) with no alias, so it is empty and only stops a new
-// synonym from being admitted.
 var flagNameDrift = ratchet{
 	name:    "flagNameDrift",
 	ceiling: 0,
 	entries: []string{},
 }
 
-// verbVocabulary maps the last token of a leaf path to its category in
-// docs/DESIGN.md section 0 (ADR-0019). `status` is deliberately absent: DESIGN
-// reserves it for one command, so it is path-keyed in verbPathExceptions.
 var verbVocabulary = map[string]string{
-	// 1. CRUD grammar.
 	"list":   "crud",
 	"view":   "crud",
 	"create": "crud",
@@ -192,7 +153,6 @@ var verbVocabulary = map[string]string{
 	"remove": "crud",
 	"set":    "crud",
 
-	// 2. Domain verbs listed in DESIGN section 0.
 	"upload":        "domain",
 	"promote":       "domain",
 	"rollout":       "domain",
@@ -212,8 +172,6 @@ var verbVocabulary = map[string]string{
 	"cancel":        "domain",
 	"add-targeting": "domain",
 
-	// 2b. Domain verbs shipped before the vocabulary was checked, listed in
-	// the DESIGN section 0 table with the gesture each one states.
 	"begin":   "domain",
 	"commit":  "domain",
 	"discard": "domain",
@@ -223,47 +181,33 @@ var verbVocabulary = map[string]string{
 	"history": "domain",
 	"audit":   "domain",
 
-	// 2c. Admitted with the 2.0.0 verb renames (#597): `appstore submit` sends
-	// a hosted app to Google review, irrevocably, which `set` would hide.
 	"submit": "domain",
 }
 
-// verbPathExceptions are leaves outside the verb grammar for a documented
-// reason. They are permanent, unlike verbDrift: the only check is that each
-// still names a leaf.
 var verbPathExceptions = map[string]string{
-	// 3. Reference, diagnostic and scaffold commands (DESIGN section 0).
-	"version":          "reference",
-	"exit-codes":       "reference",
-	"install-skills":   "scaffold",
-	"schema":           "reference",
-	"init":             "scaffold",
-	"apps init":        "scaffold",
-	"auth doctor":      "diagnostic",
-	"team permissions": "reference (offline catalog)",
-	// Session and health, the one `status` of DESIGN section 0.
-	"auth status": "status",
-	// A second `status`, frozen before the rule was checked: the local Edit pin.
-	"edits status": "status (frozen exception)",
-	// Vitals hybrid query model (ADR-0027): presets named after the metric set
-	// sit over `vitals query`; there is no resource to view, only metrics.
-	// `vitals releases` (#348) is the same kind of named view: the filter
-	// options a vitals query accepts, not a resource gplay addresses.
-	"vitals query":           "ADR-0027",
-	"vitals anomalies":       "ADR-0027",
-	"vitals releases":        "ADR-0027",
-	"vitals anr":             "ADR-0027",
-	"vitals crashes":         "ADR-0027",
-	"vitals excessivewakeup": "ADR-0027",
-	"vitals lmk":             "ADR-0027",
-	"vitals slowrendering":   "ADR-0027",
-	"vitals slowstart":       "ADR-0027",
-	"vitals stuckbgwakelock": "ADR-0027",
-	"vitals errors counts":   "ADR-0027",
-	"vitals errors issues":   "ADR-0027",
-	"vitals errors reports":  "ADR-0027",
-	// Bulk report families (ADR-0050): each leaf is named after the export
-	// it reads, like the vitals presets; there is no resource to view.
+	"version":                    "reference",
+	"exit-codes":                 "reference",
+	"install-skills":             "scaffold",
+	"schema":                     "reference",
+	"init":                       "scaffold",
+	"apps init":                  "scaffold",
+	"auth doctor":                "diagnostic",
+	"team permissions":           "reference (offline catalog)",
+	"auth status":                "status",
+	"edits status":               "status (frozen exception)",
+	"vitals query":               "ADR-0027",
+	"vitals anomalies":           "ADR-0027",
+	"vitals releases":            "ADR-0027",
+	"vitals anr":                 "ADR-0027",
+	"vitals crashes":             "ADR-0027",
+	"vitals excessivewakeup":     "ADR-0027",
+	"vitals lmk":                 "ADR-0027",
+	"vitals slowrendering":       "ADR-0027",
+	"vitals slowstart":           "ADR-0027",
+	"vitals stuckbgwakelock":     "ADR-0027",
+	"vitals errors counts":       "ADR-0027",
+	"vitals errors issues":       "ADR-0027",
+	"vitals errors reports":      "ADR-0027",
 	"reports installs":           "ADR-0050",
 	"reports ratings":            "ADR-0050",
 	"reports crashes":            "ADR-0050",
@@ -273,17 +217,12 @@ var verbPathExceptions = map[string]string{
 	"reports sales":              "ADR-0050",
 }
 
-// verbDrift lists experimental leaves whose verb contradicts ADR-0019 (`set`
-// not update, `remove` not delete, noun before verb). 2.0.0 renamed every one
-// of them (#597), so it is empty and only stops a new one from being admitted.
 var verbDrift = ratchet{
 	name:    "verbDrift",
 	ceiling: 0,
 	entries: []string{},
 }
 
-// leavesWithoutOutputByDesign are the leaves docs/DESIGN.md section 7 exempts
-// from --output (no structured result, or a binary payload). Permanent.
 var leavesWithoutOutputByDesign = map[string]string{
 	"auth login":                    "DESIGN section 7: free-form human text, no structured result",
 	"auth logout":                   "DESIGN section 7: free-form human text, no structured result",
@@ -292,9 +231,6 @@ var leavesWithoutOutputByDesign = map[string]string{
 	"exit-codes":                    "help topic (gplay help exit-codes), not a runnable command",
 }
 
-// leavesWithoutOutput are today's leaves with no --output that DESIGN section 7
-// does not document. Each either gains --output or gets documented there and
-// moves to leavesWithoutOutputByDesign (COH-13, #597).
 var leavesWithoutOutput = ratchet{
 	name:    "leavesWithoutOutput",
 	ceiling: 6,
@@ -308,7 +244,6 @@ var leavesWithoutOutput = ratchet{
 	},
 }
 
-// leavesWithoutLong are today's leaves whose help has no Long of their own.
 var leavesWithoutLong = ratchet{
 	name:    "leavesWithoutLong",
 	ceiling: 4,

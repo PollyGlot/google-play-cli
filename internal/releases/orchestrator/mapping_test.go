@@ -1,8 +1,3 @@
-// Package orchestrator_test: UploadMapping exercises the standalone
-// mapping-upload choreography behind `gplay releases mappings upload`:
-// open an Edit, POST the deobfuscation file keyed by an explicit
-// versionCode, and commit: no track update. Reuses newPlay and the
-// helpers from orchestrator_test.go (same package).
 package orchestrator_test
 
 import (
@@ -15,10 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestUploadMapping_happyPath_beginUploadCommit asserts the standalone
-// flow opens its own Edit, uploads the mapping keyed by the explicit
-// versionCode + proguard type, and commits: a one-shot begin → upload →
-// commit, no track update (#250).
 func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newPlay(playAPI{editID: "edit-map"})
@@ -62,8 +53,6 @@ func TestUploadMapping_happyPath_beginUploadCommit(t *testing.T) {
 	}
 }
 
-// TestUploadMapping_nativeCodeType_inPath asserts an explicit nativeCode
-// type lands verbatim in the path (Discovery enum, not invented).
 func TestUploadMapping_nativeCodeType_inPath(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newPlay(playAPI{editID: "edit-map"})
@@ -88,8 +77,6 @@ func TestUploadMapping_nativeCodeType_inPath(t *testing.T) {
 	}
 }
 
-// TestUploadMapping_invalidVersionCode_exit2_noHTTP asserts a non-positive
-// versionCode is a caller-side misuse (exit 2) caught before any HTTP.
 func TestUploadMapping_invalidVersionCode_exit2_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newPlay(playAPI{})
@@ -111,8 +98,6 @@ func TestUploadMapping_invalidVersionCode_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestUploadMapping_invalidType_exit2_noHTTP asserts a file type outside
-// the Discovery enum (proguard / nativeCode) is rejected before any HTTP.
 func TestUploadMapping_invalidType_exit2_noHTTP(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newPlay(playAPI{})
@@ -135,10 +120,7 @@ func TestUploadMapping_invalidType_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestUploadMapping_dryRun_validatesFile_noHTTP asserts dry-run validates
-// the mapping is readable (exit 20 when missing) and performs no HTTP.
 func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
-	// Missing file → exit 20, no HTTP.
 	rt, transport := newPlay(playAPI{})
 	hc := &http.Client{Transport: transport}
 	_, err := orchestrator.UploadMapping(context.Background(), hc, orchestrator.MappingOpts{
@@ -157,7 +139,6 @@ func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 		t.Errorf("dry-run hit the network: %v", apiCalls(rt))
 	}
 
-	// Present file → succeeds, no HTTP.
 	mapping := writeFakeMapping(t)
 	rt2, transport2 := newPlay(playAPI{})
 	hc2 := &http.Client{Transport: transport2}
@@ -174,9 +155,6 @@ func TestUploadMapping_dryRun_validatesFile_noHTTP(t *testing.T) {
 	}
 }
 
-// TestUploadMapping_uploadFails_discardsEdit asserts a failed
-// deobfuscation upload auto-discards the open Edit (edits.delete) so no
-// 24h lock leaks: the implicit-edit cleanup contract (DESIGN §4).
 func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 	mapping := writeFakeMapping(t)
 	rt, transport := newPlay(playAPI{
@@ -205,9 +183,6 @@ func TestUploadMapping_uploadFails_discardsEdit(t *testing.T) {
 	}
 }
 
-// TestUploadMapping_dryRun_directoryPath_exit20_noHTTP asserts dry-run
-// rejects a non-regular mapping path (a directory) as exit 20: parity
-// with the live path, which cannot stream a directory (PR #264 review).
 func TestUploadMapping_dryRun_directoryPath_exit20_noHTTP(t *testing.T) {
 	dir := t.TempDir()
 	rt, transport := newPlay(playAPI{})

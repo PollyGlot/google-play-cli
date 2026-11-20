@@ -9,15 +9,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// rawIcon is an edits.images.list images array as Play shapes it, with an &
-// in the URL: the gplay envelope must carry it unescaped and verbatim.
 const rawIcon = `[{"id":"img-icon-1","url":"https://play-lh.googleusercontent.com/icon?w=512&h=512","sha1":"da39a3ee5e6b4b0d3255bfef95601890afd80709","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}]`
 
-// TestRenderJSON_slots_golden freezes the gplay envelope around the verbatim
-// images arrays (ADR-0003): package, then one entry per non-empty slot with
-// its locale, type and count. The second slot lost its raw bytes, so it pins
-// the re-marshal fallback, which keeps the API field names and the URL's &
-// literal (#622).
 func TestRenderJSON_slots_golden(t *testing.T) {
 	p := imageslist.Payload{
 		Package: "com.example.app",
@@ -41,8 +34,6 @@ func TestRenderJSON_slots_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "slots.json.golden", p)
 }
 
-// TestRenderJSON_noImages_golden pins an app with no image to "slots": []
-// (never null), so a consumer can iterate without a guard.
 func TestRenderJSON_noImages_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "no_images.json.golden", imageslist.Payload{Package: "com.example.app"})
 }

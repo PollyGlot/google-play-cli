@@ -13,12 +13,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// blob and live stand in for a local image file and its live twin: the diff
-// matches on sha256, so equal bytes are the same image.
 func blob(name string) []byte { return []byte("png:" + name) }
 
-// shas is a slot's local sequence as the diff engine takes it: one sha256 per
-// image.
 func shas(names ...[]byte) []string {
 	out := make([]string, len(names))
 	for i, b := range names {
@@ -33,10 +29,6 @@ func live(id, name string) images.Image {
 	return images.Image{ID: id, Sha256: hex.EncodeToString(sum[:])}
 }
 
-// slots yields every ADR-0013 op through the real diff engine: a singular
-// replace, a gallery append, an unchanged slot, a reorder, an untouched slot,
-// and a gallery holding one online-only image (kept additively, deleted under
-// --prune).
 func slots() []imagediff.SlotInput {
 	return []imagediff.SlotInput{
 		{Locale: "de-DE", Type: images.PhoneScreenshots, Local: shas(blob("b"), blob("a")), Live: []images.Image{live("1", "a"), live("2", "b")}},
@@ -53,22 +45,14 @@ func payload(prune, dryRun bool) imagesapply.Payload {
 	return imagesapply.Payload{Result: &imageorchestrator.Result{Package: "com.example.app", DryRun: dryRun, Diff: diff}}
 }
 
-// TestRenderJSON_dryRun_golden freezes the ADR-0013 §5 diff schema under the
-// additive default: position -1 marks slot-level records, and the online-only
-// seven-inch screenshot leaves its slot "unchanged".
 func TestRenderJSON_dryRun_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run.json.golden", payload(false, true))
 }
 
-// TestRenderJSON_dryRunPrune_golden freezes --prune: the same online-only
-// image now surfaces as a delete record carrying its sha256.
 func TestRenderJSON_dryRunPrune_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run_prune.json.golden", payload(true, true))
 }
 
-// TestRenderJSON_applied_matchesDryRun pins that a real apply prints the very
-// diff it executed, so a script reads one schema whichever mode ran: the only
-// difference is the dryRun marker a preview leads with (#622).
 func TestRenderJSON_applied_matchesDryRun(t *testing.T) {
 	got := string(outputtest.RenderJSON(t, payload(false, false)))
 	preview := string(outputtest.RenderJSON(t, payload(false, true)))

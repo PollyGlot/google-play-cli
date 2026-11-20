@@ -14,8 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// productionCompletedAndInProgress is the #740 case: a full rollout of 141
-// and a staged rollout of 142 coexist on production.
 const productionCompletedAndInProgress = `{"track":"production","releases":[` +
 	`{"name":"141","status":"completed","versionCodes":["141"]},` +
 	`{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.2},` +
@@ -123,8 +121,6 @@ func TestRun_planWithDryRun_returnsExit2BeforeAnyHTTP(t *testing.T) {
 	}
 }
 
-// Inside a pinned Edit a plan reads in place and stages nothing, so a commit
-// flag passed with it must not be reported as staged in that Edit.
 func TestRunComplete_plan_pinnedEdit_readsInPlaceWithoutStagedWarning(t *testing.T) {
 	rt := newStateFake(stateAPI{trackGetResp: oneInProgressRelease})
 	stderr := confirmStderr(t, rt, func(rc *kernel.RunContext) error {

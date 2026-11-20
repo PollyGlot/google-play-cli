@@ -5,14 +5,6 @@ import (
 	"os"
 )
 
-// FS is the slice of os.* the config layer touches. Production wires
-// OSFS{}; tests can pass an in-memory fake to keep `t.TempDir()` out
-// of unit runs. The interface only lists the operations gplay
-// actually uses; add a method here when a new caller needs it.
-//
-// Rename + Remove support the atomic write-tmp+rename pattern in
-// Global.Save; both must work on the same logical filesystem as
-// WriteFile so the rename is a metadata-only operation.
 type FS interface {
 	ReadFile(name string) ([]byte, error)
 	WriteFile(name string, data []byte, perm fs.FileMode) error
@@ -24,8 +16,6 @@ type FS interface {
 	Remove(name string) error
 }
 
-// OSFS is the production FS: it forwards every call to the os package.
-// Stateless (no fields), safe to pass by value.
 type OSFS struct{}
 
 func (OSFS) ReadFile(name string) ([]byte, error) { return os.ReadFile(name) }

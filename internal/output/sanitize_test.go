@@ -23,7 +23,6 @@ func TestSanitizeCell(t *testing.T) {
 		{"tab and newline stripped (single cell)", "col1\tcol2\nrow", "col1col2row"},
 		{"lone ESC then letter", "\x1bcResetSeq", "cResetSeq"},
 		{"C1 control rune dropped", "a\u009bb", "ab"},
-		// Legitimate multi-byte content must survive untouched.
 		{"accents", "café déjà vu", "café déjà vu"},
 		{"cjk", "日本語のレビュー", "日本語のレビュー"},
 		{"emoji", "great app 🎉🚀", "great app 🎉🚀"},
@@ -38,9 +37,6 @@ func TestSanitizeCell(t *testing.T) {
 	}
 }
 
-// TestSanitizeText keeps \n and \t (a review body is multi-line) and strips
-// everything sanitizeCell strips, \r included: a bare carriage return would let
-// a line overwrite its own start on a terminal.
 func TestSanitizeText(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"line one\nline two\n\tindented", "line one\nline two\n\tindented"},
@@ -56,9 +52,6 @@ func TestSanitizeText(t *testing.T) {
 	}
 }
 
-// TestSanitizeCell_noEscapeBytesSurvive is a property check: whatever the input,
-// the output never contains an ESC (0x1b) or BEL (0x07) byte: the carriers of
-// an ANSI injection.
 func TestSanitizeCell_noEscapeBytesSurvive(t *testing.T) {
 	for _, in := range []string{
 		"\x1b[38;5;201mfancy\x1b[0m",
@@ -73,8 +66,6 @@ func TestSanitizeCell_noEscapeBytesSurvive(t *testing.T) {
 	}
 }
 
-// hostileColumn renders a fixed hostile string for any item: the untrusted-cell
-// stand-in for the render-boundary integration tests.
 const hostileCell = "\x1b[31mRED\x1b[0m\x07start \x1b]0;pwn\x07 café 漢字 🎉"
 const hostileWant = "REDstart  café 漢字 🎉"
 
@@ -117,7 +108,6 @@ func TestMarkdownTable_neutralizesAndStillEscapesPipes(t *testing.T) {
 	if strings.ContainsRune(out, '\x1b') {
 		t.Errorf("markdown table still carries ESC: %q", out)
 	}
-	// Sanitized AND the literal pipe still escaped to \| (both happen in joinCells).
 	if !strings.Contains(out, `a\|b`) {
 		t.Errorf("markdown table = %q, want sanitized cell with escaped pipe a\\|b", out)
 	}

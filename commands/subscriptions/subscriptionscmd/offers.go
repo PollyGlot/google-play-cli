@@ -1,9 +1,3 @@
-// offers.go: shaping helpers between the catalog file schema and the API
-// resources (slice #369). The catalog file nests each base plan's offers under
-// basePlans[].offers, but the API keeps offers a separate sub-resource: pull
-// embeds them (EmbedOffers), apply splits them back out (ExtractOffers) and
-// strips them from the parent body it patches (StripOffersFromSubscription).
-// See ADR-0041 §5.
 package subscriptionscmd
 
 import (
@@ -16,21 +10,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// OfferKey is the composite identity of one offer in a catalog.
 type OfferKey struct {
 	ProductID  string
 	BasePlanID string
 	OfferID    string
 }
 
-// String renders the key the way plans display it.
 func (k OfferKey) String() string { return k.ProductID + "/" + k.BasePlanID + "/" + k.OfferID }
 
-// EmbedOffers nests each live offer under its base plan's "offers" array
-// inside the subscription resources, returning the file bodies pull writes.
-// The offers' packageName echo is stripped (like the parent's). An offer whose
-// base plan does not exist in its parent subscription is an integrity error,
-// not a silent drop.
 func EmbedOffers(items []subscriptions.Item, offers []subscriptions.OfferItem) (map[string]json.RawMessage, error) {
 	byProduct := map[string]map[string][]any{}
 	for _, o := range offers {
@@ -84,9 +71,6 @@ func EmbedOffers(items []subscriptions.Item, offers []subscriptions.OfferItem) (
 	return out, nil
 }
 
-// ExtractOffers walks the declared catalog and returns every embedded offer
-// fragment keyed by its composite identity (file position + the fragment's
-// offerId). A fragment without an offerId cannot be addressed and is refused.
 func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessage, error) {
 	out := map[OfferKey]json.RawMessage{}
 	for productID, raw := range local {
@@ -126,9 +110,6 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 	return out, nil
 }
 
-// StripOffersFromSubscription removes every embedded basePlans[].offers array
-// from a declared subscription body: offers are not a field of the API
-// Subscription resource, so parent create/patch bodies must not carry them.
 func StripOffersFromSubscription(raw json.RawMessage) (json.RawMessage, error) {
 	var sub map[string]any
 	if err := json.Unmarshal(raw, &sub); err != nil {
@@ -147,7 +128,6 @@ func StripOffersFromSubscription(raw json.RawMessage) (json.RawMessage, error) {
 	return b, nil
 }
 
-// SortedOfferKeys returns the keys in stable display order.
 func SortedOfferKeys[V any](m map[OfferKey]V) []OfferKey {
 	keys := make([]OfferKey, 0, len(m))
 	for k := range m {

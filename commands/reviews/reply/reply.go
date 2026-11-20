@@ -1,16 +1,3 @@
-// Package reply implements `gplay reviews reply`: post developer responses
-// to user reviews, one at a time (--review-id + --reply) or in bulk from a
-// TSV stream (--batch <file>|-). It is thin glue: resolve --package, build
-// an authenticated client, and drive internal/play/reviews.Reply, with the
-// TSV grammar owned by internal/reviews/batch and the 403/404 hints by
-// commands/reviews/reviewerr (shared with `reviews list`).
-//
-// Unlike the renderable-returning commands, Run writes its own output: the
-// stdout/stderr split here (single → a stderr confirmation plus the verbatim
-// API body on stdout under --output json; batch → per-line OK/ERR on stderr
-// plus a {"results":[...]} envelope on stdout under --output json) does not
-// fit the three-Renderer payload model. Run therefore returns only an error
-// : nil on full success, or one carrying the aggregate exit code.
 package reply
 
 import (
@@ -30,22 +17,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/reviews/batch"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package  string
 	ReviewID string
 	Reply    string
-	Batch    string // --batch path; "-" = stdin
-	BatchSet bool   // whether --batch was supplied (distinguishes an empty path)
+	Batch    string
+	BatchSet bool
 	DryRun   bool
 }
 
-// Run validates the flag combination, resolves the package, and dispatches
-// to single- or batch-reply. It writes all user-facing output itself and
-// returns only an error (nil on full success).
 func Run(rc *kernel.RunContext, in Input) error {
-	// Mode selection is pure CLI misuse: validate before any resolution or
-	// network so a bad invocation fails fast with exit 2.
 	if in.BatchSet && (in.ReviewID != "" || in.Reply != "") {
 		return &exit.UsageError{Msg: "--batch is mutually exclusive with --review-id / --reply"}
 	}
@@ -63,7 +44,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 		return err
 	}
 
-	// --dry-run never touches the network, so a missing Account is fine.
 	var httpClient *http.Client
 	if !in.DryRun {
 		var err error
@@ -79,9 +59,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	return runSingle(rc, pkg, in.ReviewID, in.Reply, in.DryRun, httpClient)
 }
 
-// runSingle posts one developer response. On --output json the verbatim API
-// body is echoed to stdout; the human-facing confirmation always goes to
-// stderr.
 func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, hc *http.Client) error {
 	warnIfLong(rc, reviewID, text)
 	if dryRun {
@@ -99,10 +76,6 @@ func runSingle(rc *kernel.RunContext, pkg, reviewID, text string, dryRun bool, h
 	return nil
 }
 
-// warnIfLong flags a reply past the length Play documents. The bound is
-// "approximately 350" characters, so gplay sends the reply anyway and lets
-// Play decide (#789); --dry-run warns too, since a rehearsal is where the
-// author can still shorten it.
 func warnIfLong(rc *kernel.RunContext, reviewID, text string) {
 	if n := utf8.RuneCountInString(text); n > reviews.MaxReplyChars {
 		rc.Warnf("reply on %s is %d characters, more than the %d Play documents: Play may reject it",
@@ -110,16 +83,12 @@ func warnIfLong(rc *kernel.RunContext, reviewID, text string) {
 	}
 }
 
-// rowResult is one entry of the --output json batch envelope.
 type rowResult struct {
 	ReviewID string `json:"reviewId"`
-	Status   string `json:"status"` // "ok" | "error" | "planned" (dry-run)
+	Status   string `json:"status"`
 	Error    string `json:"error,omitempty"`
 }
 
-// batchError carries the aggregate exit code of a batch run: the highest
-// exit code seen across rows (per issue #62: a 404 row, exit 30, outranks a
-// malformed line, exit 2). It is returned only when at least one row failed.
 type batchError struct {
 	code   int
 	failed int
@@ -132,11 +101,6 @@ func (e *batchError) Error() string {
 
 func (e *batchError) ExitCode() int { return e.code }
 
-// runBatch reads the TSV source, posts each row sequentially, and reports a
-// per-line OK/ERR on stderr. A per-line failure (a malformed line, or an API
-// error) is recorded and the batch continues. Under --output json the
-// {"results":[...]} envelope is written to stdout. The aggregate exit code is
-// the highest seen across rows (0 when every row succeeds).
 func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) error {
 	src, closeFn, err := batchSource(rc, in.Batch)
 	if err != nil {
@@ -157,7 +121,7 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 		if ln.Err != nil {
 			rc.Failf("ERR line %d: %v", ln.Num, ln.Err)
 			results = append(results, rowResult{Status: "error", Error: ln.Err.Error()})
-			worst = max(worst, 2) // malformed input is CLI misuse (exit 2)
+			worst = max(worst, 2)
 			failed++
 			continue
 		}
@@ -181,8 +145,6 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 	}
 
 	if rc.Format == output.FormatJSON {
-		// A broken/closed stdout is a hard failure the consumer cannot see
-		// past, so it supersedes the per-row aggregate exit below.
 		if err := output.WriteJSON(rc.Stdout, struct {
 			Results []rowResult `json:"results"`
 		}{Results: results}); err != nil {
@@ -196,8 +158,6 @@ func runBatch(rc *kernel.RunContext, pkg string, in Input, hc *http.Client) erro
 	return nil
 }
 
-// batchSource opens the --batch input: stdin for "-", otherwise the file at
-// path. The returned closeFn is always safe to call.
 func batchSource(rc *kernel.RunContext, path string) (io.Reader, func(), error) {
 	if path == "-" {
 		if rc.Stdin == nil {
@@ -212,10 +172,6 @@ func batchSource(rc *kernel.RunContext, path string) (io.Reader, func(), error) 
 	return f, func() { _ = f.Close() }, nil
 }
 
-// writeRaw passes an API JSON body through to w verbatim, ensuring a single
-// trailing newline so piped output is line-friendly. A write failure (broken
-// or closed stdout) is returned so the caller can surface it rather than
-// reporting a success the consumer never received.
 func writeRaw(w io.Writer, raw []byte) error {
 	if _, err := w.Write(raw); err != nil {
 		return err
@@ -228,7 +184,6 @@ func writeRaw(w io.Writer, raw []byte) error {
 	return nil
 }
 
-// NewCommand returns the cobra command for `gplay reviews reply`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

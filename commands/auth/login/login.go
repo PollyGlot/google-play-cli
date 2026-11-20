@@ -1,5 +1,3 @@
-// Package login implements `gplay auth login`: register a service-account
-// JSON as a named Account in the keystore and mark it active in the config.
 package login
 
 import (
@@ -14,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// ErrMissingServiceAccount is returned when login runs without a
-// --service-account flag. It satisfies exit.Coder so the binary exits
-// 2 (CLI misuse) rather than the generic 1.
 var ErrMissingServiceAccount = missingFlagError{}
 
 type missingFlagError struct{}
@@ -26,10 +21,6 @@ func (missingFlagError) Error() string {
 }
 func (missingFlagError) ExitCode() int { return 2 }
 
-// Input carries login-specific flags. SAPath comes from the root
-// persistent --service-account flag (docs/DESIGN.md §1); the kernel
-// hands it through via rc.*, but since the flag is captured at the
-// cobra wrapper level, the closure passes it explicitly here.
 type Input struct {
 	SAPath      string
 	Name        string
@@ -37,16 +28,10 @@ type Input struct {
 	DeveloperID string
 }
 
-// Run registers the named Account in keystore + config. login emits a
-// free-form stderr line and returns no Renderable. The service-account
-// JSON is read through rc.FS so tests can drive login with an in-memory
-// fixture and Ctrl-C propagates through rc.Ctx.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.SAPath == "" {
 		return nil, ErrMissingServiceAccount
 	}
-	// LoadValue, not LoadFromFS: the flag takes a path OR inline JSON (its help
-	// says so), and a failed read must not echo the value back (#583).
 	sa, err := serviceaccount.LoadValue(rc.FS, "--service-account", in.SAPath)
 	if err != nil {
 		return nil, err
@@ -63,10 +48,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := be.Save(rc.Ctx, name, sa.Raw); err != nil {
 		return nil, err
 	}
-	// Select falls back to the file backend silently (the label is only
-	// logged at -v), so say it here: otherwise a login over SSH to a Mac
-	// with a locked keychain leaves the private key on disk behind a bare
-	// "Account registered".
 	if fb, ok := be.(*keystore.FileBackend); ok {
 		keystore.WarnFileFallback(rc.Stderr, fb.Path(name))
 	}
@@ -75,12 +56,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	// First Account always activates so the registry is never empty.
 	wasEmpty := len(cfg.Accounts) == 0
 	cfg.AddAccount(name)
-	// Record the Developer account id on this Account if supplied: the
-	// explicit capture point for `gplay team` addressing (ADR-0015 / #151).
-	// login is explicit, so a re-login with --developer-id updates it.
 	devID := strings.TrimSpace(in.DeveloperID)
 	if devID != "" {
 		cfg.SetDeveloperID(name, devID)
@@ -105,9 +82,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return nil, nil
 }
 
-// NewCommand returns the cobra command for `gplay auth login`. The
-// --service-account flag is inherited from the root command's
-// persistent flags.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		name        string

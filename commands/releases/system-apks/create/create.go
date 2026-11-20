@@ -1,11 +1,3 @@
-// Package create implements `gplay releases system-apks create`: ask Play to
-// build a System APK variant (an APK for a device system image) from the App
-// Bundle uploaded under a versionCode, for one device spec and set of options.
-// The Variant body is small and flat, so it is built from flags rather than a
-// --file document. Application-scoped and Edit-free. A create adds a variant
-// and can never overwrite or destroy one, so it is the ROUTINE tier
-// (ADR-0017): --dry-run rehearses, no --confirm. MarkMutating gates it under
-// GPLAY_READONLY (exit 4). Ships [experimental].
 package create
 
 import (
@@ -22,7 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/systemapks"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package                string
 	VersionCode            int64
@@ -35,9 +26,6 @@ type Input struct {
 	DryRun                 bool
 }
 
-// variant is the request body the flags describe. Nil sub-objects stay off
-// the wire, so an unset option is the API default rather than an explicit
-// false.
 func (in Input) variant() systemapks.Variant {
 	var v systemapks.Variant
 	if len(in.ABIs) > 0 || in.ScreenDensity != 0 || len(in.Locales) > 0 {
@@ -57,7 +45,6 @@ func (in Input) variant() systemapks.Variant {
 	return v
 }
 
-// Payload renders the created variant (live) or the rehearsal (--dry-run).
 type Payload struct {
 	Package     string
 	VersionCode int64
@@ -86,8 +73,6 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []systemapkscmd.Row{p.Row})
 }
 
-// dryRunView carries the request body that would be sent and the ADR-0017
-// `requires` array: empty, because create is the ROUTINE tier.
 type dryRunView struct {
 	DryRun      bool               `json:"dryRun"`
 	Package     string             `json:"package"`
@@ -104,12 +89,10 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return err
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err := systemapkscmd.RequireVersionCode(in.VersionCode); err != nil {
 		return nil, err
 	}
-	// The API types screenDensity uint32; refuse what it cannot hold locally.
 	if in.ScreenDensity < 0 || in.ScreenDensity > math.MaxUint32 {
 		return nil, exit.Usagef("invalid --screen-density %d: want a dpi value such as 480", in.ScreenDensity)
 	}
@@ -125,7 +108,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	if in.DryRun {
 		row := systemapkscmd.BuildRow(req)
-		row.VariantID = "" // server-assigned: none exists before the create
+		row.VariantID = ""
 		return Payload{Package: pkg, VersionCode: in.VersionCode, DryRun: true, Request: req, Row: row, Cols: cols}, nil
 	}
 
@@ -141,7 +124,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, VersionCode: in.VersionCode, Request: req, Row: systemapkscmd.BuildRow(v), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases system-apks create`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

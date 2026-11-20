@@ -24,20 +24,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// scopeWired builds the http.Client + ScopeObserver pair the way the
-// command layer does in production: wrap the fixture's transport with
-// transport.WithScopeObserver, return both. The returned client is
-// what the test passes as the hc argument to doctor.Run, and the
-// observer is what CheckScope reads from.
 func scopeWired(rt http.RoundTripper) (*http.Client, *transport.ScopeObserver) {
 	wrapped, obs := transport.WithScopeObserver(rt)
 	return &http.Client{Transport: wrapped}, obs
 }
 
-// makeSignedSA produces a *ServiceAccount whose PrivateKey is the shared
-// test RSA key, so the OAuth2 library can actually sign the JWT
-// during the token exchange. The token endpoint is then mocked via a
-// testkit.RoundTripFunc.
 func makeSignedSA(t *testing.T) *serviceaccount.ServiceAccount {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -63,16 +54,11 @@ func makeSignedSA(t *testing.T) *serviceaccount.ServiceAccount {
 	return sa
 }
 
-// ctxWithRT wires fn through oauth2.HTTPClient so the token package's
-// call to JWTConfig.TokenSource uses it for the /token exchange.
 func ctxWithRT(t *testing.T, fn testkit.RoundTripFunc) context.Context {
 	t.Helper()
 	return context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: fn})
 }
 
-// validSAJSON mirrors the fixture used by the foundation slice tests
-// (serviceaccount_test.go / login_test.go) so check 1 sees a credential
-// shape that already passes parse.
 const validSAJSON = `{
   "type": "service_account",
   "project_id": "test-proj",
@@ -90,8 +76,6 @@ func mustParseSA(t *testing.T, body string) *serviceaccount.ServiceAccount {
 	return sa
 }
 
-// TestRun_emptyChain_returnsEmpty confirms the scaffold compiles and the
-// surface returns an empty slice when no checks are registered.
 func TestRun_emptyChain_returnsEmpty(t *testing.T) {
 	results := doctor.Run(context.Background(), nil, nil)
 	if len(results) != 0 {
@@ -133,9 +117,6 @@ func TestCheckSAJSONValid_nilSA_failsWithHint(t *testing.T) {
 }
 
 func TestCheckSAJSONValid_eachRequiredFieldMissing(t *testing.T) {
-	// Each row constructs a *ServiceAccount whose JSON has been parsed
-	// (so it is non-nil) but then has the named field zeroed. The check
-	// must fail and the hint must mention the field name.
 	cases := []struct {
 		field  string
 		mutate func(sa *serviceaccount.ServiceAccount)
@@ -214,9 +195,6 @@ func TestCheckOAuth2Mint_401_failsWithHint(t *testing.T) {
 	}
 }
 
-// A token endpoint that never answers is a network problem, not a key
-// problem: the hint points at the network and drops the revoked-key advice,
-// while the exit code stays 10 (#11, #787).
 func TestCheckOAuth2Mint_transportError_pointsToNetwork(t *testing.T) {
 	for name, cause := range map[string]error{
 		"dns":     &net.DNSError{Err: "no such host", Name: "oauth2.googleapis.com", IsNotFound: true},
@@ -237,9 +215,6 @@ func TestCheckOAuth2Mint_transportError_pointsToNetwork(t *testing.T) {
 	}
 }
 
-// Headers can arrive and the body still die on the wire (read timeout, reset
-// connection): RoundTrip succeeded, yet the endpoint never answered the
-// exchange, so the hint still points at the network (#787).
 func TestCheckOAuth2Mint_bodyReadError_pointsToNetwork(t *testing.T) {
 	ctx := ctxWithRT(t, func(*http.Request) (*http.Response, error) {
 		resp := testkit.Response(http.StatusOK, "")
@@ -256,7 +231,6 @@ func TestCheckOAuth2Mint_bodyReadError_pointsToNetwork(t *testing.T) {
 	}
 }
 
-// A key that never reaches the wire is not a network failure either.
 func TestCheckOAuth2Mint_unparsableKey_isNotNetwork(t *testing.T) {
 	ctx := ctxWithRT(t, func(*http.Request) (*http.Response, error) {
 		t.Error("an unparsable key must not reach the token endpoint")
@@ -271,9 +245,6 @@ func TestCheckOAuth2Mint_unparsableKey_isNotNetwork(t *testing.T) {
 
 func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 	sa := makeSignedSA(t)
-	// The transport captures the JWT-exchange request body so the
-	// test can independently assert the scope was sent, then responds
-	// with a successful token to let the check complete.
 	var capturedBody string
 	rt := testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		capturedBody = string(testkit.ReadBody(req))
@@ -292,19 +263,11 @@ func TestCheckScope_happyPath_observesAndroidPublisherScope(t *testing.T) {
 	if !r.Passed || r.Skipped {
 		t.Errorf("result = %+v, want Passed=true Skipped=false", r)
 	}
-	// Independent assertion: the request body we saw must mention the
-	// AndroidPublisher scope somewhere (inside the JWT assertion).
 	if capturedBody == "" {
 		t.Error("RoundTripper did not see a request body")
 	}
 }
 
-// TestCheckScope_wrongRequiredScope_fails exercises the test seam
-// (checkScopeRequiring) to simulate the case where the doctor expects
-// a scope that the actual JWT exchange does not request. End users
-// always go through CheckScope which pins the expected scope to
-// token.AndroidPublisherScope; the seam is what lets us verify the
-// scope-mismatch path without mutating production constants.
 func TestCheckScope_wrongRequiredScope_fails(t *testing.T) {
 	sa := makeSignedSA(t)
 	hc, obs := scopeWired(testkit.NewFake())
@@ -327,14 +290,9 @@ func TestCheckScope_wrongRequiredScope_fails(t *testing.T) {
 }
 
 func TestRun_stopsOnFirstFailure(t *testing.T) {
-	// Compose the full chain (#1, #2, #3) with an SA that is missing a
-	// required field so check #1 fails. Check #2 and #3 must be reported
-	// as Skipped=true / Passed=false without invoking their Run funcs.
 	sa := mustParseSA(t, validSAJSON)
 	sa.ClientEmail = ""
 
-	// Use a transport that would FAIL THE TEST if invoked: to prove
-	// downstream checks were not run.
 	ctx := ctxWithRT(t, func(req *http.Request) (*http.Response, error) {
 		t.Fatalf("RoundTripper should not be called when check #1 fails; got %s", req.URL)
 		return nil, nil
@@ -367,8 +325,6 @@ func TestRun_stopsOnFirstFailure(t *testing.T) {
 	}
 }
 
-// TestCheckSAJSONValid_jsonRoundTrip confirms the result encodes to the
-// shape documented in issue #11 acceptance criteria.
 func TestCheckSAJSONValid_jsonRoundTrip(t *testing.T) {
 	sa := mustParseSA(t, validSAJSON)
 	results := doctor.Run(context.Background(), sa, nil, doctor.CheckSAJSONValid())
@@ -395,24 +351,12 @@ func TestCheckSAJSONValid_jsonRoundTrip(t *testing.T) {
 	}
 }
 
-// packageRT is a transport helper for CheckPackageAccess tests. It
-// routes the OAuth2 token-exchange (POST to oauth2.googleapis.com/token)
-// and the androidpublisher edits insert/delete calls to dedicated
-// handlers, so each test wires only the responses it cares about.
-//
-// The check is expected to call:
-//
-//	POST   /androidpublisher/v3/applications/<pkg>/edits         (insert)
-//	DELETE /androidpublisher/v3/applications/<pkg>/edits/<id>    (delete)
-//
-// against host androidpublisher.googleapis.com.
 type packageRT struct {
 	t          *testing.T
 	tokenCalls int
 	insertResp func(req *http.Request) (*http.Response, error)
 	deleteResp func(req *http.Request) (*http.Response, error)
 
-	// Observed call sequence, useful for asserting the cleanup happens.
 	calls []string
 }
 
@@ -438,8 +382,6 @@ func (p *packageRT) serve(req *http.Request) (*http.Response, error) {
 	return nil, nil
 }
 
-// insertOK returns an edits.insert handler that responds 200 with a
-// well-formed Edit body so the check has an Edit ID to discard.
 func insertOK() func(*http.Request) (*http.Response, error) {
 	return func(*http.Request) (*http.Response, error) {
 		return testkit.Response(200, `{"id":"edit-xyz","expiryTimeSeconds":"1700000000"}`), nil
@@ -623,8 +565,6 @@ func TestCheckPackageAccess_200InsertThen5xxDelete_returnsExit40(t *testing.T) {
 	if r.ExitCode != 40 {
 		t.Errorf("ExitCode = %d, want 40", r.ExitCode)
 	}
-	// Even though delete failed, the check MUST have attempted it
-	// (otherwise we'd leak an open Edit on the user's package).
 	sawDelete := false
 	for _, c := range rt.calls {
 		if strings.HasPrefix(c, "DELETE ") {

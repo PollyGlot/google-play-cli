@@ -42,7 +42,6 @@ func TestRun_happyPath_postsBuiltBodyWithScoreMinZero(t *testing.T) {
 	if !strings.Contains(gotURL, "/applications/77/leaderboards") {
 		t.Errorf("url %q should address the application's leaderboards", gotURL)
 	}
-	// scoreMin 0 is a legitimate bound and must reach the wire (as a JSON string).
 	if !strings.Contains(gotBody, `"scoreMin":"0"`) {
 		t.Errorf("body %q should carry scoreMin:\"0\"", gotBody)
 	}

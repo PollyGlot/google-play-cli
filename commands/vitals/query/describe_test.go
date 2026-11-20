@@ -14,8 +14,6 @@ import (
 
 const describeBody = `{"name":"apps/com.example.app/crashRateMetricSet","freshnessInfo":{"freshnesses":[{"aggregationPeriod":"DAILY","latestEndTime":{"year":2026,"month":9,"day":12,"timeZone":{"id":"America/Los_Angeles"}}}]}}`
 
-// describeRT records every non-token request so the test can assert exactly
-// one GET went out and no POST.
 type describeRT struct {
 	queryRT
 	methods []string
@@ -25,16 +23,11 @@ func (r *describeRT) serve(req *http.Request) (*http.Response, error) {
 	if testkit.IsTokenRequest(req) {
 		return r.queryRT.serve(req)
 	}
-	// Not delegated: queryRT reads a request body, and a GET has none.
 	r.methods = append(r.methods, req.Method)
 	r.queryURL = req.URL.String()
 	return testkit.Response(http.StatusOK, r.respBody), nil
 }
 
-// TestRun_describe_getsTheMetricSet proves `vitals query <set> --describe`
-// calls the set's `.get` (a single GET on the bare resource, no `:query` POST),
-// keeps the reporting scope, passes the body through verbatim and projects the
-// freshness table (#545).
 func TestRun_describe_getsTheMetricSet(t *testing.T) {
 	rt := &describeRT{queryRT: queryRT{t: t, respBody: describeBody}}
 	rc, _, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -80,15 +73,11 @@ func TestRun_describe_getsTheMetricSet(t *testing.T) {
 			t.Errorf("table missing %q:\n%s", want, buf.String())
 		}
 	}
-	// The freshness IS the output: no timeline note is written to stderr.
 	if stderr.Len() != 0 {
 		t.Errorf("unexpected stderr: %q", stderr.String())
 	}
 }
 
-// TestRun_describe_rejectsWindowFlags: a window flag set alongside --describe
-// is CLI misuse (exit 2) that names the offending flags, and no request is
-// sent at all.
 func TestRun_describe_rejectsWindowFlags(t *testing.T) {
 	rt := &describeRT{queryRT: queryRT{t: t, respBody: describeBody}}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -107,9 +96,6 @@ func TestRun_describe_rejectsWindowFlags(t *testing.T) {
 	}
 }
 
-// TestNewCommand_describeFlagClashDetectedFromCobra drives the real cobra
-// command so the Changed-state plumbing is exercised: --since left at its
-// default is not a clash, --since set explicitly is.
 func TestNewCommand_describeFlagClashDetectedFromCobra(t *testing.T) {
 	cmd := NewCommand(kernel.Boot{})
 	if err := cmd.ParseFlags([]string{"--describe", "--since", "7d", "--period", "HOURLY"}); err != nil {

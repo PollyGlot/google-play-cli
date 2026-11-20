@@ -27,8 +27,6 @@ func TestResolveApplicationID_emptyIsExit2(t *testing.T) {
 	if err != nil || id != "12345" {
 		t.Errorf("ResolveApplicationID = %q, %v; want 12345", id, err)
 	}
-	// A non-numeric value (e.g. a package name pasted by mistake) is rejected
-	// locally as exit 2 rather than reaching the API as a misleading 404.
 	if _, err := gamescmd.ResolveApplicationID("com.example.app"); err == nil || exitCode(t, err) != 2 {
 		t.Errorf("non-numeric --application-id should be exit 2, got %v", err)
 	}
@@ -76,7 +74,6 @@ func TestBuildAchievementBody_fromFlags_buildsLocalizedDraft(t *testing.T) {
 	if got.Draft.Description.First() != "Win a game" {
 		t.Errorf("description = %q", got.Draft.Description.First())
 	}
-	// Default locale lands on en-US.
 	if got.Draft.Name.Translations[0].Locale != "en-US" {
 		t.Errorf("locale = %q, want en-US", got.Draft.Name.Translations[0].Locale)
 	}
@@ -136,7 +133,6 @@ func TestBuildLeaderboardBody_scoreMinZeroIsSent(t *testing.T) {
 	if got.ScoreOrder != "LARGER_IS_BETTER" {
 		t.Errorf("scoreOrder = %q", got.ScoreOrder)
 	}
-	// An explicit 0 must be sent (it is a legitimate min), not dropped by omitempty.
 	if got.ScoreMin != "0" {
 		t.Errorf("scoreMin = %q, want \"0\"", got.ScoreMin)
 	}
@@ -177,10 +173,6 @@ func TestBuildRows_readsDraftThenPublished(t *testing.T) {
 	}
 }
 
-// TestBuildAchievementBody_explicitZeroIsSent is the regression guard for the
-// *int fields: an explicit --point-value 0 / --steps-to-unlock 0 (PointValueSet /
-// StepsSet true) MUST reach the wire: a plain `int,omitempty` would drop the
-// zero and silently defeat the *Set mechanism.
 func TestBuildAchievementBody_explicitZeroIsSent(t *testing.T) {
 	body, err := gamescmd.BuildAchievementBody(nil, gamescmd.AchievementWrite{
 		PointValue:    0,
@@ -197,7 +189,6 @@ func TestBuildAchievementBody_explicitZeroIsSent(t *testing.T) {
 	if !strings.Contains(string(body), `"stepsToUnlock":0`) {
 		t.Errorf("body = %s, want stepsToUnlock:0 sent", body)
 	}
-	// And an unset numeric field must stay absent (nil pointer dropped by omitempty).
 	body2, err := gamescmd.BuildAchievementBody(nil, gamescmd.AchievementWrite{Name: "X"}, true)
 	if err != nil {
 		t.Fatalf("BuildAchievementBody: %v", err)

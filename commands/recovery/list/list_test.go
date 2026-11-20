@@ -41,7 +41,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_happyPath_sendsVersionCode asserts the required version param + passthrough.
 func TestRun_happyPath_sendsVersionCode(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`))
 	rc := newRC(t, fake)
@@ -62,7 +61,6 @@ func TestRun_happyPath_sendsVersionCode(t *testing.T) {
 	}
 }
 
-// TestRun_missingVersionCode_exit2_noNetwork asserts --version-code is required.
 func TestRun_missingVersionCode_exit2_noNetwork(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"recoveryActions":[{"appRecoveryId":"1","status":"RECOVERY_STATUS_ACTIVE"}]}`))
 	rc := newRC(t, fake)

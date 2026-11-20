@@ -7,11 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// fragment is a representative slice of a Discovery doc covering every transform
-// the derive walk performs: a nested resource tree, a path-param method with a
-// request/response $ref, a no-body method (DELETE), a query enum param, and
-// schema properties of each shape (scalar+enum, direct $ref, array-of-$ref,
-// array-of-scalar).
 const fragment = `{
   "name": "androidpublisher",
   "version": "v3",
@@ -126,7 +121,6 @@ func TestDerive_methodKeyedByNativeID_pathPrefixStripped(t *testing.T) {
 	if m.HTTPMethod != "PUT" {
 		t.Errorf("httpMethod = %q, want PUT", m.HTTPMethod)
 	}
-	// flatPath minus the constant `androidpublisher/v3/` prefix.
 	if want := "applications/{packageName}/edits/{editId}/tracks/{track}"; m.Path != want {
 		t.Errorf("path = %q, want %q", m.Path, want)
 	}
@@ -180,7 +174,6 @@ func TestDerive_noBodyMethodOmitsRequestResponse(t *testing.T) {
 	if m.Request != "" || m.Response != "" {
 		t.Errorf("delete request/response = %q/%q, want both empty", m.Request, m.Response)
 	}
-	// commit has a response but no request.
 	c := idx.Methods["androidpublisher.edits.commit"]
 	if c.Request != "" {
 		t.Errorf("commit request = %q, want empty", c.Request)
@@ -201,28 +194,23 @@ func TestDerive_schemaProperties(t *testing.T) {
 		t.Errorf("Track description = %q (verbatim expected)", track.Description)
 	}
 
-	// scalar
 	if got := track.Properties["track"]; got.Type != "string" || got.Repeated || got.Ref != "" {
 		t.Errorf("Track.track = %+v, want scalar string", got)
 	}
-	// array-of-$ref → repeated + $ref to element, no "array" type leakage
 	rel := track.Properties["releases"]
 	if !rel.Repeated || rel.Ref != "TrackRelease" || rel.Type != "" {
 		t.Errorf("Track.releases = %+v, want repeated $ref TrackRelease", rel)
 	}
 
 	tr := idx.Schemas["TrackRelease"]
-	// scalar + enum
 	st := tr.Properties["status"]
 	if st.Type != "string" || len(st.Enum) != 4 || st.Repeated {
 		t.Errorf("TrackRelease.status = %+v, want string enum[4]", st)
 	}
-	// direct $ref
 	ct := tr.Properties["countryTargeting"]
 	if ct.Ref != "CountryTargeting" || ct.Repeated || ct.Type != "" {
 		t.Errorf("TrackRelease.countryTargeting = %+v, want direct $ref", ct)
 	}
-	// array-of-scalar → repeated + element type, no $ref
 	vc := tr.Properties["versionCodes"]
 	if !vc.Repeated || vc.Type != "string" || vc.Ref != "" {
 		t.Errorf("TrackRelease.versionCodes = %+v, want repeated scalar string", vc)
@@ -244,8 +232,6 @@ func TestRender_deterministicAndRoundTrips(t *testing.T) {
 	if !strings.HasSuffix(string(a), "\n") {
 		t.Error("rendered index should end with a trailing newline")
 	}
-	// Descriptions carry URLs / punctuation; HTML escaping must be off so the
-	// text stays verbatim and readable.
 	if strings.Contains(string(a), `<`) || strings.Contains(string(a), `&`) {
 		t.Error("rendered index has HTML-escaped characters; want SetEscapeHTML(false)")
 	}

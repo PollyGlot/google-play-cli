@@ -13,9 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// Synthetic, format-faithful fixtures of the finance exports: the column
-// names of Play's estimated sales and earnings reports, invented values. The
-// buyer postcode keeps a leading zero to prove values stay verbatim.
 const (
 	salesSep = "Order Number,Order Charged Date,Product Title,Product ID,Product Type,SKU ID,Currency of Sale,Item Price,Charged Amount,City of Buyer,State of Buyer,Postal Code of Buyer,Country of Buyer\n" +
 		"GPA.3300-0000-0000-00001,2026-09-02,Example Pro (Example App),com.example.app,subscription,premium_monthly,EUR,4.99,4.99,Lyon,ARA,69001,FR\n" +
@@ -42,8 +39,6 @@ func financeBucket(t *testing.T) reportstest.Bucket {
 	}}
 }
 
-// runFinance runs a finance family with the Project pinned to another app:
-// an account-wide report must not pick the pin up as a row filter.
 func runFinance(t *testing.T, f reports.Family, b reportstest.Bucket, in Input) (string, *testkit.Fake, string, error) {
 	t.Helper()
 	fake := testkit.NewFake(b.Responder())
@@ -66,10 +61,6 @@ func fetches(fake *testkit.Fake) []string {
 	return out
 }
 
-// TestRun_sales_buyerLocationHiddenByDefault pins the whole JSON document of
-// a sales month read with no flag: the city, state and postcode are gone
-// from the columns and the rows, the country stays, and stderr says how
-// many columns were hidden and which flag shows them.
 func TestRun_sales_buyerLocationHiddenByDefault(t *testing.T) {
 	got, fake, stderr, err := runFinance(t, reports.Sales, financeBucket(t), Input{})
 	if err != nil {
@@ -142,7 +133,6 @@ func TestRun_earnings_packageFiltersRowsOnTheHeaderColumn(t *testing.T) {
 	if !strings.Contains(got, `"package": "com.example.app"`) {
 		t.Errorf("the identity should record the package filter:\n%s", got)
 	}
-	// Without --package, the pin does not filter: every app's rows come back.
 	got, _, _, err = runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09"})
 	if err != nil {
 		t.Fatalf("Run without --package: %v", err)
@@ -165,10 +155,6 @@ func TestRun_earnings_rangeMergesAndWarnsOnGaps(t *testing.T) {
 	}
 }
 
-// TestRun_earnings_packageFiltersEachMonthOnItsOwnColumn covers a range across
-// a rename of the package column: August names it Product id, September
-// Package Name. Each month is filtered on the column its own header declares,
-// so August's rows are not lost to the column September introduced.
 func TestRun_earnings_packageFiltersEachMonthOnItsOwnColumn(t *testing.T) {
 	b := financeBucket(t)
 	b.Objects["earnings/earnings_202609_1234567890123456789-1.zip"] = reportstest.Zip(t, "earnings_202609.csv", []byte(
@@ -189,9 +175,6 @@ func TestRun_earnings_packageFiltersEachMonthOnItsOwnColumn(t *testing.T) {
 	}
 }
 
-// TestRun_earnings_packageMatchingNoRowSaysSo covers a --package that keeps
-// none of the rows a report holds (a typo, an app with no sale): the empty
-// result is still exit 0, and a NOTE says how many rows were read.
 func TestRun_earnings_packageMatchingNoRowSaysSo(t *testing.T) {
 	got, _, stderr, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09", Package: "com.example.typo", IncludeBuyerLocation: true})
 	if err != nil {
@@ -203,7 +186,6 @@ func TestRun_earnings_packageMatchingNoRowSaysSo(t *testing.T) {
 	if want := "NOTE: 0 of 3 rows matched --package com.example.typo\n"; stderr != want {
 		t.Errorf("stderr = %q, want %q", stderr, want)
 	}
-	// An export with no row at all: nothing was dropped, so no note.
 	b := financeBucket(t)
 	b.Objects[earningsObject] = reportstest.Zip(t, "earnings_202609.csv", []byte("Description,Product id\n"))
 	_, _, stderr, err = runFinance(t, reports.Earnings, b, Input{Month: "2026-09", Package: "com.example.typo"})
@@ -212,9 +194,6 @@ func TestRun_earnings_packageMatchingNoRowSaysSo(t *testing.T) {
 	}
 }
 
-// TestRun_finance_plainCSVExportIsDecodedDirectly covers a finance export
-// named .csv: the name shape accepts it, so it is read as the CSV it is, not
-// refused as "not a ZIP archive". The extension picks the decoding.
 func TestRun_finance_plainCSVExportIsDecodedDirectly(t *testing.T) {
 	b := reportstest.Bucket{Objects: map[string][]byte{
 		"sales/salesreport_202609.csv": reportstest.UTF16LE(salesSep),
@@ -237,9 +216,6 @@ func TestRun_finance_packageWithoutPackageColumn(t *testing.T) {
 	}
 }
 
-// TestRun_finance_emptyExportWithPackageIsAnEmptyReport covers an export with
-// no header at all: there is no column to miss, so --package reads an empty
-// report (exit 0). Exit 2 stays for a header that names no package column.
 func TestRun_finance_emptyExportWithPackageIsAnEmptyReport(t *testing.T) {
 	b := financeBucket(t)
 	b.Objects[salesObject] = reportstest.Zip(t, "salesreport_202609.csv", nil)
@@ -308,17 +284,12 @@ func TestRun_finance_oversizedExportRefusedBeforeTheFetch(t *testing.T) {
 	}
 }
 
-// TestRun_earnings_budgetSpansTheRange covers the per-command budget end to
-// end: each month passes alone, the range does not, so the command fails
-// with exit 20 naming the bound and the way out, never with a partial report.
 func TestRun_earnings_budgetSpansTheRange(t *testing.T) {
 	alone, _, _, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09"})
 	if err != nil || alone == "" {
 		t.Fatalf("one month under the production budget: %v", err)
 	}
 	defer func(l reports.Limits) { limits = l }(limits)
-	// August is a header and a row of 6 cells, September a header and three
-	// rows of 13: 16 and 60 cells, a row counting as its cells plus two.
 	limits = reports.Limits{Bytes: 1 << 20, Cells: 70}
 	if _, _, _, err := runFinance(t, reports.Earnings, financeBucket(t), Input{Month: "2026-09"}); err != nil {
 		t.Fatalf("September alone (60 cells): %v", err)

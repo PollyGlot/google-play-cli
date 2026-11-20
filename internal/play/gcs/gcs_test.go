@@ -12,8 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// bucketFake serves canned 200 responses keyed by whether the path is a list
-// (…/o) or a media fetch (…/o/…).
 func bucketFake(listBody, getBody string) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if strings.Contains(c.Path, "/o/") {
@@ -25,8 +23,6 @@ func bucketFake(listBody, getBody string) *testkit.Fake {
 
 func client(r http.RoundTripper) *http.Client { return &http.Client{Transport: r} }
 
-// wire renders a call as METHOD host/escaped-path?query, the form the path and
-// escaping assertions read.
 func wire(c testkit.Call) string {
 	return c.Method + " " + c.Host + strings.TrimPrefix(c.URL, "https://"+c.Host)
 }
@@ -50,7 +46,6 @@ func TestListObjects_wirePathAndPrefix(t *testing.T) {
 }
 
 func TestListObjects_paginates(t *testing.T) {
-	// First page returns a token; the client must follow it, then stop.
 	r := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		q, _ := url.ParseQuery(c.Query)
 		if q.Get("pageToken") == "" {
@@ -80,7 +75,6 @@ func TestFetchObject_wirePathAltMedia(t *testing.T) {
 		t.Errorf("body = %q", got)
 	}
 	call := wire(r.Calls()[0])
-	// The whole object name is one percent-encoded path segment; alt=media set.
 	if !strings.Contains(call, "storage.googleapis.com/storage/v1/b/bkt/o/reviews%2Freviews_com.x_202606.csv") {
 		t.Errorf("fetch wire path wrong: %s", call)
 	}
@@ -131,8 +125,6 @@ func TestFetchObjectLimit_callerChosenCap(t *testing.T) {
 	}
 	_, err := FetchObjectLimit(context.Background(), client(r), "b", "o.csv", 9)
 	var apiErr *api.Error
-	// The message is the one `reviews history` has always printed: the
-	// caller-chosen cap changes no text (the reports name the cap themselves).
 	if !errors.As(err, &apiErr) || apiErr.Message != "response exceeds size limit" {
 		t.Fatalf("over the cap: err = %v, want the unchanged size-limit *api.Error", err)
 	}

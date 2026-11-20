@@ -11,9 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRun_nextPageTokenNote asserts a page carrying nextPageToken tells the
-// operator on stderr how to fetch the next one: a first page in table or
-// markdown would otherwise read as the whole list. The last page says nothing.
 func TestRun_nextPageTokenNote(t *testing.T) {
 	for _, c := range []struct {
 		body, want string

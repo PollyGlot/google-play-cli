@@ -23,9 +23,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// subsRT terminates the /token exchange and serves subscriptions.list pages,
-// recording every API call. status/body override the happy path for refusal
-// tests.
 type subsRT struct {
 	mu         sync.Mutex
 	calls      []string
@@ -81,9 +78,6 @@ func newRC(t *testing.T, rt *subsRT) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_mirrorsLiveCatalogToDir asserts pull follows pagination to
-// completion, writes one stripped file per subscription, removes stale catalog
-// files, and passes the merged envelope through as json: no Edit anywhere.
 func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "stale.json"), []byte(`{"productId":"stale"}`), 0o644); err != nil {
@@ -124,7 +118,6 @@ func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "stale.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("stale.json should have been removed, stat err = %v", err)
 	}
-	// ADR-0003: json is the merged ListSubscriptionsResponse envelope.
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
 		t.Fatalf("JSON: %v", err)
@@ -138,8 +131,6 @@ func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 	if len(envelope.Subscriptions) != 2 {
 		t.Errorf("merged envelope has %d subscriptions, want 2", len(envelope.Subscriptions))
 	}
-	// Both the merged envelope and the written file keep the API's & and <>
-	// literal (#622): neither may re-encode them as \u0026 or \u003c.
 	pro, err := os.ReadFile(filepath.Join(dir, "pro.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +142,6 @@ func TestRun_mirrorsLiveCatalogToDir(t *testing.T) {
 	}
 }
 
-// TestRun_humanSummary asserts the table view names the files written.
 func TestRun_humanSummary(t *testing.T) {
 	dir := t.TempDir()
 	rt := &subsRT{}
@@ -172,9 +162,6 @@ func TestRun_humanSummary(t *testing.T) {
 	}
 }
 
-// TestRun_embedsOffersUnderBasePlans asserts pull nests each live offer under
-// its base plan's offers array in the file, with the packageName echo stripped
-// , while --output json stays the plain subscriptions envelope.
 func TestRun_embedsOffersUnderBasePlans(t *testing.T) {
 	dir := t.TempDir()
 	rt := &subsRT{offersBody: `{"subscriptionOffers":[{"packageName":"com.example.app","productId":"premium","basePlanId":"monthly","offerId":"intro","state":"ACTIVE","phases":[{"duration":"P1W"}]}]}`}
@@ -216,9 +203,6 @@ func TestRun_embedsOffersUnderBasePlans(t *testing.T) {
 	}
 }
 
-// TestRun_emptyLiveNonEmptyLocal_refuses asserts an unexpectedly-empty live
-// listing never erases a populated catalog directory (mis-set --package /
-// scope loss): pull refuses (exit 2) and the files survive.
 func TestRun_emptyLiveNonEmptyLocal_refuses(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "premium.json"), []byte(`{"productId":"premium"}`), 0o644); err != nil {
@@ -236,8 +220,6 @@ func TestRun_emptyLiveNonEmptyLocal_refuses(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2_noNetwork asserts no package (flag or pin) is
-// CLI misuse before any HTTP.
 func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {
 	rt := &subsRT{}
 	rc := newRC(t, rt)
@@ -248,8 +230,6 @@ func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_403_hintsAtMonetizationAccess asserts a forbidden list maps to exit
-// 11 with the monetization-access hint.
 func TestRun_403_hintsAtMonetizationAccess(t *testing.T) {
 	rt := &subsRT{status: 403, body: `{"error":{"message":"The caller does not have permission"}}`}
 	rc := newRC(t, rt)
@@ -274,9 +254,6 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 }
 
-// checkoutLinkedTo builds a checkout whose monetization/subscriptions is a
-// symlink to target, as a cloned repo can commit it, and makes it the working
-// directory.
 func checkoutLinkedTo(t *testing.T, target string) {
 	t.Helper()
 	repo := t.TempDir()
@@ -289,9 +266,6 @@ func checkoutLinkedTo(t *testing.T, target string) {
 	t.Chdir(repo)
 }
 
-// victimDir stands for an operator directory outside the checkout holding
-// *.json files that are not catalog files (~/.gplay/config.json, a file
-// keystore's <account>.json).
 func victimDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -303,10 +277,6 @@ func victimDir(t *testing.T) string {
 	return dir
 }
 
-// TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses covers a repo that
-// commits its default catalog directory as a symlink out of the checkout: the
-// mirror sweep would delete every *.json there, so pull refuses before any
-// HTTP and leaves the target untouched.
 func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
 	victim := victimDir(t)
 	checkoutLinkedTo(t, victim)
@@ -330,8 +300,6 @@ func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
 	}
 }
 
-// TestRun_explicitDirThroughASymlink_isFollowed keeps --dir the operator's
-// choice: the same symlinked path, named on purpose, is written through.
 func TestRun_explicitDirThroughASymlink_isFollowed(t *testing.T) {
 	target := t.TempDir()
 	checkoutLinkedTo(t, target)
@@ -344,8 +312,6 @@ func TestRun_explicitDirThroughASymlink_isFollowed(t *testing.T) {
 	}
 }
 
-// TestRun_defaultDirInTheCheckout_isWritten covers the ordinary case: no
-// --dir, a plain directory in the checkout, created on first pull.
 func TestRun_defaultDirInTheCheckout_isWritten(t *testing.T) {
 	t.Chdir(t.TempDir())
 

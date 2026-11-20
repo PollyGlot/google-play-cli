@@ -65,8 +65,6 @@ func wantExit(t *testing.T, err error, code int) {
 	}
 }
 
-// TestRun_defaults_allTypes_30DaysBack asserts the bare invocation lists in-app
-// products and subscriptions (type=1) from 30 days back.
 func TestRun_defaults_allTypes_30DaysBack(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc, _ := newRC(t, fake)
@@ -93,8 +91,6 @@ func TestRun_defaults_allTypes_30DaysBack(t *testing.T) {
 	}
 }
 
-// TestRun_typeInapp_partialRefunds asserts --type inapp sends type=0 and
-// --include-partial-refunds the API's partial-refund switch.
 func TestRun_typeInapp_partialRefunds(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc, _ := newRC(t, fake)
@@ -110,8 +106,6 @@ func TestRun_typeInapp_partialRefunds(t *testing.T) {
 	}
 }
 
-// TestRun_usageErrors_noRequest asserts every malformed input is refused with
-// exit 2 before anything reaches the API, the 30-day lookback first among them.
 func TestRun_usageErrors_noRequest(t *testing.T) {
 	cases := map[string]voidedcmd.Input{
 		"since over 30 days": {Package: "com.example.app", Since: "31d", Type: "all"},
@@ -133,8 +127,6 @@ func TestRun_usageErrors_noRequest(t *testing.T) {
 	}
 }
 
-// TestRun_limitWarnsOnStderr asserts a capped list keeps the cap and says so
-// on stderr.
 func TestRun_limitWarnsOnStderr(t *testing.T) {
 	fake := testkit.NewFake(testkit.Sequence(page1, page2))
 	rc, stderr := newRC(t, fake)
@@ -154,8 +146,6 @@ func TestRun_limitWarnsOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_jsonIsTheMergedAPIEnvelope asserts --output json carries every page's
-// items under the API's voidedPurchases key.
 func TestRun_jsonIsTheMergedAPIEnvelope(t *testing.T) {
 	fake := testkit.NewFake(testkit.Sequence(page1, page2))
 	rc, _ := newRC(t, fake)
@@ -179,8 +169,6 @@ func TestRun_jsonIsTheMergedAPIEnvelope(t *testing.T) {
 	}
 }
 
-// TestRun_tableNamesSourceAndReason asserts the human view decodes the API's
-// numeric source/reason codes and the epoch-millis times.
 func TestRun_tableNamesSourceAndReason(t *testing.T) {
 	fake := testkit.NewFake(testkit.Sequence(page1, page2))
 	rc, _ := newRC(t, fake)
@@ -193,7 +181,6 @@ func TestRun_tableNamesSourceAndReason(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	got := buf.String()
-	// 1700086400000 ms = 2023-11-15T22:13:20Z; source 2 = Google, reason 7 = chargeback.
 	for _, want := range []string{"ORDER_ID", "VOIDED_SOURCE", "VOIDED_REASON", "2023-11-15T22:13:20Z", "google", "chargeback", "user", "remorse", "developer", "other"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("table missing %q:\n%s", want, got)
@@ -201,8 +188,6 @@ func TestRun_tableNamesSourceAndReason(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesFinancialPermission asserts a refusal names the missing
-// permission and keeps the authz exit code.
 func TestRun_403_namesFinancialPermission(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusForbidden, `{"error":{"message":"The caller does not have permission"}}`))
 	rc, _ := newRC(t, fake)

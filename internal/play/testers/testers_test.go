@@ -1,8 +1,3 @@
-// Package testers_test exercises the play-layer testers operations against
-// a fake transport. Get reads the authorized audience of a track
-// (edits.testers.get); Update replaces it wholesale (edits.testers.update,
-// a PUT). Both run inside an already-open Edit and return the parsed
-// resource plus the raw body for the ADR-0003 JSON pass-through.
 package testers_test
 
 import (
@@ -17,13 +12,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fakeWith answers every request with status and body.
 func fakeWith(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// onlyCall returns the single request the Fake served, failing the test on
-// any other count.
 func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := f.Calls()
@@ -33,9 +25,6 @@ func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return calls[0]
 }
 
-// TestGet_parsesGoogleGroups_andReturnsRawBody asserts Get GETs
-// edits.testers.get, parses the {"googleGroups":[...]} resource, and hands
-// back the raw body verbatim for the JSON pass-through.
 func TestGet_parsesGoogleGroups_andReturnsRawBody(t *testing.T) {
 	raw := `{"googleGroups":["qa@googlegroups.com","beta@googlegroups.com"]}`
 	transport := fakeWith(200, raw)
@@ -59,9 +48,6 @@ func TestGet_parsesGoogleGroups_andReturnsRawBody(t *testing.T) {
 	}
 }
 
-// TestGet_apiError_isWrappedWithStatus asserts a non-2xx testers.get
-// response surfaces as an *api.Error carrying the HTTP status so the
-// gplay exit-code taxonomy maps it (404 -> 30, ...).
 func TestGet_apiError_isWrappedWithStatus(t *testing.T) {
 	transport := fakeWith(404, `{"error":{"code":404,"message":"Track not found"}}`)
 	hc := &http.Client{Transport: transport}
@@ -79,9 +65,6 @@ func TestGet_apiError_isWrappedWithStatus(t *testing.T) {
 	}
 }
 
-// TestUpdate_putsFullReplacement_andParsesResponse asserts Update PUTs
-// edits.testers.update, sends the full {"googleGroups":[...]} replacement
-// body, parses the response, and hands back the raw body verbatim.
 func TestUpdate_putsFullReplacement_andParsesResponse(t *testing.T) {
 	resp := `{"googleGroups":["a@googlegroups.com","b@googlegroups.com"]}`
 	transport := fakeWith(200, resp)
@@ -110,10 +93,6 @@ func TestUpdate_putsFullReplacement_andParsesResponse(t *testing.T) {
 	}
 }
 
-// TestUpdate_clear_putsEmptyArray asserts that Update with a nil group
-// list sends an explicit empty array ("googleGroups":[]): the --clear
-// semantics, NOT a null, so the API clears the audience rather than
-// rejecting a malformed body.
 func TestUpdate_clear_putsEmptyArray(t *testing.T) {
 	transport := fakeWith(200, `{"googleGroups":[]}`)
 	hc := &http.Client{Transport: transport}
@@ -131,9 +110,6 @@ func TestUpdate_clear_putsEmptyArray(t *testing.T) {
 	}
 }
 
-// TestUpdate_apiError_isWrappedWithStatus asserts a non-2xx
-// testers.update response surfaces as an *api.Error carrying the HTTP
-// status so the gplay exit-code taxonomy maps it (403 -> 11, ...).
 func TestUpdate_apiError_isWrappedWithStatus(t *testing.T) {
 	transport := fakeWith(403, `{"error":{"code":403,"message":"The caller does not have permission"}}`)
 	hc := &http.Client{Transport: transport}

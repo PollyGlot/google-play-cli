@@ -1,10 +1,3 @@
-// Package list_test exercises `gplay tracks list` at the kernel level: a
-// RunContext built by hand, a testkit Fake injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// `releases list` harness, but routes edits.tracks.list (the cross-track
-// read) instead of tracks.get. The transport FAILS on any PUT or :commit
-// : a read-only listing opens, reads, and discards the Edit, never
-// writes or commits it.
 package list_test
 
 import (
@@ -26,7 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// rowByTrack indexes BuildRows output by track name for assertion.
 func rowByTrack(rows []list.TrackRow) map[string]list.TrackRow {
 	m := make(map[string]list.TrackRow, len(rows))
 	for _, r := range rows {
@@ -35,16 +27,11 @@ func rowByTrack(rows []list.TrackRow) map[string]list.TrackRow {
 	return m
 }
 
-// listAPI is the Play API the read-only tracks listing sees, served by a
-// testkit Fake: edits.insert, tracks.list (GET .../tracks), edits.delete. It
-// deliberately has NO PUT or :commit route: reaching one means the command
-// tried to mutate or commit, which a read-only list must never do, so the
-// test fails.
 type listAPI struct {
 	editID     string
 	tracksResp string
-	insertCode int // 0 -> 200
-	tracksCode int // 0 -> 200
+	insertCode int
+	tracksCode int
 	insertBody string
 
 	fake *testkit.Fake
@@ -70,9 +57,6 @@ func (a *listAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *listAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -110,10 +94,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_listsEveryTrack_happyPath is the tracer bullet: /token precedes
-// edits.insert, then tracks.list (GET .../tracks, NOT /tracks/<name>),
-// then the Edit is DISCARDED (never committed). --output json is the raw
-// edits.tracks.list payload (ADR-0003 pass-through).
 func TestRun_listsEveryTrack_happyPath(t *testing.T) {
 	raw := `{"tracks":[` +
 		`{"track":"production","releases":[{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0}]},` +
@@ -157,13 +137,7 @@ func TestRun_listsEveryTrack_happyPath(t *testing.T) {
 	}
 }
 
-// TestBuildRows_injectsAbsentStandardTracks_andMarksKind asserts the
-// cross-track synthesis: the four standard tracks always appear (even
-// when the API omits them), in canonical order, marked kind=standard;
-// custom tracks the API returns appear after them marked kind=custom.
 func TestBuildRows_injectsAbsentStandardTracks_andMarksKind(t *testing.T) {
-	// API returns only production and a custom closed track: alpha,
-	// beta, internal were never configured.
 	api := []tracks.Track{
 		{Track: "production", Releases: []tracks.Release{{Name: "142", Status: "completed", VersionCodes: []string{"142"}, UserFraction: 1.0}}},
 		{Track: "qa-closed", Releases: []tracks.Release{{Name: "99", Status: "completed", VersionCodes: []string{"99"}}}},
@@ -185,7 +159,6 @@ func TestBuildRows_injectsAbsentStandardTracks_andMarksKind(t *testing.T) {
 		t.Errorf("custom track qa-closed = %+v (present=%v), want kind=custom", r, ok)
 	}
 
-	// Standard tracks come first, in canonical order, then custom.
 	wantOrder := []string{"internal", "alpha", "beta", "production", "qa-closed"}
 	if len(rows) != len(wantOrder) {
 		t.Fatalf("got %d rows (%v), want %d", len(rows), trackNames(rows), len(wantOrder))
@@ -205,10 +178,6 @@ func trackNames(rows []list.TrackRow) []string {
 	return names
 }
 
-// TestBuildRows_topRelease_isHighestVersionCode asserts that when a track
-// carries several coexisting releases the row summarizes the one with the
-// highest version code (the newest build on the track) including a
-// draft when it is the highest (status disambiguates it for the reader).
 func TestBuildRows_topRelease_isHighestVersionCode(t *testing.T) {
 	api := []tracks.Track{
 		{Track: "production", Releases: []tracks.Release{
@@ -233,9 +202,6 @@ func TestBuildRows_topRelease_isHighestVersionCode(t *testing.T) {
 	}
 }
 
-// TestBuildRows_topRelease_comparesMaxVersionCodePerRelease asserts that a
-// release bundling several version codes is ranked by its highest code,
-// so a [200,201] release outranks a [150] one.
 func TestBuildRows_topRelease_comparesMaxVersionCodePerRelease(t *testing.T) {
 	api := []tracks.Track{
 		{Track: "beta", Releases: []tracks.Release{
@@ -249,8 +215,6 @@ func TestBuildRows_topRelease_comparesMaxVersionCodePerRelease(t *testing.T) {
 	}
 }
 
-// TestBuildRows_neverUsedStandardTrack_hasNoRelease asserts a standard
-// track the API omitted is present but carries no release summary.
 func TestBuildRows_neverUsedStandardTrack_hasNoRelease(t *testing.T) {
 	row := rowByTrack(list.BuildRows(nil))["alpha"]
 	if row.Track != "alpha" {
@@ -264,8 +228,6 @@ func TestBuildRows_neverUsedStandardTrack_hasNoRelease(t *testing.T) {
 	}
 }
 
-// TestDefaultColumns_documentedOrder pins the default table column order
-// promised in --help and the issue's acceptance criteria.
 func TestDefaultColumns_documentedOrder(t *testing.T) {
 	want := []string{"track", "kind", "release", "status", "userFraction", "versionCodes"}
 	cols, err := list.ResolveColumns("")
@@ -281,10 +243,6 @@ func TestDefaultColumns_documentedOrder(t *testing.T) {
 	}
 }
 
-// TestRenderTable_defaultColumns_summarizesEveryTrack asserts the table
-// view renders one row per track (standard + custom), shows the kind, and
-// formats userFraction as a percent for an active rollout while leaving
-// it blank for completed and draft releases.
 func TestRenderTable_defaultColumns_summarizesEveryTrack(t *testing.T) {
 	api := []tracks.Track{
 		{Track: "production", Releases: []tracks.Release{{Name: "143", Status: "inProgress", VersionCodes: []string{"143"}, UserFraction: 0.1}}},
@@ -310,7 +268,6 @@ func TestRenderTable_defaultColumns_summarizesEveryTrack(t *testing.T) {
 			t.Errorf("table missing %q:\n%s", want, out)
 		}
 	}
-	// inProgress 0.1 -> "10%"; completed 1.0 and draft -> blank.
 	if !strings.Contains(out, "10%") {
 		t.Errorf("table missing inProgress userFraction 10%%:\n%s", out)
 	}
@@ -319,9 +276,6 @@ func TestRenderTable_defaultColumns_summarizesEveryTrack(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_isGFMTable_respectsColumnsOverride asserts the
-// markdown view is a GFM table (header + `---` separator) and that
-// --columns restricts the rendered columns.
 func TestRenderMarkdown_isGFMTable_respectsColumnsOverride(t *testing.T) {
 	api := []tracks.Track{
 		{Track: "production", Releases: []tracks.Release{{Name: "143", Status: "inProgress", VersionCodes: []string{"143"}, UserFraction: 0.1}}},
@@ -340,14 +294,11 @@ func TestRenderMarkdown_isGFMTable_respectsColumnsOverride(t *testing.T) {
 	if !strings.Contains(out, "production") || !strings.Contains(strings.ToUpper(out), "TRACK") {
 		t.Errorf("markdown output = %q, want track column", out)
 	}
-	// The override dropped release/status/versionCodes columns.
 	if strings.Contains(strings.ToLower(out), "version") || strings.Contains(strings.ToLower(out), "status") {
 		t.Errorf("markdown output = %q, want only track,kind columns under override", out)
 	}
 }
 
-// TestRun_unknownColumn_exit2 asserts an unknown --columns value is a CLI
-// misuse caught before any HTTP call.
 func TestRun_unknownColumn_exit2(t *testing.T) {
 	api := &listAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -360,9 +311,6 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_unknownPackage_exit30WithHint asserts that an unknown package
-// (edits.insert 404) maps to exit 30 with a hint pointing the operator at
-// `gplay apps list`.
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	api := &listAPI{
 		insertCode: 404,
@@ -377,7 +325,6 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	if !strings.Contains(err.Error(), "apps list") {
 		t.Errorf("error %q, want a hint mentioning `gplay apps list`", err.Error())
 	}
-	// edits.insert failed, so no Edit was opened: nothing to discard.
 	for _, c := range api.calls() {
 		if strings.HasPrefix(c, "DELETE ") {
 			t.Errorf("unexpected DELETE after failed insert; calls = %v", api.calls())
@@ -385,8 +332,6 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
-// invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	api := &listAPI{
 		insertCode: 403,
@@ -403,9 +348,6 @@ func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_tracksListError_discardsEditAndPropagates asserts the read-only
-// Edit is discarded even when the listing itself fails after the Edit was
-// opened, and the underlying status drives the exit code (5xx -> 40).
 func TestRun_tracksListError_discardsEditAndPropagates(t *testing.T) {
 	api := &listAPI{
 		editID:     "edit-err",
@@ -429,8 +371,6 @@ func TestRun_tracksListError_discardsEditAndPropagates(t *testing.T) {
 	}
 }
 
-// TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
 	api := &listAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -444,8 +384,6 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts a missing package (no --package and
-// no pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	api := &listAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -457,9 +395,3 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 		t.Errorf("expected zero HTTP calls before usage error, saw: %v", api.calls())
 	}
 }
-
-// The "unknown column key must not panic" guard these list commands used to
-// carry is now structurally impossible: Payload.Columns is []output.Column,
-// not bare string keys, so a Payload can only hold resolved columns with a
-// non-nil Value. The exit-2 unknown-column path is covered by the command's
-// --columns tests and by internal/output's ColumnSet.Resolve test.

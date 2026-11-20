@@ -1,22 +1,3 @@
-// Package imagetree is the filesystem codec for the Store-image side of the
-// Metadata tree: the pure, I/O-only translation between an on-disk
-// `<dir>/<locale>/images/...` layout and the in-memory Tree. It is the image
-// sibling of internal/metadata/tree: `images pull` writes a Tree here,
-// `images apply`/`validate` read one, and it speaks only the filesystem: no
-// HTTP, no auth, no knowledge of the Play API beyond the image Type set.
-//
-// Disk layout (mirrors `fastlane supply`, minus the `android/` segment):
-//
-//	<dir>/<locale>/images/<type>.<ext>          (singular: icon, featureGraphic, tvBanner)
-//	<dir>/<locale>/images/<type>/1.<ext>…N.<ext> (gallery: phone/seven/ten-inch/tv/wear screenshots)
-//
-// The codec owns the ADR-0013 "missing == empty" rule on disk: an absent or
-// empty slot is simply not represented in the Tree (unmanaged → "leave Play
-// untouched"). Read is lenient: a stray empty directory, a README, or an
-// unrecognized file is benign, never an error and never a phantom slot,
-// because git cannot preserve an "empty directory = delete" signal anyway.
-// The text codec (internal/metadata/tree) ignores nested directories, so the
-// text `.txt` files and this `images/` subtree cohabit under one locale dir.
 package imagetree
 
 import (
@@ -32,23 +13,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// Tree is the on-disk Store-image tree in memory: locale → (image type →
-// ordered image byte blobs). A singular slot holds exactly one blob; a gallery
-// holds its blobs in display order (the on-disk filename sort, ADR-0013). Only
-// non-empty slots are present: an absent/empty slot is unmanaged and has no
-// entry (missing == empty).
 type Tree map[string]map[images.Type][][]byte
 
-// Staged is a Tree whose images live in files rather than in memory: locale →
-// (image type → ordered paths, each holding one image's bytes). WriteStaged
-// copies each file into place, so a caller staging large downloads on disk
-// never holds the whole tree in memory. Scan returns the on-disk tree in the
-// same shape, so a reader opens one image at a time. The files are only read,
-// never moved or removed.
 type Staged map[string]map[images.Type][]string
 
-// blob is one image to write: its leading bytes for the extension sniff, and
-// its content copied into the destination file.
 type blob interface {
 	head() ([]byte, error)
 	copyTo(w io.Writer) error
@@ -88,7 +56,6 @@ func (p fileBlob) copyTo(w io.Writer) error {
 	return err
 }
 
-// blobExt sniffs b's extension (Ext) from its leading bytes.
 func blobExt(b blob) (string, error) {
 	h, err := b.head()
 	if err != nil {
@@ -102,15 +69,8 @@ const (
 	filePerm os.FileMode = 0o644
 )
 
-// imagesSubdir is the per-locale directory the image codec owns, kept distinct
-// from the locale's text `.txt` files.
 const imagesSubdir = "images"
 
-// Ext returns the file extension ("png" or "jpg") sniffed from an image's
-// leading magic bytes, or "" if the bytes are neither PNG nor JPEG. The
-// extension is derived from CONTENT, never from a response Content-Type header
-// (ADR-0013): Play returns no original filename, so the bytes are the only
-// authority.
 func Ext(data []byte) string {
 	switch {
 	case len(data) >= 8 && string(data[:8]) == "\x89PNG\r\n\x1a\n":
@@ -122,25 +82,8 @@ func Ext(data []byte) string {
 	}
 }
 
-// recognizedExts are the on-disk extensions Read accepts as an image file.
-// Write only ever emits png/jpg (Ext sniffs those two), but a hand-authored
-// tree may use the .jpeg spelling, so Read recognizes it too.
 var recognizedExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true}
 
-// Write materializes tr under dir. Singular slots become `<type>.<ext>`;
-// gallery slots become a `<type>/` directory of `1.<ext>`…`N.<ext>` in slice
-// order. The extension is sniffed per blob (Ext); a blob that is neither PNG
-// nor JPEG is a hard error (the codec cannot synthesize a filename for it) so
-// a corrupt download surfaces loudly rather than landing as `.bin`.
-//
-// Write is idempotent PER MANAGED SLOT: writing a slot that shrank (a gallery
-// from 3 images to 2) or whose singular extension changed (jpg → png) removes
-// the stale recognized image files so the slot resolves to exactly what tr
-// holds, which keeps a re-`pull` a faithful mirror and `pull → apply` a no-op.
-// It is NOT a full RemoveAll: an unrecognized file (a hand-added note) and a
-// slot/locale entirely absent from tr are left untouched, matching the
-// additive stance of the text codec (removing an online-gone slot is apply's
-// job, not pull's).
 func Write(dir string, tr Tree) error {
 	bt := make(map[string]map[images.Type][]blob, len(tr))
 	for loc, slots := range tr {
@@ -156,9 +99,6 @@ func Write(dir string, tr Tree) error {
 	return write(dir, bt)
 }
 
-// WriteStaged is Write for a Staged tree: the same layout, idempotency and
-// containment rules, with each image's bytes copied from its staged file
-// instead of held in memory.
 func WriteStaged(dir string, st Staged) error {
 	bt := make(map[string]map[images.Type][]blob, len(st))
 	for loc, slots := range st {
@@ -175,16 +115,6 @@ func WriteStaged(dir string, st Staged) error {
 }
 
 func write(dir string, tr map[string]map[images.Type][]blob) error {
-	// The locale keys of tr come from the Play API on the pull path: a string
-	// gplay did not author, joined straight into a filesystem path. Establish
-	// the containment root up front (creating dir, since pull writes into a
-	// tree that may not exist yet) and check every derived path against it,
-	// so a hostile or merely malformed locale cannot write outside dir
-	// (PRD #459 / slice #461).
-	//
-	// An empty Tree writes nothing and must therefore create nothing: returning
-	// early keeps `pull` on an app with no images from leaving an empty
-	// directory behind, which is what it did before containment was added.
 	if len(tr) == 0 {
 		return nil
 	}
@@ -196,8 +126,6 @@ func write(dir string, tr map[string]map[images.Type][]blob) error {
 		return err
 	}
 	for _, locale := range sortedLocales(tr) {
-		// A locale is one path component and nothing else: reject "..", a
-		// separator, or an absolute path before it is ever joined.
 		if err := pathguard.Segment("locale", locale); err != nil {
 			return err
 		}
@@ -214,7 +142,6 @@ func write(dir string, tr map[string]map[images.Type][]blob) error {
 				}
 				continue
 			}
-			// Singular: write the first (only) blob as <type>.<ext>.
 			if err := writeSingular(root, imgDir, ty, seq[0]); err != nil {
 				return err
 			}
@@ -241,9 +168,6 @@ func writeSingular(root, imgDir string, ty images.Type, data blob) error {
 	if err := writeContained(root, filepath.Join(imgDir, name), data); err != nil {
 		return err
 	}
-	// Idempotency: drop a sibling <type>.<otherext> left by a previous write
-	// (e.g. a re-pull where the live image's format changed jpg → png), so the
-	// singular slot resolves to exactly one file and Read stays deterministic.
 	for ext := range recognizedExts {
 		stale := string(ty) + ext
 		if stale == name {
@@ -272,24 +196,15 @@ func writeGallery(root, galleryDir string, ty images.Type, seq []blob) error {
 		if ext == "" {
 			return fmt.Errorf("imagetree: %s[%d]: image bytes are neither PNG nor JPEG", ty, i)
 		}
-		// 1-based, no zero-padding: Play caps galleries at 8 so a single
-		// digit always sorts correctly (ADR-0013).
 		name := fmt.Sprintf("%d.%s", i+1, ext)
 		if err := writeContained(root, filepath.Join(galleryDir, name), data); err != nil {
 			return err
 		}
 		written[name] = true
 	}
-	// Idempotency: prune recognized image files left from a previous, LARGER
-	// write (e.g. a re-pull where the live gallery shrank from 3 to 2), so a
-	// stale N+1.<ext> is not read back as a phantom screenshot and re-uploaded
-	// by apply. Only recognized image files are removed: a hand-added note
-	// stays put (this is not a destructive RemoveAll of the slot directory).
 	return pruneStaleGallery(root, galleryDir, written)
 }
 
-// pruneStaleGallery removes the recognized image files in galleryDir that are
-// not in keep (the set just written), leaving any unrecognized file untouched.
 func pruneStaleGallery(root, galleryDir string, keep map[string]bool) error {
 	entries, err := os.ReadDir(galleryDir)
 	if err != nil {
@@ -300,8 +215,6 @@ func pruneStaleGallery(root, galleryDir string, keep map[string]bool) error {
 			continue
 		}
 		if _, ext := splitExt(e.Name()); recognizedExts[ext] {
-			// This branch DELETES, so containment matters most here: a symlink
-			// named 2.png must not turn a prune into a remove outside the tree.
 			victim, err := pathguard.Contain(root, filepath.Join(galleryDir, e.Name()))
 			if err != nil {
 				return err
@@ -314,9 +227,6 @@ func pruneStaleGallery(root, galleryDir string, keep map[string]bool) error {
 	return nil
 }
 
-// Read is Scan with every image loaded into memory, for a tree known to be
-// small (a test, a fixture). A command reading the operator's tree uses Scan:
-// that tree has no size bound.
 func Read(dir string) (Tree, error) {
 	st, err := Scan(dir)
 	if err != nil {
@@ -338,26 +248,12 @@ func Read(dir string) (Tree, error) {
 	return tr, nil
 }
 
-// Scan finds the Store-image tree rooted at dir without reading any image. It
-// scans `<dir>/<locale>/images/` for each first-level locale directory: a
-// recognized image file whose stem names a singular type is a singular slot; a
-// sub-directory whose name is a gallery type is a gallery slot (its image
-// files in filename-sorted display order). Everything else (a README, an
-// unknown extension, a stray empty directory, a non-locale dir) is ignored. An
-// absent images/ subtree yields an empty (non-nil) tree, not an error. Every
-// path returned has passed the containment check, so the caller opens it as
-// is, one image at a time.
 func Scan(dir string) (Staged, error) {
 	st := make(Staged)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	// Containment root, resolved once for the whole walk (PRD #459 / slice
-	// #461). Every locale, gallery and file name below comes off the disk, and
-	// any of them can be a symlink out of the tree: without this, an
-	// `en-US/images/icon.png` symlinked at a private file would be uploaded to
-	// a public store listing under the operator's own credentials.
 	root, err := pathguard.Root(dir)
 	if err != nil {
 		return nil, err
@@ -378,15 +274,7 @@ func Scan(dir string) (Staged, error) {
 	return st, nil
 }
 
-// scanLocale scans one locale's images/ directory into a slot map of paths. A
-// missing images/ dir yields an empty map (the locale has only text, or
-// nothing). Only non-empty slots are returned.
 func scanLocale(root, imgDir string) (map[images.Type][]string, error) {
-	// The read side uses ContainUserPath throughout: every name below was found
-	// by walking the operator's own tree, so `en-US/images` symlinked at a
-	// shared asset directory is a layout they can opt into
-	// (GPLAY_ALLOW_EXTERNAL_SYMLINKS). The write side above stays strict: its
-	// locales come from the API.
 	if _, err := pathguard.ContainUserPath(root, imgDir); err != nil {
 		return nil, err
 	}
@@ -402,7 +290,7 @@ func scanLocale(root, imgDir string) (map[images.Type][]string, error) {
 		if e.IsDir() {
 			ty, ok := images.ParseType(e.Name())
 			if !ok || !ty.Gallery() {
-				continue // stray dir, or a singular type named as a dir: ignore
+				continue
 			}
 			seq, err := scanGallery(root, filepath.Join(imgDir, e.Name()))
 			if err != nil {
@@ -413,15 +301,13 @@ func scanLocale(root, imgDir string) (map[images.Type][]string, error) {
 			}
 			continue
 		}
-		// A file: a singular slot iff its stem is a singular type and its
-		// extension is a recognized image extension.
 		stem, ext := splitExt(e.Name())
 		if !recognizedExts[ext] {
 			continue
 		}
 		ty, ok := images.ParseType(stem)
 		if !ok || ty.Gallery() {
-			continue // unknown stem, or a gallery type as a flat file: ignore
+			continue
 		}
 		p, err := contained(root, filepath.Join(imgDir, e.Name()))
 		if err != nil {
@@ -432,13 +318,6 @@ func scanLocale(root, imgDir string) (map[images.Type][]string, error) {
 	return slots, nil
 }
 
-// Retired returns the image files under dir that name a slot Google removed
-// from AppImageType (images.Retired), joined onto dir, in sorted order:
-// `<dir>/en-US/images/promoGraphic.png`. Read skips them like any other
-// unrecognized file, so nothing would otherwise tell the operator that a file
-// carried over from a fastlane supply tree is no longer managed; the commands
-// that read a tree warn with this list (RetiredMessage). An absent dir yields
-// none.
 func Retired(dir string) ([]string, error) {
 	locales, err := os.ReadDir(dir)
 	if err != nil {
@@ -476,21 +355,10 @@ func Retired(dir string) ([]string, error) {
 	return out, nil
 }
 
-// RetiredMessage is the warning a command prints for one Retired path.
 func RetiredMessage(path string) string {
 	return path + ": not an image type Play accepts any more (Google removed it from the API's AppImageType), so gplay ignores it; delete the file"
 }
 
-// writeContained writes data to p with the containment check in front of it,
-// the write-side mirror of readContained: containing the directory is not
-// enough, because writing follows a symlinked LEAF and an image file pre-placed
-// as a link would have its target overwritten by `images pull`.
-//
-// The bytes go to a temporary sibling first and are renamed over p only once
-// the copy succeeded, so a copy that fails partway (a staged file that cannot
-// be read back) leaves the existing image intact rather than truncated. The
-// temporary name ends in neither .png nor .jpg, so Read and the gallery prune
-// never mistake a leftover for an image.
 func writeContained(root, p string, data blob) error {
 	target, err := pathguard.ContainWrite(root, p)
 	if err != nil {
@@ -518,8 +386,6 @@ func writeContained(root, p string, data blob) error {
 	return nil
 }
 
-// contained returns p once it has been proved to live inside root, so no image
-// file a caller opens from a Scan escapes the tree.
 func contained(root, p string) (string, error) {
 	if _, err := pathguard.ContainUserPath(root, p); err != nil {
 		return "", err
@@ -527,13 +393,6 @@ func contained(root, p string) (string, error) {
 	return p, nil
 }
 
-// Open opens p, a path Scan(dir) returned, and proves that the file it opened
-// is still inside dir. Scan's check describes the tree at scan time; a file a
-// caller opens later (to hash it, to upload it) can have been swapped for a
-// symlink out of the tree since. So containment is checked again AFTER the
-// open, and the opened file must be the one the contained name designates
-// (os.SameFile): a link swapped between the check and the open is refused
-// rather than read.
 func Open(dir, p string) (*os.File, error) {
 	root, err := pathguard.Root(dir)
 	if err != nil {
@@ -568,8 +427,6 @@ func sameContainedFile(root, p string, f *os.File) error {
 	return nil
 }
 
-// scanGallery lists a gallery directory's recognized image files in
-// filename-sorted (display) order.
 func scanGallery(root, galleryDir string) ([]string, error) {
 	if _, err := pathguard.ContainUserPath(root, galleryDir); err != nil {
 		return nil, err
@@ -587,7 +444,7 @@ func scanGallery(root, galleryDir string) ([]string, error) {
 			names = append(names, e.Name())
 		}
 	}
-	sort.Strings(names) // filename sort == display order (ADR-0013)
+	sort.Strings(names)
 	seq := make([]string, 0, len(names))
 	for _, name := range names {
 		p, err := contained(root, filepath.Join(galleryDir, name))
@@ -599,16 +456,12 @@ func scanGallery(root, galleryDir string) ([]string, error) {
 	return seq, nil
 }
 
-// splitExt splits a filename into its stem and lower-cased extension
-// (including the dot). "icon.PNG" → ("icon", ".png").
 func splitExt(name string) (stem, ext string) {
 	ext = filepath.Ext(name)
 	stem = name[:len(name)-len(ext)]
 	return stem, toLower(ext)
 }
 
-// toLower lowercases an ASCII extension without pulling in strings just for
-// this (the codec stays dependency-light).
 func toLower(s string) string {
 	b := []byte(s)
 	for i, c := range b {
@@ -619,8 +472,6 @@ func toLower(s string) string {
 	return string(b)
 }
 
-// sortedLocales returns tr's locale keys in lexical order for deterministic
-// Write output.
 func sortedLocales[V any](tr map[string]V) []string {
 	out := make([]string, 0, len(tr))
 	for loc := range tr {

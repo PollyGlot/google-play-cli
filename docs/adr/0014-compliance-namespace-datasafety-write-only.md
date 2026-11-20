@@ -63,6 +63,9 @@ four counts, and the four are API facts, not preferences:
    whether Google accepts the declaration. `set` runs `validate`
    implicitly before posting. `set --dry-run` is the full rehearsal minus
    the POST (validate + resolve account/package + report the target).
+   A leading UTF-8 byte-order mark, which spreadsheet tools commonly add
+   to an exported CSV, is repaired (stripped) rather than refused, and the
+   payload `set` posts never carries one.
 
 ## Consequences
 

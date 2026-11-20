@@ -116,6 +116,10 @@ structured output do not get forced into the dispatcher.
 
 ## Implementation notes
 
+- **A record view keeps its empty rows.** The key-value view of a single
+  record (`appstore catalog view`) prints every row, empty values included,
+  so the shape of the record never depends on the data; only whole empty
+  sections are skipped.
 - **Human views are sanitised line by line** as they are written (DESIGN §7,
   control-sequence sanitization). Holding back the unfinished line keeps an
   escape sequence or a multi-byte rune split across two writes (`tabwriter`,

@@ -37,9 +37,9 @@ func TestObjects_parsesNamesLeniently(t *testing.T) {
 	objs, skipped := f.Objects(listing(
 		"stats/installs/installs_com.example.app_202609_country.csv",
 		"stats/installs/installs_com.example.app_202609_app_version.csv",
-		"stats/installs/installs_com.ex_ample_202608_overview.CSV", // underscore in the package, upper-case extension
-		"stats/installs/installs_com.example.app_202607.csv",       // no split segment
-		"stats/installs/installs_com.example.app_2026_country.csv", // not a month
+		"stats/installs/installs_com.ex_ample_202608_overview.CSV",
+		"stats/installs/installs_com.example.app_202607.csv",
+		"stats/installs/installs_com.example.app_2026_country.csv",
 		"stats/installs/README.txt",
 	), "")
 	if len(skipped) != 2 {
@@ -66,8 +66,6 @@ func TestObjects_parsesNamesLeniently(t *testing.T) {
 }
 
 func TestObjects_packageFilterIsExact(t *testing.T) {
-	// The list prefix for com.x also matches com.x_y: the parsed package, not
-	// the prefix, decides.
 	f := Installs
 	objs, _ := f.Objects(listing(
 		"stats/installs/installs_com.x_202609_country.csv",
@@ -79,8 +77,6 @@ func TestObjects_packageFilterIsExact(t *testing.T) {
 }
 
 func TestObjects_accountWideFamily(t *testing.T) {
-	// The catalogue is data: an account-wide family (the finance exports) is
-	// one entry with no package segment and a lenient name suffix.
 	f := Family{Name: "earnings", Prefix: "earnings/earnings_", Scope: AccountWide}
 	objs, skipped := f.Objects(listing(
 		"earnings/earnings_202609_1234567890123456789-1.zip",
@@ -137,7 +133,6 @@ func TestSelect_noDefaultNamesThePresentDimensions(t *testing.T) {
 func TestSelect_dimensionValidatedAgainstTheBucket(t *testing.T) {
 	f := Installs
 	objs := installsObjects(t, "202609_country", "202609_brand_new_split")
-	// A dimension Google adds works the day it appears: no frozen list.
 	sel, err := f.Select(objs, []string{"202609"}, "brand_new_split")
 	if err != nil || len(sel.Objects) != 1 || sel.Objects[0].Split != "brand_new_split" {
 		t.Fatalf("selection = %+v, %v", sel, err)
@@ -162,7 +157,6 @@ func TestSelect_rangeSkipsMissingMonths(t *testing.T) {
 	if !equal(sel.Missing, []string{"202607"}) {
 		t.Errorf("missing = %v", sel.Missing)
 	}
-	// Without --dimension, overview is picked when any month of the range has it.
 	sel, err = f.Select(objs, []string{"202606", "202607", "202608"}, "")
 	if err != nil || sel.Split != "overview" || len(sel.Objects) != 1 || !equal(sel.Missing, []string{"202606", "202607"}) {
 		t.Errorf("default over a range = %+v, %v", sel, err)
@@ -181,8 +175,6 @@ func TestSelect_noReport(t *testing.T) {
 }
 
 func TestCatalogue_statisticsFamilies(t *testing.T) {
-	// The four #695 families sit after installs, in `reports list` order, each
-	// with its bucket prefix and the permission its 403 names.
 	want := []struct {
 		name, prefix string
 		perm         string
@@ -212,16 +204,13 @@ func TestCatalogue_statisticsFamilies(t *testing.T) {
 }
 
 func TestObjects_productIDWithUnderscores(t *testing.T) {
-	// subscriptions_<package>_<productId>_<YYYYMM>_<dimension>.csv: a product
-	// id may hold underscores (and digits), so the parse anchors on the
-	// package when known, then on the month and the final dimension.
 	f := SubscriptionStats
 	const p = "financial-stats/subscriptions/subscriptions_"
 	objs, skipped := f.Objects(listing(
 		p+"com.example.app_premium_monthly_v2_202609_country.csv",
-		p+"com.example.app_promo_202401_202609_country.csv", // a product id ending in a month-like run
-		p+"com.example.app_gold_202608.csv",                 // no dimension segment
-		p+"com.example.app_202609_country.csv",              // no product segment
+		p+"com.example.app_promo_202401_202609_country.csv",
+		p+"com.example.app_gold_202608.csv",
+		p+"com.example.app_202609_country.csv",
 	), "com.example.app")
 	if len(skipped) != 1 || !strings.HasSuffix(skipped[0], "app_202609_country.csv") {
 		t.Errorf("skipped = %v, want the name without a product", skipped)
@@ -245,13 +234,10 @@ func TestObjects_productIDWithUnderscores(t *testing.T) {
 func TestObjects_productPackageAnchor(t *testing.T) {
 	f := SubscriptionStats
 	const p = "financial-stats/subscriptions/subscriptions_"
-	// With the package known, an underscore in it is no ambiguity.
 	objs, _ := f.Objects(listing(p+"com.ex_ample_pro_yearly_202609_country.csv"), "com.ex_ample")
 	if len(objs) != 1 || objs[0].Package != "com.ex_ample" || objs[0].Product != "pro_yearly" {
 		t.Fatalf("anchored on the package: %+v", objs)
 	}
-	// Without it (an unfiltered inventory), the package ends at the first
-	// underscore: Android package names rarely hold one, product ids often do.
 	objs, _ = f.Objects(listing(p+"com.example.app_pro_yearly_202609_country.csv"), "")
 	if len(objs) != 1 || objs[0].Package != "com.example.app" || objs[0].Product != "pro_yearly" {
 		t.Fatalf("unanchored: %+v", objs)
@@ -276,9 +262,6 @@ func TestSelect_noDefaultSplitFamilyNamesThePresentOnes(t *testing.T) {
 	}
 }
 
-// TestObjects_monthOutsideTheCalendarIsNotAnExport covers a name whose six
-// digits are no month (13, 00): it is skipped, never read as the latest month
-// present, whatever the family's name shape.
 func TestObjects_monthOutsideTheCalendarIsNotAnExport(t *testing.T) {
 	for _, tc := range []struct {
 		f     Family

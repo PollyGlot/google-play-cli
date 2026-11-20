@@ -24,11 +24,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// queryRT covers the OAuth2 /token exchange and the metric-set :query POST.
 type queryRT struct {
 	t        *testing.T
 	respBody string
-	respCode int // 0 -> 200
+	respCode int
 
 	mu          sync.Mutex
 	queryURL    string
@@ -36,8 +35,6 @@ type queryRT struct {
 	tokenScopes string
 }
 
-// serve answers the token hop itself rather than through the Fake, because
-// the test asserts the scope claim carried by that exchange.
 func (r *queryRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -94,8 +91,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newRC wires a reporting-scoped RunContext (mirroring kernel.WithScope) whose
-// HTTP client routes through rt.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -124,21 +119,18 @@ func TestRun_crashrate_endToEnd(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	// The :query POST went to the crashrate resource under the reporting base.
 	if want := "/apps/com.example.app/crashRateMetricSet:query"; !strings.HasSuffix(rt.queryURL, want) {
 		t.Errorf("query URL = %q, want suffix %q", rt.queryURL, want)
 	}
 	if !strings.Contains(rt.queryURL, "playdeveloperreporting.googleapis.com") {
 		t.Errorf("query did not hit the reporting host: %q", rt.queryURL)
 	}
-	// Default metric is the set's primary (crashRate); default period DAILY.
 	if !strings.Contains(rt.queryBody, `"crashRate"`) {
 		t.Errorf("body missing default metric crashRate: %s", rt.queryBody)
 	}
 	if !strings.Contains(rt.queryBody, `"DAILY"`) {
 		t.Errorf("body missing default period DAILY: %s", rt.queryBody)
 	}
-	// Least privilege: the token was minted for the reporting scope only.
 	if rt.tokenScopes != token.ReportingScope {
 		t.Errorf("token scope = %q, want %q", rt.tokenScopes, token.ReportingScope)
 	}
@@ -151,7 +143,6 @@ func TestRun_crashrate_endToEnd(t *testing.T) {
 		t.Errorf("row0 crashRate = %q", p.Timeline.Rows[0].Metrics["crashRate"])
 	}
 
-	// JSON render is the verbatim pass-through (rows preserved).
 	var buf bytes.Buffer
 	if err := p.Renderers().JSON(&buf); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -160,15 +151,11 @@ func TestRun_crashrate_endToEnd(t *testing.T) {
 		t.Errorf("JSON pass-through lost the payload: %s", buf.String())
 	}
 
-	// Freshness note on stderr citing the freshest datapoint.
 	if !strings.Contains(stderr.String(), "2026-06-02") {
 		t.Errorf("stderr missing freshness note: %q", stderr.String())
 	}
 }
 
-// TestRun_everyMetricSetReachable proves the generic command reaches every
-// registered metric set (#260): each `vitals query <set>` issues its `:query`
-// to that set's own REST resource.
 func TestRun_everyMetricSetReachable(t *testing.T) {
 	for _, ms := range vitals.MetricSets() {
 		t.Run(ms.Name, func(t *testing.T) {
@@ -223,9 +210,6 @@ func TestRun_unknownPeriod_isUsageError(t *testing.T) {
 	}
 }
 
-// TestRun_memorySets_hourlyRejectedOffline proves the DAILY-only memory sets
-// reject --period HOURLY/FULL_RANGE before any request leaves, so the user gets
-// a usage error naming the set instead of a server 400 (#440).
 func TestRun_memorySets_hourlyRejectedOffline(t *testing.T) {
 	for _, name := range []string{"anonrssandswapmemoryusage", "bitmapmemoryusage"} {
 		for _, period := range []string{"HOURLY", "FULL_RANGE"} {
@@ -247,9 +231,6 @@ func TestRun_memorySets_hourlyRejectedOffline(t *testing.T) {
 	}
 }
 
-// TestRun_memorySets_dailyQueriesTheirPercentiles is the happy path of both
-// memory sets: the DAILY default is accepted and the percentile metric reaches
-// the request body.
 func TestRun_memorySets_dailyQueriesTheirPercentiles(t *testing.T) {
 	cases := map[string]string{
 		"anonrssandswapmemoryusage": "anonRssAndSwapMemoryUsageP95",

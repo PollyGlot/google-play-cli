@@ -12,52 +12,27 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// KeyringService is the service name used for every gplay credential stored
-// in the OS keystore. It doubles as a namespace so a user can host other
-// secrets in the same Keychain / Credential Manager / Secret Service ring
-// without collisions.
 const KeyringService = "gplay"
 
-// Backend labels returned by Select. Stable identifiers for the JSON
-// output of `gplay auth status` and for the -v `keystore: using <label>
-// backend` log line.
 const (
 	BackendKeyring = "keyring"
 	BackendFile    = "file"
 )
 
-// reservedIndexUser is the keyring "user" field under which the keyring
-// backend persists its own list of stored Account names. go-keyring exposes
-// Set/Get/Delete keyed by (service, user): there is no enumeration API,
-// so the backend keeps its own index. The leading and trailing underscores
-// mirror Python dunders to signal "do not poke at this from outside".
 const reservedIndexUser = "__gplay_index__"
 
-// probeUser is the keyring "user" field used by Select to probe whether the
-// keyring is reachable. The probe value is written and immediately deleted.
 const probeUser = "__gplay_probe__"
 
-// ErrKeyringNotFound is the sentinel exposed for the test double in this
-// package to mirror go-keyring's keyring.ErrNotFound. Production code never
-// touches it: the keyring backend translates both into the package-level
-// ErrNotFound.
 var ErrKeyringNotFound = keyring.ErrNotFound
 
-// KeyringAPI is the slice of the go-keyring surface the keyring backend
-// depends on. Production wires the real package functions through
-// realKeyring; tests inject a fake to keep the OS keystore out of unit runs.
 type KeyringAPI interface {
 	Set(service, user, password string) error
 	Get(service, user string) (string, error)
 	Delete(service, user string) error
 }
 
-// realKeyring is the production adapter that forwards to the real
-// go-keyring package functions.
 type realKeyring struct{}
 
-// DefaultKeyring returns the production KeyringAPI implementation. Use it
-// when calling Select from non-test code.
 func DefaultKeyring() KeyringAPI {
 	return realKeyring{}
 }
@@ -74,20 +49,15 @@ func (realKeyring) Delete(service, user string) error {
 	return keyring.Delete(service, user)
 }
 
-// KeyringBackend stores credentials in the OS keystore via go-keyring. It
-// satisfies the Backend interface.
 type KeyringBackend struct {
 	api     KeyringAPI
 	service string
 }
 
-// NewKeyringBackend constructs a backend rooted at the given service name.
-// Use KeyringService for the production value.
 func NewKeyringBackend(api KeyringAPI, service string) *KeyringBackend {
 	return &KeyringBackend{api: api, service: service}
 }
 
-// Save writes data under the given Account name and updates the index.
 func (b *KeyringBackend) Save(_ context.Context, name string, data []byte) error {
 	if err := b.api.Set(b.service, name, string(data)); err != nil {
 		return err
@@ -95,7 +65,6 @@ func (b *KeyringBackend) Save(_ context.Context, name string, data []byte) error
 	return b.addToIndex(name)
 }
 
-// Load returns the bytes stored under name, or ErrNotFound.
 func (b *KeyringBackend) Load(_ context.Context, name string) ([]byte, error) {
 	v, err := b.api.Get(b.service, name)
 	if err != nil {
@@ -107,8 +76,6 @@ func (b *KeyringBackend) Load(_ context.Context, name string) ([]byte, error) {
 	return []byte(v), nil
 }
 
-// Delete removes the credential and updates the index. Returns ErrNotFound
-// if absent.
 func (b *KeyringBackend) Delete(_ context.Context, name string) error {
 	err := b.api.Delete(b.service, name)
 	if err != nil {
@@ -120,7 +87,6 @@ func (b *KeyringBackend) Delete(_ context.Context, name string) error {
 	return b.removeFromIndex(name)
 }
 
-// List returns the Account names currently stored.
 func (b *KeyringBackend) List(_ context.Context) ([]string, error) {
 	return b.readIndex()
 }
@@ -174,31 +140,11 @@ func (b *KeyringBackend) removeFromIndex(name string) error {
 	return b.writeIndex(out)
 }
 
-// SelectOptions configures Select. Both fields are required.
 type SelectOptions struct {
-	// Keyring is the go-keyring slice the keyring backend will talk to.
-	// Production callers should pass DefaultKeyring(); tests pass a fake.
-	Keyring KeyringAPI
-	// FileRoot is the directory the file backend will use when the keyring
-	// is unavailable.
+	Keyring  KeyringAPI
 	FileRoot string
 }
 
-// Select picks the credential backend for this process. It probes the
-// keyring with a Set+Delete round-trip; on any error it falls back to
-// the file backend. No process-level caching is involved: each call is
-// independent.
-//
-// The probe is a real keyring access: on a locked macOS login keychain it
-// can surface the system "keychain wants to unlock" dialog. The kernel
-// therefore does NOT call Select at boot: it defers it behind
-// kernel.RunContext.Backend so the probe fires only once a command
-// actually needs a credential (login/logout/status, or any AuthedClient
-// caller). A pre-auth command that fails validation or runs --dry-run
-// never reaches here.
-//
-// ctx is threaded for future cancellation support; the probe itself
-// is synchronous today.
 func Select(_ context.Context, opts SelectOptions) (Backend, string, error) {
 	if probeKeyring(opts.Keyring) {
 		return NewKeyringBackend(opts.Keyring, KeyringService), BackendKeyring, nil
@@ -206,11 +152,6 @@ func Select(_ context.Context, opts SelectOptions) (Backend, string, error) {
 	return NewFileBackend(opts.FileRoot), BackendFile, nil
 }
 
-// probeKeyring returns true if the keyring accepts a full write+delete
-// round trip. Either step failing (Set or Delete) demotes us to the
-// file backend, if Delete is broken, a later `gplay auth logout` would
-// fail too, and we want that surfaced at selection time rather than
-// halfway through a credential cleanup.
 func probeKeyring(api KeyringAPI) bool {
 	if api == nil {
 		return false
@@ -224,10 +165,6 @@ func probeKeyring(api KeyringAPI) bool {
 	return true
 }
 
-// LogBackend writes "keystore: using <label> backend\n" to w. The
-// caller owns the once-per-invocation semantics (see
-// kernel.RunContext.Backend): this function is a small renderer with
-// no globals.
 func LogBackend(w io.Writer, label string) {
 	_, _ = fmt.Fprintf(w, "keystore: using %s backend\n", label)
 }

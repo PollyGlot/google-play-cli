@@ -9,11 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// RequireConfirm enforces the DESTRUCTIVE-tier --confirm gate (ADR-0017): the
-// production-impacting recovery leaves (deploy/cancel/add-targeting) refuse with
-// exit 3 (a deterministically resolvable *exit.SafetyFlagError naming the flag)
-// unless --confirm is passed. The LIVE path calls this; --dry-run never does
-// (it reports the requirement via LifecyclePayload's `requires` array instead).
 func RequireConfirm(confirm bool, msg string) error {
 	if confirm {
 		return nil
@@ -21,12 +16,8 @@ func RequireConfirm(confirm bool, msg string) error {
 	return exit.SafetyFlag("confirm", "%s", msg)
 }
 
-// LifecyclePayload renders a recovery lifecycle write (deploy/cancel/add-targeting).
-// On --dry-run it is the gplay-shaped rehearsal carrying the ADR-0017 `requires`
-// array; on a live write it passes the (often empty {}) API response through
-// verbatim (ADR-0003) and never fabricates a status object.
 type LifecyclePayload struct {
-	Verb       string // "deploy" | "cancel" | "add-targeting"
+	Verb       string
 	RecoveryID string
 	Package    string
 	DryRun     bool
@@ -77,7 +68,6 @@ func (p LifecyclePayload) renderJSON(w io.Writer) error {
 			Requires:   []string{"confirm"},
 		})
 	}
-	// Live: verbatim API pass-through (often an empty {} body).
 	_, err := w.Write(p.Raw)
 	return err
 }

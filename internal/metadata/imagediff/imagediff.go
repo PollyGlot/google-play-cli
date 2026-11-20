@@ -1,30 +1,9 @@
-// Package imagediff is the Store-image reconciliation engine: the pure
-// comparison of a local image sequence (files sorted by name, by sha256)
-// against the live sequence (images.list, which carries a sha256 per image but
-// no order field: display order is list order). It produces two things from
-// one decision: the ADR-0013 §5 diff schema (for `--dry-run --output json`)
-// and an executable per-slot Plan (for the orchestrator). It performs no I/O.
-//
-// Identity is by content (sha256), order-aware for galleries (ADR-0013 §1):
-//
-//   - identical sequence → no-op (unchanged).
-//   - a managed slot with no live image, or a content change, uploads.
-//   - a gallery that differs in order is reconciled by deleteall + re-upload in
-//     name order (the only way to reorder), but ONLY when no online-only image
-//     would be lost. Under the additive default (this slice, #134) an
-//     online-only image (one live whose sha256 is in no local file) is never
-//     deleted; apply only appends the genuinely-new local images. Removing
-//     online-only images (full reconciliation, including reorder past a loss)
-//     is --prune (#135).
-//   - a slot absent/empty on disk but live on Play is untouchedSlot (missing ==
-//     empty): left entirely alone.
 package imagediff
 
 import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// Op is a per-slot reconciliation verb in the ADR-0013 §5 schema.
 type Op string
 
 const (
@@ -35,29 +14,15 @@ const (
 	OpUntouchedSlot Op = "untouchedSlot"
 )
 
-// Kind is the executable action the orchestrator runs for a slot.
 type Kind int
 
 const (
-	// KindNone: nothing to do (unchanged or untouchedSlot).
 	KindNone Kind = iota
-	// KindAppend: upload each local image Uploads names (images.upload
-	// appends in order).
 	KindAppend
-	// KindRewrite: deleteall the slot, then upload each local image Uploads
-	// names (the full local sequence) in order: the only way to reorder or
-	// replace.
 	KindRewrite
-	// KindDeleteIDs: delete each live image id in DeleteIDs (a pure removal,
-	// order preserved): used only under --prune (#135).
 	KindDeleteIDs
 )
 
-// SlotChange is one record in the ADR-0013 §5 diff schema. Position is the
-// 0-based display position the change concerns, or -1 for a slot-level record
-// (reorder, unchanged, untouchedSlot). A reordered gallery emits ONE reorder
-// record for the slot plus upload/delete records for genuine adds/removes, so
-// the summary stays honest.
 type SlotChange struct {
 	Locale    string `json:"locale"`
 	ImageType string `json:"imageType"`
@@ -66,9 +31,6 @@ type SlotChange struct {
 	Position  int    `json:"position"`
 }
 
-// Summary is the flat counter tally: kept flat so a CI gate is one jq line:
-// `.summary.upload + .summary.delete + .summary.reorder > 0`. Upload/Delete
-// count images; Reorder/Unchanged count slots.
 type Summary struct {
 	Upload    int `json:"upload"`
 	Delete    int `json:"delete"`
@@ -76,24 +38,16 @@ type Summary struct {
 	Unchanged int `json:"unchanged"`
 }
 
-// Result is the aggregated diff document (the ADR-0013 §5 schema). It keeps the
-// text schema's shape (a flat outer object, a flat counter summary) with
-// image-native fields.
 type Result struct {
 	Package string       `json:"package"`
 	Slots   []SlotChange `json:"slots"`
 	Summary Summary      `json:"summary"`
 }
 
-// HasChanges reports whether any genuine mutation is planned (the CI gate).
 func (r Result) HasChanges() bool {
 	return r.Summary.Upload+r.Summary.Delete+r.Summary.Reorder > 0
 }
 
-// SlotInput pairs one slot's local images, as the hex sha256 of each in
-// display order (empty when unmanaged), with its live images (ordered as
-// images.list returned them). The engine decides on content identity alone,
-// so the caller hashes the files and never has to hold their bytes here.
 type SlotInput struct {
 	Locale string
 	Type   images.Type
@@ -101,22 +55,15 @@ type SlotInput struct {
 	Live   []images.Image
 }
 
-// Plan is the per-slot reconciliation outcome: the schema Changes plus the
-// executable action the orchestrator runs.
 type Plan struct {
 	Locale    string
 	Type      images.Type
 	Changes   []SlotChange
 	Kind      Kind
-	Uploads   []int    // indices into SlotInput.Local: KindAppend the images to append, KindRewrite the full local seq
-	DeleteIDs []string // KindDeleteIDs: live image ids to delete (prune)
+	Uploads   []int
+	DeleteIDs []string
 }
 
-// Plans reconciles every slot independently. With prune false (the additive
-// default) an online-only image is never deleted; with prune true a managed
-// slot's online-only images (sha256 in no local file) are removed and the slot
-// is reconciled exactly to local (ADR-0013 §1). prune never touches an
-// unmanaged (absent/empty) slot.
 func Plans(slots []SlotInput, prune bool) []Plan {
 	out := make([]Plan, 0, len(slots))
 	for _, in := range slots {
@@ -125,9 +72,6 @@ func Plans(slots []SlotInput, prune bool) []Plan {
 	return out
 }
 
-// Aggregate flattens per-slot plans into the ADR-0013 §5 Result, tallying the
-// summary from the emitted change ops (so re-uploads of unchanged images in a
-// rewrite are not double-counted: only genuine adds/removes/reorders are).
 func Aggregate(pkg string, plans []Plan) Result {
 	res := Result{Package: pkg}
 	for _, p := range plans {
@@ -143,22 +87,17 @@ func Aggregate(pkg string, plans []Plan) Result {
 			case OpUnchanged:
 				res.Summary.Unchanged++
 			case OpUntouchedSlot:
-				// Not tallied: nothing on disk for this slot, so gplay does
-				// not manage it and the summary counts managed slots only.
 			}
 		}
 	}
 	return res
 }
 
-// reconcile computes one slot's plan. prune authorizes deleting a managed
-// slot's online-only images (and reconciling it exactly to local).
 func reconcile(in SlotInput, prune bool) Plan {
 	p := Plan{Locale: in.Locale, Type: in.Type}
 	localShas := in.Local
 	liveShas := liveShasOf(in.Live)
 
-	// Unmanaged: nothing on disk for this slot.
 	if len(in.Local) == 0 {
 		if len(in.Live) > 0 {
 			p.Changes = []SlotChange{slotLevel(in, OpUntouchedSlot)}
@@ -166,7 +105,6 @@ func reconcile(in SlotInput, prune bool) Plan {
 		return p
 	}
 
-	// Identical content and order → no-op.
 	if equalStrings(localShas, liveShas) {
 		p.Changes = []SlotChange{slotLevel(in, OpUnchanged)}
 		return p
@@ -174,8 +112,6 @@ func reconcile(in SlotInput, prune bool) Plan {
 
 	liveSet := toSet(liveShas)
 
-	// Singular slot: the local file is the desired single image; any difference
-	// is a replace (deleteall + upload).
 	if !in.Type.Gallery() {
 		p.Kind = KindRewrite
 		p.Uploads = allIndices(localShas)
@@ -183,13 +119,10 @@ func reconcile(in SlotInput, prune bool) Plan {
 		return p
 	}
 
-	// Gallery slot.
 	onlineOnly := imagesAbsentFrom(in.Live, toSet(localShas))
 
 	if len(onlineOnly) == 0 {
-		// No online-only image would be lost: reconcile fully to local.
 		if isPrefix(liveShas, localShas) {
-			// Pure append, order preserved: upload only the tail.
 			p.Kind = KindAppend
 			for i := len(liveShas); i < len(localShas); i++ {
 				p.Uploads = append(p.Uploads, i)
@@ -197,7 +130,6 @@ func reconcile(in SlotInput, prune bool) Plan {
 			}
 			return p
 		}
-		// Order or content differs (set ⊆ local): rewrite = deleteall + reupload.
 		p.Kind = KindRewrite
 		p.Uploads = allIndices(localShas)
 		p.Changes = append(p.Changes, slotLevel(in, OpReorder))
@@ -209,14 +141,10 @@ func reconcile(in SlotInput, prune bool) Plan {
 		return p
 	}
 
-	// Online-only images exist.
 	if prune {
 		return prunePlan(in, localShas, liveShas, liveSet, onlineOnly)
 	}
 
-	// Additive default: never delete the online-only images; only append the
-	// genuinely-new local images (those not already live). Full reconciliation
-	// (which would drop the online-only ones) is --prune.
 	for i, s := range localShas {
 		if !liveSet[s] {
 			p.Uploads = append(p.Uploads, i)
@@ -226,26 +154,16 @@ func reconcile(in SlotInput, prune bool) Plan {
 	if len(p.Uploads) > 0 {
 		p.Kind = KindAppend
 	} else {
-		// Nothing to add additively (local ⊆ live); the online-only images are
-		// kept: from the additive view the slot is unchanged.
 		p.Changes = []SlotChange{slotLevel(in, OpUnchanged)}
 	}
 	return p
 }
 
-// prunePlan reconciles a managed gallery slot exactly to local when online-only
-// images must be removed (--prune). When local is an order-preserving
-// subsequence of live with nothing new, the online-only images are removed
-// in place (delete by id, no deleteall, no re-upload). Otherwise the slot is
-// rewritten (deleteall + re-upload local), and the change records reflect the
-// net intent: a delete per online-only image, an upload per genuinely-new
-// local image, and a single reorder iff the retained images change relative
-// order.
 func prunePlan(in SlotInput, localShas, liveShas []string, liveSet map[string]bool, onlineOnly []images.Image) Plan {
 	p := Plan{Locale: in.Locale, Type: in.Type}
 	localSet := toSet(localShas)
 
-	var newLocal []int // local indices whose sha is not yet live
+	var newLocal []int
 	for i, s := range localShas {
 		if !liveSet[s] {
 			newLocal = append(newLocal, i)
@@ -256,7 +174,6 @@ func prunePlan(in SlotInput, localShas, liveShas []string, liveSet map[string]bo
 	reordered := !equalStrings(retainedLive, retainedLocal)
 
 	if len(newLocal) == 0 && !reordered {
-		// Pure delete: drop the online-only images in place, order preserved.
 		p.Kind = KindDeleteIDs
 		for _, img := range onlineOnly {
 			p.DeleteIDs = append(p.DeleteIDs, img.ID)
@@ -265,7 +182,6 @@ func prunePlan(in SlotInput, localShas, liveShas []string, liveSet map[string]bo
 		return p
 	}
 
-	// General rewrite: deleteall + re-upload the full local sequence.
 	p.Kind = KindRewrite
 	p.Uploads = allIndices(localShas)
 	if reordered {
@@ -280,7 +196,6 @@ func prunePlan(in SlotInput, localShas, liveShas []string, liveSet map[string]bo
 	return p
 }
 
-// keepInSet returns the elements of ss that are in set, preserving order.
 func keepInSet(ss []string, set map[string]bool) []string {
 	var out []string
 	for _, s := range ss {
@@ -299,7 +214,6 @@ func uploadChange(in SlotInput, sha string, pos int) SlotChange {
 	return SlotChange{Locale: in.Locale, ImageType: string(in.Type), Op: OpUpload, Sha256: sha, Position: pos}
 }
 
-// allIndices names every local image, in display order.
 func allIndices(seq []string) []int {
 	out := make([]int, len(seq))
 	for i := range seq {
@@ -336,8 +250,6 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// isPrefix reports whether short is an exact prefix of long (same elements,
-// same order, from index 0).
 func isPrefix(short, long []string) bool {
 	if len(short) > len(long) {
 		return false
@@ -350,7 +262,6 @@ func isPrefix(short, long []string) bool {
 	return true
 }
 
-// imagesAbsentFrom returns the live images whose sha256 is not in set.
 func imagesAbsentFrom(live []images.Image, set map[string]bool) []images.Image {
 	var out []images.Image
 	for _, img := range live {

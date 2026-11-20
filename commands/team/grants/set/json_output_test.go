@@ -7,9 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRenderJSON_dryRunUpdate_golden freezes the --dry-run diff for an existing
-// grant: add/remove are derived and sorted, and the steering warning is kept.
-// The live path passes the API body through (ADR-0003) and has no golden.
 func TestRenderJSON_dryRunUpdate_golden(t *testing.T) {
 	p := set.Payload{
 		Email:    "dev@example.com",
@@ -23,9 +20,6 @@ func TestRenderJSON_dryRunUpdate_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run_update.json.golden", p)
 }
 
-// TestRenderJSON_dryRunCreateAdmin_golden freezes a new admin-conferring grant:
-// empty current and remove print [], requires names grant-admin, and warnings
-// is omitted when there are none.
 func TestRenderJSON_dryRunCreateAdmin_golden(t *testing.T) {
 	p := set.Payload{
 		Email:    "admin@example.com",

@@ -1,7 +1,3 @@
-// Package upload_test exercises `gplay releases sharing upload` at the kernel
-// level: a RunContext built by hand, a RoundTripper injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// promote/rollout command test harness.
 package upload_test
 
 import (
@@ -27,15 +23,12 @@ import (
 
 const artifactBody = `{"downloadUrl":"https://play.google.com/apps/test/abc123","certificateFingerprint":"AA:BB:CC","sha256":"deadbeef"}`
 
-// newFake routes the single artifact upload POST; any other API call fails
-// the round trip.
 func newFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return http.StatusOK, artifactBody, c.Method == http.MethodPost && strings.Contains(c.Path, "/internalappsharing/")
 	})
 }
 
-// uploadURL returns the URL of the recorded artifact upload POST, or "".
 func uploadURL(fake *testkit.Fake) string {
 	for _, c := range fake.Calls() {
 		if c.Method == http.MethodPost && strings.Contains(c.Path, "/internalappsharing/") {
@@ -45,8 +38,6 @@ func uploadURL(fake *testkit.Fake) string {
 	return ""
 }
 
-// networkCalls counts every request that reached the transport, token
-// exchanges included.
 func networkCalls(fake *testkit.Fake) int { return len(fake.Calls()) + fake.TokenExchanges() }
 
 func signedSAJSON(t *testing.T) []byte {
@@ -83,11 +74,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
-// writeArtifact drops a real (if minimal) container at a temp path, matching
-// what the extension (or, for an ambiguous name, --format bundle) promises.
-// The artifact preflight (PRD #448) classifies the container and reads its
-// manifest before any request, so a placeholder byte string would now be
-// refused offline and never reach the RoundTripper.
 func writeArtifact(t *testing.T, name string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -109,9 +95,6 @@ func exitOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// TestRun_apk_happyPath asserts the /token exchange precedes a POST to the apk
-// artifact endpoint, the JSON view passes the artifact through verbatim, and a
-// ✓ line is written to stderr.
 func TestRun_apk_happyPath(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -142,7 +125,6 @@ func TestRun_apk_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_aab_usesBundleEndpoint asserts a .aab routes to the bundle endpoint.
 func TestRun_aab_usesBundleEndpoint(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -154,8 +136,6 @@ func TestRun_aab_usesBundleEndpoint(t *testing.T) {
 	}
 }
 
-// TestRun_formatOverride asserts --format forces the endpoint regardless of
-// extension.
 func TestRun_formatOverride(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -167,8 +147,6 @@ func TestRun_formatOverride(t *testing.T) {
 	}
 }
 
-// TestRun_unknownExtension_exit20_noNetwork asserts an ambiguous extension with
-// no --format fails offline with exit 20.
 func TestRun_unknownExtension_exit20_noNetwork(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -181,7 +159,6 @@ func TestRun_unknownExtension_exit20_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_directory_exit20_noNetwork asserts a non-regular path fails offline.
 func TestRun_directory_exit20_noNetwork(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -194,7 +171,6 @@ func TestRun_directory_exit20_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2_noNetwork asserts a missing package is CLI misuse.
 func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -207,8 +183,6 @@ func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noNetwork_noConfirmation asserts --dry-run validates offline,
-// emits a dryRun JSON view, and never writes a ✓.
 func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
@@ -242,9 +216,6 @@ func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface. The [experimental] label
-// is applied at registration by kernel.Experimental and pinned centrally by
-// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 func TestNewCommand_flags(t *testing.T) {
 	cmd := uploadcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"package", "format", "dry-run", "output"} {

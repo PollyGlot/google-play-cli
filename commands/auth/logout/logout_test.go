@@ -19,8 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_pureBusiness drives logout.Run with a hand-built RunContext.
-// Run mutates the on-disk config + the keystore backend in rc.Keystore.
 func TestRun_pureBusiness(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seed(t, boot, "alpha", "beta")
@@ -50,10 +48,6 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// TestRun_withoutConfirm_refusesExit3 asserts the destructive-op gate: logout
-// without --confirm refuses with exit 3 (safety flag required,
-// docs/DESIGN.md §9, NOT the generic usage exit 2, #408), names the flag for
-// the --output json envelope's requires[], and removes nothing.
 func TestRun_withoutConfirm_refusesExit3(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seed(t, boot, "alpha", "beta")
@@ -64,7 +58,7 @@ func TestRun_withoutConfirm_refusesExit3(t *testing.T) {
 	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
 	rc.Keystore = be
 
-	_, err = logout.Run(rc, logout.Input{Name: "beta"}) // Confirm omitted
+	_, err = logout.Run(rc, logout.Input{Name: "beta"})
 	var safety *exit.SafetyFlagError
 	if !errors.As(err, &safety) {
 		t.Fatalf("err = %v (%T), want *exit.SafetyFlagError", err, err)
@@ -76,7 +70,6 @@ func TestRun_withoutConfirm_refusesExit3(t *testing.T) {
 		t.Errorf("Flag = %q, want %q (feeds requires[] in the JSON envelope)", safety.Flag, "confirm")
 	}
 
-	// A refused logout must leave the registry untouched.
 	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadGlobalOrEmpty: %v", err)
@@ -92,8 +85,6 @@ func TestRun_withoutConfirm_refusesExit3(t *testing.T) {
 	}
 }
 
-// fakeKeyring is the same minimal double the login/status tests use:
-// in-process map keyed by service + user, no real OS keystore.
 type fakeKeyring struct {
 	mu          sync.Mutex
 	store       map[string]string
@@ -152,7 +143,6 @@ func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 	}
 }
 
-// seed installs n accounts; the first one is marked active.
 func seed(t *testing.T, boot kernel.Boot, names ...string) {
 	t.Helper()
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
@@ -177,7 +167,6 @@ func seed(t *testing.T, boot kernel.Boot, names ...string) {
 	if err := cfg.Save(context.Background(), config.OSFS{}, boot.ConfigPath); err != nil {
 		t.Fatalf("cfg.Save: %v", err)
 	}
-	// Reset Select so subsequent runCmd picks up the fake again.
 }
 
 func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args ...string) error {
@@ -203,7 +192,6 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	// Keystore: beta is gone.
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
@@ -214,7 +202,6 @@ func TestLogout_existingAccount_clearsBothStores(t *testing.T) {
 	if _, err := be.Load(context.Background(), "beta"); !errors.Is(err, keystore.ErrNotFound) {
 		t.Errorf("be.Load(context.Background(), beta) = %v, want ErrNotFound", err)
 	}
-	// Config: beta is gone.
 	cfg, err := config.LoadGlobalOrEmpty(context.Background(), config.OSFS{}, boot.ConfigPath)
 	if err != nil {
 		t.Fatalf("LoadOrEmpty: %v", err)
@@ -235,7 +222,6 @@ func TestLogout_unknownAccount_exitsWithErrUnknown(t *testing.T) {
 	if !errors.Is(err, logout.ErrUnknownAccount) {
 		t.Errorf("err = %v, want ErrUnknownAccount", err)
 	}
-	// Hint mentions the known account.
 	if !strings.Contains(stderr.String(), "alpha") {
 		t.Errorf("stderr should list known accounts; got %q", stderr.String())
 	}
@@ -243,7 +229,7 @@ func TestLogout_unknownAccount_exitsWithErrUnknown(t *testing.T) {
 
 func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
-	seed(t, boot, "alpha", "beta") // alpha is active (first one)
+	seed(t, boot, "alpha", "beta")
 
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, boot, &stdout, &stderr, "alpha", "--confirm"); err != nil {
@@ -257,7 +243,6 @@ func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
 	if _, ok := cfg.Active(); ok {
 		t.Errorf("Active() should be false after logging out of the active account")
 	}
-	// beta is still present (only alpha was removed).
 	found := false
 	for _, a := range cfg.Accounts {
 		if a.Name == "beta" {
@@ -269,14 +254,8 @@ func TestLogout_activeAccount_leavesRegistryWithoutActive(t *testing.T) {
 	}
 }
 
-// TestLogout_fileWrittenWithoutKeyring_removedOnceKeyringReachable is the
-// SEC-03 (#589) scenario: login ran where the keyring was unreachable (SSH to
-// a locked macOS keychain) so the key went to the plaintext file; logout then
-// runs where the keyring answers. Deleting only from the selected keyring
-// backend used to swallow ErrNotFound, print "removed", and leave the key on
-// disk.
 func TestLogout_fileWrittenWithoutKeyring_removedOnceKeyringReachable(t *testing.T) {
-	kr := newFakeKeyring(true) // unreachable at login time
+	kr := newFakeKeyring(true)
 	boot := newBoot(t, kr)
 	seed(t, boot, "alpha", "beta")
 	path := filepath.Join(boot.KeystoreRoot, "beta.json")
@@ -284,7 +263,7 @@ func TestLogout_fileWrittenWithoutKeyring_removedOnceKeyringReachable(t *testing
 		t.Fatalf("seed did not write %s: %v", path, err)
 	}
 
-	kr.unavailable = false // the keyring answers now
+	kr.unavailable = false
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, boot, &stdout, &stderr, "beta", "--confirm"); err != nil {
 		t.Fatalf("Execute: %v (stderr %q)", err, stderr.String())
@@ -297,12 +276,10 @@ func TestLogout_fileWrittenWithoutKeyring_removedOnceKeyringReachable(t *testing
 	}
 }
 
-// TestLogout_bothStores_removesBothAndNamesThem covers a key present in the
-// keyring and, from an earlier keyring-less login, in the file too.
 func TestLogout_bothStores_removesBothAndNamesThem(t *testing.T) {
 	kr := newFakeKeyring(true)
 	boot := newBoot(t, kr)
-	seed(t, boot, "alpha", "beta") // file copies
+	seed(t, boot, "alpha", "beta")
 	kr.unavailable = false
 	if err := keystore.NewKeyringBackend(kr, keystore.KeyringService).Save(context.Background(), "beta", []byte(`{}`)); err != nil {
 		t.Fatalf("keyring Save: %v", err)
@@ -326,10 +303,6 @@ func TestLogout_bothStores_removesBothAndNamesThem(t *testing.T) {
 	}
 }
 
-// TestLogout_noStoredCredential_reachableKeyring_idempotent: with the keyring
-// reachable and neither store holding the key, the key is provably gone, so
-// logout stays idempotent (exit 0) but warns instead of claiming a deletion;
-// the registry entry still goes.
 func TestLogout_noStoredCredential_reachableKeyring_idempotent(t *testing.T) {
 	kr := newFakeKeyring(false)
 	boot := newBoot(t, kr)
@@ -359,9 +332,6 @@ func TestLogout_noStoredCredential_reachableKeyring_idempotent(t *testing.T) {
 	}
 }
 
-// TestLogout_keyringUnreachable_notInFile_warnsKeyMayRemain: with the file
-// backend selected and no file copy, the key may still be in the keyring we
-// could not reach; the error must say so rather than imply nothing existed.
 func TestLogout_keyringUnreachable_notInFile_warnsKeyMayRemain(t *testing.T) {
 	kr := newFakeKeyring(true)
 	boot := newBoot(t, kr)

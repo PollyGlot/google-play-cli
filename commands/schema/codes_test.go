@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// TestCodesPayload_jsonExposesTheWholeCatalog is the introspection guarantee of
-// slice #454: a skill author gets the full vocabulary from the CLI, so nothing
-// forces them to read gplay's source to stay in sync.
 func TestCodesPayload_jsonExposesTheWholeCatalog(t *testing.T) {
 	var buf bytes.Buffer
 	r := CodesPayload{}.Renderers()
@@ -36,8 +33,6 @@ func TestCodesPayload_jsonExposesTheWholeCatalog(t *testing.T) {
 	}
 }
 
-// TestCodesPayload_humanViewsNameEveryCode keeps the table and markdown views
-// from silently dropping a code the JSON view carries.
 func TestCodesPayload_humanViewsNameEveryCode(t *testing.T) {
 	r := CodesPayload{}.Renderers()
 	for name, render := range map[string]func(io.Writer) error{
@@ -58,9 +53,6 @@ func TestCodesPayload_humanViewsNameEveryCode(t *testing.T) {
 	}
 }
 
-// TestCodesPayload_tableIsTheSharedRenderer pins the other half of the
-// no-drift guarantee: `schema --codes` prints byte-for-byte what
-// `gplay help exit-codes` embeds, because both call exit.WriteCodeTable.
 func TestCodesPayload_tableIsTheSharedRenderer(t *testing.T) {
 	var buf bytes.Buffer
 	r := CodesPayload{}.Renderers()
@@ -72,9 +64,6 @@ func TestCodesPayload_tableIsTheSharedRenderer(t *testing.T) {
 	}
 }
 
-// TestRun_codesShortCircuits asserts --codes answers with the catalog and
-// ignores the API-index query, so a stray positional cannot silently turn the
-// introspection call back into a schema search.
 func TestRun_codesShortCircuits(t *testing.T) {
 	payload, err := Run(nil, Input{Codes: true, Query: "edits.tracks.update", List: true})
 	if err != nil {

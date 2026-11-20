@@ -14,8 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
-// echoSAJSON is a synthetic service account (never a real credential) whose
-// key body and key id carry an unmistakable canary.
 const echoSAJSON = `{
   "type": "service_account",
   "project_id": "fake-proj",
@@ -25,13 +23,6 @@ const echoSAJSON = `{
   "token_uri": "https://oauth2.googleapis.com/token"
 }`
 
-// TestCredentialValueNeverEchoed is the end-to-end form of the audit repro
-// (#583, repro-credential-echo.sh): a credential in one of the shapes CI secret
-// stores produce (base64, quoted JSON, BOM-prefixed JSON) used to come back
-// whole in "could not read credential: open <value>: file name too long", on
-// stderr AND in the stdout JSON envelope / doctor checklist. Every scenario
-// runs the real command tree and greps BOTH streams, the way main wires them.
-// Resolution fails before any request, so nothing here reaches the network.
 func TestCredentialValueNeverEchoed(t *testing.T) {
 	b64 := base64.StdEncoding.EncodeToString([]byte(echoSAJSON))
 	values := map[string]string{
@@ -70,7 +61,6 @@ func TestCredentialValueNeverEchoed(t *testing.T) {
 					if err == nil {
 						t.Fatal("expected a credential error, got nil")
 					}
-					// Exactly what main does with the error.
 					_, _ = fmt.Fprintln(stderr, "gplay:", err)
 
 					if code := exit.For(err); code != 10 {
@@ -90,9 +80,6 @@ func TestCredentialValueNeverEchoed(t *testing.T) {
 	}
 }
 
-// keyMaterialIn returns the first piece of credential material found in out:
-// a PEM marker, the canary, or any 16-byte window of the raw value (which is
-// what catches a base64 blob, invisible to every redaction pattern).
 func keyMaterialIn(out, value string) string {
 	for _, marker := range []string{"BEGIN PRIVATE KEY", "LEAKEDSECRETBODY"} {
 		if strings.Contains(out, marker) {

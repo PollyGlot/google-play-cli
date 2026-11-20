@@ -11,8 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// decodeEnvelope parses one ErrorEnvelope out of buf and fails the test if buf
-// is not exactly one well-formed JSON object (no trailing second object).
 func decodeEnvelope(t *testing.T, buf *bytes.Buffer) output.ErrorEnvelope {
 	t.Helper()
 	dec := json.NewDecoder(buf)
@@ -66,9 +64,6 @@ func TestWriteErrorEnvelope_apiError_carriesExitCodeAndReasons(t *testing.T) {
 	}
 }
 
-// TestWriteErrorEnvelope_retryableIsAlwaysEmitted guards the one field where an
-// omission and a false would be indistinguishable to a consumer: `retryable`
-// must appear in the JSON even when it is false.
 func TestWriteErrorEnvelope_retryableIsAlwaysEmitted(t *testing.T) {
 	var buf bytes.Buffer
 	if werr := output.WriteErrorEnvelope(&buf, exit.Usagef("missing --to")); werr != nil {
@@ -81,7 +76,6 @@ func TestWriteErrorEnvelope_retryableIsAlwaysEmitted(t *testing.T) {
 	if !strings.Contains(raw, `"code"`) {
 		t.Errorf("envelope omits code:\n%s", raw)
 	}
-	// A local failure made no API call, so none of these should be serialized.
 	for _, key := range []string{`"operation"`, `"resource"`, `"package"`} {
 		if strings.Contains(raw, key) {
 			t.Errorf("a local failure must not claim %s:\n%s", key, raw)

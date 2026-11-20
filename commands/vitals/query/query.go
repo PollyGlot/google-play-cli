@@ -1,14 +1,3 @@
-// Package query implements `gplay vitals query <metric-set>`: the generic,
-// read-only escape hatch over the Play Developer Reporting API metric sets
-// (ADR-0026 full coverage). It is the walking skeleton the opinionated presets
-// (`vitals crashes`, `vitals anr`, …) are thin wrappers over (#49).
-//
-// Metrics, dimensions and the aggregation period are validated OFFLINE against
-// the embedded Schema index: never invented (the catalog is read from the
-// snapshot). Output is the ADR-0003 JSON pass-through on stdout; table/markdown
-// render the timeline (dates × metrics, sliced by the requested dimensions).
-// A freshness note is always written to stderr so an empty window is never
-// mistaken for "zero crashes".
 package query
 
 import (
@@ -23,27 +12,20 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// Input is the request-shaped struct cobra builds from flags and the
-// metric-set argument.
 type Input struct {
-	MetricSet  string   // positional arg: crashrate, anrrate, …
-	Package    string   // --package
-	Metrics    []string // --metrics (empty → the set's primary metric)
-	Dimensions []string // --dimensions (empty → no slicing, one row per period)
-	Period     string   // --period, per set: see vitalscmd.QueryPeriodHelp
-	Since      string   // --since 28d, 24h, …
-	UserCohort string   // --user-cohort: OS_PUBLIC, APP_TESTERS or OS_BETA, per set
-	Describe   bool     // --describe: the set's `.get` (freshness) instead of `:query`
-	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
-	// by the cobra layer so Run can reject them under --describe.
+	MetricSet   string
+	Package     string
+	Metrics     []string
+	Dimensions  []string
+	Period      string
+	Since       string
+	UserCohort  string
+	Describe    bool
 	WindowFlags []string
 }
 
-// windowFlags are the flags that only make sense for a `:query`.
 var windowFlags = []string{"metrics", "dimensions", "period", "since", vitalscmd.UserCohortFlag}
 
-// Run resolves the metric set, then delegates to the shared vitals
-// orchestration: the descriptor with --describe, the timeline otherwise.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	set, ok := vitals.MetricSetByName(in.MetricSet)
 	if !ok {
@@ -66,7 +48,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	})
 }
 
-// NewCommand returns the cobra command for `gplay vitals query <metric-set>`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

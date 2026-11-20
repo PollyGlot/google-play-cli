@@ -1,15 +1,3 @@
-// Package migrate implements `gplay subscriptions prices migrate`: move
-// EXISTING subscribers of one base plan to its current price
-// (basePlans.migratePrices): the sole imperative escape hatch of the
-// Monetization catalog (ADR-0041 §4). `apply` never reprices a live purchaser;
-// this command is how an operator deliberately does, so it is DESTRUCTIVE tier
-// (ADR-0017): refuses without --confirm (exit 3, naming the flag), CI=true
-// never auto-confirms, MarkMutating so GPLAY_READONLY refuses it (exit 4),
-// --dry-run previews the target with no HTTP and lists the gate in `requires`.
-// One base plan per invocation: no bulk money-moving (the ADR-0031 stance;
-// batchMigratePrices is deliberately not wrapped). `migrate` is a domain verb
-// admitted under ADR-0019 §2 (Google's own method name). Ships [experimental]
-// (ADR-0010).
 package migrate
 
 import (
@@ -30,7 +18,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package           string
 	Product           string
@@ -43,10 +30,6 @@ type Input struct {
 	DryRun            bool
 }
 
-// Payload renders what migrate did (or, on --dry-run, would do). Requires is
-// the safety gate surfaced under --dry-run (ADR-0017 §4); Raw carries any
-// verbatim response body (usually empty, so a gplay-shaped success object is
-// emitted instead).
 type Payload struct {
 	Product  string
 	BasePlan string
@@ -103,10 +86,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: output.NonNil(p.Requires)})
 	}
-	// migratePrices returns an empty body on success; emit a gplay-shaped
-	// success object so --output json (the CI default) is always parseable
-	// (the documented ADR-0003 exception family, as in `orders refund`).
-	if len(bytes.TrimSpace(p.Raw)) > 2 { // more than bare {}
+	if len(bytes.TrimSpace(p.Raw)) > 2 {
 		_, err := w.Write(p.Raw)
 		return err
 	}
@@ -118,7 +98,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}{OK: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions})
 }
 
-// priceIncreaseTypes maps the operator-friendly flag values to the API enum.
 var priceIncreaseTypes = map[string]string{
 	"":                            "",
 	"opt-in":                      "PRICE_INCREASE_TYPE_OPT_IN",
@@ -127,8 +106,6 @@ var priceIncreaseTypes = map[string]string{
 	"PRICE_INCREASE_TYPE_OPT_OUT": "PRICE_INCREASE_TYPE_OPT_OUT",
 }
 
-// PriceIncreaseTypes lists the distinct API enum values --price-increase-type
-// can send, sorted.
 func PriceIncreaseTypes() []string {
 	var out []string
 	for _, v := range priceIncreaseTypes {
@@ -140,9 +117,6 @@ func PriceIncreaseTypes() []string {
 	return out
 }
 
-// Run is the business function the kernel invokes. It validates offline,
-// enforces the destructive --confirm gate (unless --dry-run previews) and
-// migrates the subscribers.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	product := strings.TrimSpace(in.Product)
 	basePlan := strings.TrimSpace(in.BasePlan)
@@ -169,8 +143,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("invalid --price-increase-type %q: pass opt-in or opt-out", in.PriceIncreaseType)
 	}
 
-	// migrating live subscribers is unconditionally money-moving, so the gate
-	// is always a single required flag.
 	requires := []string{"confirm"}
 
 	if in.DryRun {
@@ -214,7 +186,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Product: product, BasePlan: basePlan, Regions: regions, Oldest: oldest, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay subscriptions prices migrate`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

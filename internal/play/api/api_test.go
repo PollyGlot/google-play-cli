@@ -1,6 +1,3 @@
-// Package api_test exercises the HTTP-status-to-exit-code mapping and
-// the Google API error-envelope parser. Both are pure functions so the
-// tests are table-driven.
 package api_test
 
 import (
@@ -83,9 +80,7 @@ func TestAPIErrorMessage(t *testing.T) {
 			name:   "envelope with empty message and whitespace-only outer body still has a floor",
 			body:   []byte(`{"error":{"message":""}}`),
 			status: 500,
-			// Outer JSON is well-formed but envelope message is blank →
-			// fall through to trimmed raw → trim is non-empty → keep raw.
-			want: `{"error":{"message":""}}`,
+			want:   `{"error":{"message":""}}`,
 		},
 	}
 	for _, tc := range cases {
@@ -98,8 +93,6 @@ func TestAPIErrorMessage(t *testing.T) {
 	}
 }
 
-// TestError_implementsCoder asserts that *Error carries an ExitCode so
-// internal/exit.For routes it without a dispatcher.
 func TestError_implementsCoder(t *testing.T) {
 	e := &api.Error{Operation: "edits.insert", Package: "com.x", StatusCode: 403, Message: "no"}
 	var coder interface{ ExitCode() int }
@@ -111,10 +104,6 @@ func TestError_implementsCoder(t *testing.T) {
 	}
 }
 
-// TestError_ExitCode covers the operation-aware special case: a 400 or
-// 404 from edits.bundles.upload means "malformed AAB" and must surface
-// as exit code 20, while auth/5xx/transport rules still win over the
-// operation hint, and non-bundles operations stay on the generic table.
 func TestError_ExitCode(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -150,17 +139,11 @@ func TestError_ExitCode(t *testing.T) {
 	}
 }
 
-// codedErr is a cause that already carries an exit code, the shape of a
-// *token.AuthError (exit 10) raised inside oauth2.Transport.
 type codedErr struct{ code int }
 
 func (c codedErr) Error() string { return "coded" }
 func (c codedErr) ExitCode() int { return c.code }
 
-// TestError_ExitCode_transportCauseCoderWins (#584): with no HTTP status, a
-// cause carrying its own exit code (a refused token exchange) wins over the
-// network bucket, while a plain transport cause still maps to 50. A real
-// HTTP status keeps precedence over any cause.
 func TestError_ExitCode_transportCauseCoderWins(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -183,9 +166,6 @@ func TestError_ExitCode_transportCauseCoderWins(t *testing.T) {
 	}
 }
 
-// TestError_ExitCode_nilReceiver guards the documented nil-receiver
-// behaviour: a nil *Error returns 0, matching the existing Error()
-// pattern.
 func TestError_ExitCode_nilReceiver(t *testing.T) {
 	var e *api.Error
 	if got := e.ExitCode(); got != 0 {
@@ -193,8 +173,6 @@ func TestError_ExitCode_nilReceiver(t *testing.T) {
 	}
 }
 
-// TestError_Unwrap exposes the underlying transport error to errors.Is /
-// errors.As callers.
 func TestError_Unwrap(t *testing.T) {
 	cause := errors.New("dial tcp: connection refused")
 	e := &api.Error{Operation: "edits.insert", Package: "com.x", Message: cause.Error(), Cause: cause}
@@ -203,11 +181,6 @@ func TestError_Unwrap(t *testing.T) {
 	}
 }
 
-// TestError_Error_includesReasons asserts the user-visible string
-// surfaces the structured Reasons slice: without this, the
-// editAlreadyExists / rateLimitExceeded / etc. signal Google ships
-// in the envelope is parsed but invisible in CI logs and `gplay`
-// stderr output.
 func TestError_Error_includesReasons(t *testing.T) {
 	e := &api.Error{
 		Operation:  "edits.insert",
@@ -225,8 +198,6 @@ func TestError_Error_includesReasons(t *testing.T) {
 	}
 }
 
-// TestError_Error_omitsReasonsWhenEmpty keeps the pre-existing
-// format stable when no reasons were captured: no trailing "[reason: ]".
 func TestError_Error_omitsReasonsWhenEmpty(t *testing.T) {
 	e := &api.Error{Operation: "edits.insert", Package: "com.x", StatusCode: 403, Message: "no"}
 	got := e.Error()

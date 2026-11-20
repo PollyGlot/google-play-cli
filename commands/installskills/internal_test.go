@@ -37,17 +37,15 @@ func TestPin_validate(t *testing.T) {
 	}
 
 	cases := map[string]func(p *Pin){
-		// An abbreviated hash is a prefix match, so it does not pin one tree.
 		"short commit":    func(p *Pin) { p.Commit = "0123456" },
 		"branch name":     func(p *Pin) { p.Commit = "main" },
 		"uppercase hash":  func(p *Pin) { p.Commit = strings.ToUpper(p.Commit) },
 		"unsorted skills": func(p *Pin) { p.Skills = []string{"b", "a"} },
 		"duplicate skill": func(p *Pin) { p.Skills = []string{"a", "a"} },
-		// A traversing name would let the copy escape the target directory.
-		"path traversal": func(p *Pin) { p.Skills = []string{".."} },
-		"nested name":    func(p *Pin) { p.Skills = []string{"a/b"} },
-		"no skills":      func(p *Pin) { p.Skills = nil },
-		"no url":         func(p *Pin) { p.URL = "" },
+		"path traversal":  func(p *Pin) { p.Skills = []string{".."} },
+		"nested name":     func(p *Pin) { p.Skills = []string{"a/b"} },
+		"no skills":       func(p *Pin) { p.Skills = nil },
+		"no url":          func(p *Pin) { p.URL = "" },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -61,12 +59,8 @@ func TestPin_validate(t *testing.T) {
 	}
 }
 
-// TestSwap_rollbackRestoresPreviousSkills drives the replacement engine
-// directly: a failure partway through the pack must leave every skill exactly
-// as it was, whether it had a previous version or not.
 func TestSwap_rollbackRestoresPreviousSkills(t *testing.T) {
 	target, stage, backup := t.TempDir(), t.TempDir(), t.TempDir()
-	// Same filesystem is what production guarantees; t.TempDir gives us that.
 	write(t, filepath.Join(target, "alpha", "SKILL.md"), "old alpha\n")
 	write(t, filepath.Join(target, "unrelated", "SKILL.md"), "untouched\n")
 	write(t, filepath.Join(stage, "alpha", "SKILL.md"), "new alpha\n")
@@ -79,8 +73,6 @@ func TestSwap_rollbackRestoresPreviousSkills(t *testing.T) {
 	if got := readFile(t, filepath.Join(target, "alpha", "SKILL.md")); got != "new alpha\n" {
 		t.Fatalf("alpha not swapped in: %q", got)
 	}
-	// "beta" is nowhere in the staging area: the rename fails, exactly as a
-	// mid-pack filesystem error would.
 	if err := sw.install("beta", filepath.Join(stage, "does-not-exist")); err == nil {
 		t.Fatal("expected the second install to fail")
 	}
@@ -99,8 +91,6 @@ func TestSwap_rollbackRestoresPreviousSkills(t *testing.T) {
 	}
 }
 
-// A skill that did not exist before must be removed by the rollback, not left
-// behind as a partial install.
 func TestSwap_rollbackRemovesNewlyAddedSkill(t *testing.T) {
 	target, stage, backup := t.TempDir(), t.TempDir(), t.TempDir()
 	write(t, filepath.Join(stage, "alpha", "SKILL.md"), "new alpha\n")
@@ -117,14 +107,9 @@ func TestSwap_rollbackRemovesNewlyAddedSkill(t *testing.T) {
 	}
 }
 
-// TestRolledBack_keepsAndNamesTheBackupWhenRollbackFails: when rollback gives
-// up, the backup directory holds the only copy of the user's previous skills.
-// The error has to name it, and the caller has to be told not to delete it.
 func TestRolledBack_keepsAndNamesTheBackupWhenRollbackFails(t *testing.T) {
 	target, backup := t.TempDir(), t.TempDir()
 	sw := &swap{target: target, backup: backup}
-	// A swap whose displaced original is no longer in the backup: the restore
-	// rename fails, which is exactly what an incomplete rollback looks like.
 	sw.done = []swapped{{name: "alpha", hadPrevious: true}}
 
 	err := rolledBack(sw, errors.New("verify installed skill alpha"))
@@ -152,9 +137,6 @@ func TestRolledBack_cleanRollbackReleasesTheBackup(t *testing.T) {
 	}
 }
 
-// TestFetchPinned_hardensEveryInvocation pins the flags that make ADR-0045's
-// "nothing else is executed" true even when the user's git configuration says
-// otherwise.
 func TestFetchPinned_hardensEveryInvocation(t *testing.T) {
 	commit := "0123456789abcdef0123456789abcdef01234567"
 	dest := t.TempDir()
@@ -191,8 +173,6 @@ func TestFetchPinned_hardensEveryInvocation(t *testing.T) {
 	}
 }
 
-// A run killed before its deferred cleanup leaves scaffolding in the target;
-// the next run must repair it rather than accumulate it.
 func TestSweepOrphans_repairsAnInterruptedRun(t *testing.T) {
 	target := t.TempDir()
 	write(t, filepath.Join(target, backupPrefix+"aaa", "alpha", "SKILL.md"), "rescued\n")
@@ -270,8 +250,6 @@ func TestVerifyTree_detectsEveryKindOfDrift(t *testing.T) {
 	})
 }
 
-// A symlink in the pack would resolve against the user's filesystem at install
-// time, so the copy refuses it instead of following it.
 func TestCopyTree_refusesSymlinks(t *testing.T) {
 	src, dst := t.TempDir(), filepath.Join(t.TempDir(), "out")
 	write(t, filepath.Join(src, "SKILL.md"), "body\n")
@@ -313,10 +291,6 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// defaultRun is the one place git is spawned. Running `env` through it shows
-// the exact environment git would inherit: none of gplay's own variables, the
-// inline service-account key first among them, while PATH, HOME and the proxy
-// git needs to reach the remote still pass (#795).
 func TestDefaultRun_childEnvHasNoGplayVariables(t *testing.T) {
 	envBin, err := exec.LookPath("env")
 	if err != nil {

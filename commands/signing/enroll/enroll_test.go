@@ -25,8 +25,6 @@ import (
 
 const enrollBody = `{"signingCertificate":{"certificateHashMd5":"AA:BB","certificateHashSha1":"CC:DD","certificateHashSha256":"EE:FF"},"uploadCertificate":{"certificateHashSha256":"11:22"}}`
 
-// rt is the offline transport: it answers the OAuth token exchange and the
-// single appsigning POST, recording the request for shape assertions.
 type rt struct {
 	mu     sync.Mutex
 	calls  []string
@@ -78,7 +76,6 @@ func newRC(t *testing.T, transport http.RoundTripper, format output.Format) (*ke
 	return rc, &stdout
 }
 
-// writeFile drops content in a temp dir and returns its path.
 func writeFile(t *testing.T, name, content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), name)
@@ -88,7 +85,6 @@ func writeFile(t *testing.T, name, content string) string {
 	return p
 }
 
-// certPEM is a real self-signed certificate: ReadPEM parses every block.
 func certPEM(t *testing.T) string {
 	t.Helper()
 	return string(testkit.CertificatePEM(t))
@@ -103,7 +99,6 @@ func exitCode(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// render runs the payload through the requested format, as the kernel would.
 func render(t *testing.T, r output.Renderable, format output.Format) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -113,8 +108,6 @@ func render(t *testing.T, r output.Renderable, format output.Format) string {
 	return buf.String()
 }
 
-// TestRun_missingConfirm_exit3_noNetwork asserts the irreversible-write gate:
-// without --confirm the command refuses (exit 3) before touching the network.
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
@@ -130,8 +123,6 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_previewsWithoutHTTP asserts --dry-run rehearses offline and
-// reports the gate through the ADR-0017 `requires` array.
 func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
@@ -150,8 +141,6 @@ func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_existingApp_postsEnrollExistingApp asserts the oneof branch, the URL
-// and the verbatim JSON pass-through (ADR-0003).
 func TestRun_existingApp_postsEnrollExistingApp(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
@@ -185,8 +174,6 @@ func TestRun_existingApp_postsEnrollExistingApp(t *testing.T) {
 	}
 }
 
-// TestRun_newApp_postsEnrollNewApp_base64Cert asserts the new-app branch carries
-// the KMS key AND the base64 of the PEM file's bytes.
 func TestRun_newApp_postsEnrollNewApp_base64Cert(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
@@ -226,8 +213,6 @@ func TestRun_newApp_postsEnrollNewApp_base64Cert(t *testing.T) {
 	}
 }
 
-// TestRun_flagCombinations_areUsageErrors asserts the oneof distinction is
-// enforced client-side (exit 2), never sent to the API as a wrong shape.
 func TestRun_flagCombinations_areUsageErrors(t *testing.T) {
 	certPath := writeFile(t, "kms.pem", certPEM(t))
 	cases := []struct {
@@ -257,8 +242,6 @@ func TestRun_flagCombinations_areUsageErrors(t *testing.T) {
 	}
 }
 
-// TestRun_nonPEMCert_isUsageError asserts a file that is not a certificate is
-// caught locally rather than as an opaque 400.
 func TestRun_nonPEMCert_isUsageError(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatJSON)
@@ -272,11 +255,6 @@ func TestRun_nonPEMCert_isUsageError(t *testing.T) {
 	}
 }
 
-// TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun reproduces
-// SEC-08 (#589): a key file or the service-account JSON passed as
-// --upload-cert used to pass validation (it contains "-----BEGIN") and would
-// have shipped the private key in the enrollApp body. It must fail as a usage
-// error before any preview or network call.
 func TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun(t *testing.T) {
 	for name, content := range map[string]string{
 		"key.pem":  string(testkit.PrivateKeyPEM(t)),
@@ -297,8 +275,6 @@ func TestRun_privateKeyOrServiceAccountAsCert_refusedEvenInDryRun(t *testing.T) 
 	}
 }
 
-// TestRun_tablePrintsCertificateHashes asserts the human view surfaces the
-// returned hashes, one row per certificate the API actually sent.
 func TestRun_tablePrintsCertificateHashes(t *testing.T) {
 	r := &rt{}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatTable)
@@ -314,8 +290,6 @@ func TestRun_tablePrintsCertificateHashes(t *testing.T) {
 	}
 }
 
-// TestRun_noUploadCertificate_omitsTheRow asserts gplay never fabricates a hash
-// the API did not return.
 func TestRun_noUploadCertificate_omitsTheRow(t *testing.T) {
 	r := &rt{resp: `{"signingCertificate":{"certificateHashSha256":"EE:FF"}}`}
 	rc, _ := newRC(t, testkit.RoundTripFunc(r.serve), output.FormatTable)
@@ -328,11 +302,6 @@ func TestRun_noUploadCertificate_omitsTheRow(t *testing.T) {
 	}
 }
 
-// TestNewCommand_helpNamesTheApiOnlyBoundary asserts --help states the trap: the
-// standard, Google-managed enrollment is not reachable through any API. The Help
-// Center URL is spelled out here on purpose rather than read from
-// appsigning.HelpCenterURL: the literal is what pins the constant's value, so a
-// silent edit of the constant fails this test instead of shipping.
 func TestNewCommand_helpNamesTheApiOnlyBoundary(t *testing.T) {
 	long := enrollcmd.NewCommand(kernel.Boot{}).Long
 	for _, want := range []string{

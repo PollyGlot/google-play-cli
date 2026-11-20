@@ -14,28 +14,18 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// PresetSpec describes one opinionated `gplay vitals <name>` command: a fixed
-// metric set with a friendly flag surface (--by, --version-code) instead of the raw
-// --metrics/--dimensions of `vitals query`. The presets are data, so adding the
-// remaining metric sets (#260) is a list append, not new command code.
 type PresetSpec struct {
-	Use   string // subcommand name, e.g. "crashes"
-	Short string // one-line help
-	Set   string // metric-set name in the registry, e.g. "crashrate"
+	Use   string
+	Short string
+	Set   string
 }
 
-// byDimension maps the preset-friendly --by value to the API dimension name.
-// The mapped dimension is still validated against the metric set's supported
-// dimensions in Execute, so a set that does not support one is rejected.
 var byDimension = map[string]string{
 	"versionCode": "versionCode",
 	"device":      "deviceModel",
 	"country":     "countryCode",
 }
 
-// ByChoices is the pipe-joined list of all --by keys, for the (set-independent)
-// flag help. Which keys actually apply depends on the metric set: see
-// ByChoicesFor for the set-aware list used in error messages.
 func ByChoices() string {
 	keys := make([]string, 0, len(byDimension))
 	for k := range byDimension {
@@ -45,10 +35,6 @@ func ByChoices() string {
 	return strings.Join(keys, "|")
 }
 
-// ByChoicesFor is the pipe-joined list of --by keys whose mapped dimension the
-// given metric set actually supports (read from the snapshot). Not every set
-// supports every dimension (e.g. errorCount has no countryCode) so this is
-// what an actionable "--by not available" error lists.
 func ByChoicesFor(idx schemaindex.Index, set vitals.MetricSet) string {
 	supported := vitals.SupportedDimensions(idx, set)
 	keys := make([]string, 0, len(byDimension))
@@ -70,12 +56,6 @@ func contains(ss []string, want string) bool {
 	return false
 }
 
-// PresetParams resolves the friendly preset flags (--by, --version-code) into Params
-// for a metric set: --by maps to the API dimension (validated against THIS set's
-// supported dimensions, since not every set supports every one), --version-code to a
-// versionCode filter. Shared by the opinionated presets and `vitals errors
-// counts`. A bad --by or --version-code is CLI misuse; the --by error names the
-// user's token (e.g. `country`), not the internal API dimension.
 func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by, since, period, cohort string) (Params, error) {
 	var dimensions []string
 	if by != "" {
@@ -107,28 +87,19 @@ func PresetParams(idx schemaindex.Index, set vitals.MetricSet, pkg, version, by,
 	}, nil
 }
 
-// presetInput is the flag surface shared by every preset.
 type presetInput struct {
 	Package     string
-	VersionCode string // --version-code: filter by versionCode
-	By          string // --by: versionCode|device|country
+	VersionCode string
+	By          string
 	Since       string
 	Period      string
-	UserCohort  string // --user-cohort, on the presets whose set has more than OS_PUBLIC
-	Describe    bool   // --describe: the set's `.get` (freshness) instead of `:query`
-	// WindowFlags is the ChangedFlags list of the query-shaping flags, recorded
-	// by the cobra layer so runPreset can reject them under --describe.
+	UserCohort  string
+	Describe    bool
 	WindowFlags []string
 }
 
-// presetWindowFlags are the preset flags that only make sense for a `:query`.
 var presetWindowFlags = []string{"since", "period", "by", "version-code", UserCohortFlag}
 
-// runPreset resolves the friendly preset flags into Params and delegates to
-// Execute. Metrics are left empty so the set's primary metric is used: the
-// whole point of a preset is that the common case needs no metric knowledge.
-// With --describe the window flags are moot: any set explicitly is rejected and
-// the descriptor is fetched instead.
 func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (output.Renderable, error) {
 	if err := RejectWindowFlags(in.Describe, in.WindowFlags); err != nil {
 		return nil, err
@@ -147,9 +118,6 @@ func runPreset(rc *kernel.RunContext, set vitals.MetricSet, in presetInput) (out
 	return Execute(rc, p)
 }
 
-// NewPresetCommand builds the cobra command for one preset. It panics at
-// construction (not runtime) if spec.Set is not a registered metric set: a
-// programmer error caught by any test that builds the command tree.
 func NewPresetCommand(boot kernel.Boot, spec PresetSpec) *cobra.Command {
 	set, ok := vitals.MetricSetByName(spec.Set)
 	if !ok {
@@ -210,9 +178,6 @@ flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
 	return cmd
 }
 
-// Presets is the declared list of opinionated metric-set commands: one per
-// queryable metric set (the seven read-only signals). Adding a metric set to
-// the registry without a preset here fails TestPresets_coverEveryMetricSet.
 var Presets = []PresetSpec{
 	{Use: "crashes", Short: "Crash rate for a package (vitals crashrate preset)", Set: "crashrate"},
 	{Use: "anr", Short: "ANR (App Not Responding) rate for a package (vitals anrrate preset)", Set: "anrrate"},

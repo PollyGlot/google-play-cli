@@ -1,8 +1,3 @@
-// Package create_test exercises `gplay customapps create` at the kernel level:
-// a RunContext built by hand, a RoundTripper injected via the oauth2.HTTPClient
-// context key (covering both the /token exchange and the upload POST), and Run
-// invoked directly. Mirrors the releases/sharing/upload command test harness.
-// No network.
 package create_test
 
 import (
@@ -34,10 +29,6 @@ const createdApp = `{"title":"My Internal App","languageCode":"en-US","packageNa
 
 const customSessionURI = "https://playcustomapp.googleapis.com/upload/session/xyz789"
 
-// customRT terminates the /token exchange and drives the resumable create
-// upload (initiate POST → chunk PUT), returning a configurable status + body
-// and capturing the call sequence + URL. A non-200 status is applied to the
-// initiate POST (the layer a 403 refusal surfaces from).
 type customRT struct {
 	t *testing.T
 
@@ -59,7 +50,6 @@ func (r *customRT) serve(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 	r.calls = append(r.calls, req.Method+" "+req.URL.Path)
-	// Initiate: the metadata POST that opens the resumable session.
 	if req.Method == http.MethodPost && strings.Contains(req.URL.Host, "playcustomapp") {
 		r.uploadURL = req.URL.String()
 		status := r.status
@@ -67,15 +57,12 @@ func (r *customRT) serve(req *http.Request) (*http.Response, error) {
 			status = 200
 		}
 		if status < 200 || status >= 300 {
-			// Error envelope surfaces on the initiate.
 			return testkit.Response(status, r.body), nil
 		}
 		resp := testkit.Response(status, "")
 		resp.Header.Set("Location", customSessionURI)
 		return resp, nil
 	}
-	// Chunk PUT: the session URI carries the artifact; the final chunk returns
-	// the created CustomApp resource body.
 	if req.Method == http.MethodPut && req.URL.String() == customSessionURI {
 		body := r.body
 		if body == "" {
@@ -121,10 +108,6 @@ func newRC(t *testing.T, rt *customRT) (*kernel.RunContext, *bytes.Buffer) {
 	return rc, &stdout
 }
 
-// writeArtifact drops a real (if minimal) AAB container at a temp path. The
-// artifact preflight (PRD #448) classifies the container before any request
-// is issued, so a placeholder byte string would be refused offline and never
-// reach the RoundTripper.
 func writeArtifact(t *testing.T, name string) string {
 	t.Helper()
 	return artifacttest.AAB(t, t.TempDir(), name, "com.example.app")
@@ -152,9 +135,6 @@ func validInput(artifact string) createcmd.Input {
 	}
 }
 
-// TestRun_happyPath asserts the /token exchange precedes a POST to the
-// customApps endpoint (account axis, uploadType=resumable), the JSON view
-// passes the CustomApp through verbatim, and a ✓ line lands on stderr.
 func TestRun_happyPath(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -185,9 +165,6 @@ func TestRun_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_missingConfirm_exit3_noNetwork asserts the destructive gate: without
-// --confirm the live write refuses with exit 3 naming the flag, and makes NO
-// network call (not even the token exchange).
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -206,9 +183,6 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_403_refusal_namesCapability asserts a 403 becomes an agent-resolvable
-// refusal naming managed-Play enrollment and CAN_CREATE_MANAGED_PLAY_APPS,
-// while the wrapped api.Error keeps the authorization exit code (11).
 func TestRun_403_refusal_namesCapability(t *testing.T) {
 	rt := &customRT{t: t, status: 403, body: `{"error":{"code":403,"message":"permission denied","errors":[{"reason":"forbidden"}]}}`}
 	rc, _ := newRC(t, rt)
@@ -224,8 +198,6 @@ func TestRun_403_refusal_namesCapability(t *testing.T) {
 	}
 }
 
-// TestRun_unresolvedDeveloperID_exit10_noNetwork asserts a missing developer-id
-// is an auth-family failure (exit 10) raised before any HTTP call.
 func TestRun_unresolvedDeveloperID_exit10_noNetwork(t *testing.T) {
 	t.Setenv(addressing.EnvDeveloperID, "")
 	rt := &customRT{t: t}
@@ -243,8 +215,6 @@ func TestRun_unresolvedDeveloperID_exit10_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noNetwork_requiresArray asserts --dry-run validates offline,
-// makes no HTTP call, writes no ✓ line, and reports requires:["confirm"].
 func TestRun_dryRun_noNetwork_requiresArray(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -252,7 +222,7 @@ func TestRun_dryRun_noNetwork_requiresArray(t *testing.T) {
 	rc.Stderr = &stderr
 
 	in := validInput(writeArtifact(t, "app.aab"))
-	in.Confirm = false // dry-run must not need --confirm
+	in.Confirm = false
 	in.DryRun = true
 	r, err := createcmd.Run(rc, in)
 	if err != nil {
@@ -261,8 +231,6 @@ func TestRun_dryRun_noNetwork_requiresArray(t *testing.T) {
 	if len(rt.calls) != 0 {
 		t.Errorf("dry-run must make no network call; calls=%v", rt.calls)
 	}
-	// A dry-run reports the artifact preflight on stderr (PRD #448), but it
-	// must never claim a mutation happened.
 	if strings.Contains(stderr.String(), "✓") {
 		t.Errorf("dry-run must not write a ✓ line: %q", stderr.String())
 	}
@@ -292,7 +260,6 @@ func TestRun_dryRun_noNetwork_requiresArray(t *testing.T) {
 	}
 }
 
-// TestRun_missingTitle_exit2_noNetwork asserts a missing --title is CLI misuse.
 func TestRun_missingTitle_exit2_noNetwork(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -308,7 +275,6 @@ func TestRun_missingTitle_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_missingLanguage_exit2 asserts a missing --default-language is misuse.
 func TestRun_missingLanguage_exit2(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -320,8 +286,6 @@ func TestRun_missingLanguage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingArtifact_exit20_noNetwork asserts an unreadable artifact fails
-// offline with exit 20 (parity with the live uploader's LocalIOError).
 func TestRun_missingArtifact_exit20_noNetwork(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -336,8 +300,6 @@ func TestRun_missingArtifact_exit20_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_organizations_threadedToRequest asserts a repeatable --organization
-// lands in the initiate JSON metadata body as an organizationId.
 func TestRun_organizations_threadedToRequest(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -348,9 +310,6 @@ func TestRun_organizations_threadedToRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// The dry-run view echoes orgs; the live path can't (the canned response has
-	// none), so assert the live call succeeded and rendered. Org wire-threading
-	// is asserted end-to-end in the internal/play/customapps resumable test.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -360,7 +319,6 @@ func TestRun_organizations_threadedToRequest(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag surface is wired.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := createcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"developer-id", "title", "default-language", "organization", "confirm", "dry-run", "output"} {
@@ -368,9 +326,6 @@ func TestNewCommand_flags(t *testing.T) {
 			t.Errorf("missing --%s flag", name)
 		}
 	}
-	// The [experimental] label is no longer a literal in this Short: it is
-	// applied at registration by kernel.Experimental and pinned centrally by
-	// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 }
 
 func mustErr(_ output.Renderable, err error) error { return err }

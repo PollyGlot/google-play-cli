@@ -11,9 +11,6 @@ import (
 
 const describeBody = `{"name":"apps/com.example.app/anrRateMetricSet","freshnessInfo":{"freshnesses":[{"aggregationPeriod":"DAILY","latestEndTime":{"year":2026,"month":9,"day":12,"timeZone":{"id":"America/Los_Angeles"}}}]}}`
 
-// TestRunPreset_describe_getsTheMetricSet proves a preset's --describe reaches
-// the set's `.get`: exactly one GET on the bare resource, never the `:query`
-// POST (#545).
 func TestRunPreset_describe_getsTheMetricSet(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, describeBody))
 	rc := newRC(t, fake)
@@ -33,8 +30,6 @@ func TestRunPreset_describe_getsTheMetricSet(t *testing.T) {
 	}
 }
 
-// TestRunPreset_describe_rejectsWindowFlags: --by/--version-code/--since/--period
-// set alongside --describe is usage misuse, caught before any request.
 func TestRunPreset_describe_rejectsWindowFlags(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, describeBody))
 	rc := newRC(t, fake)
@@ -65,8 +60,6 @@ func TestRejectWindowFlags(t *testing.T) {
 	}
 }
 
-// TestPresetCommand_describeFlagIsRegistered drives the real cobra command:
-// the flag exists on every preset and its Changed state feeds ChangedFlags.
 func TestPresetCommand_describeFlagIsRegistered(t *testing.T) {
 	for _, spec := range Presets {
 		cmd := NewPresetCommand(kernel.Boot{}, spec)

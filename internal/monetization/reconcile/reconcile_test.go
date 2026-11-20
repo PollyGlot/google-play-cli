@@ -15,9 +15,6 @@ var managed = []reconcile.Field{
 
 func raw(s string) json.RawMessage { return json.RawMessage(s) }
 
-// TestCompute_partitionsActions asserts the plan sends a local-only product to
-// create, a live-only product to delete, a differing product to patch (naming
-// the changed managed fields), and an identical product to unchanged.
 func TestCompute_partitionsActions(t *testing.T) {
 	local := map[string]json.RawMessage{
 		"newbie":  raw(`{"productId":"newbie","listings":[{"languageCode":"en-US","title":"New"}]}`),
@@ -53,9 +50,6 @@ func TestCompute_partitionsActions(t *testing.T) {
 	}
 }
 
-// TestCompute_unmanagedFieldsInvisible asserts a difference outside the managed
-// fields (basePlans, until slice #368) never produces a patch: the walking
-// skeleton cannot clobber nesting it does not own.
 func TestCompute_unmanagedFieldsInvisible(t *testing.T) {
 	local := map[string]json.RawMessage{
 		"premium": raw(`{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}]}`),
@@ -72,8 +66,6 @@ func TestCompute_unmanagedFieldsInvisible(t *testing.T) {
 	}
 }
 
-// TestCompute_missingManagedFieldEqualsAbsent asserts a managed field absent on
-// both sides compares equal (no phantom patch from null-vs-missing).
 func TestCompute_missingManagedFieldEqualsAbsent(t *testing.T) {
 	local := map[string]json.RawMessage{"p": raw(`{"productId":"p","listings":[]}`)}
 	live := map[string]json.RawMessage{"p": raw(`{"productId":"p","listings":[]}`)}
@@ -86,9 +78,6 @@ func TestCompute_missingManagedFieldEqualsAbsent(t *testing.T) {
 	}
 }
 
-// TestCompute_normalizerExcludesOutputOnly asserts a Field normalizer strips
-// server-derived subfields before comparison: a live basePlans[].state (output
-// only) never produces a phantom patch, while a real basePlan edit still does.
 func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
 	fields := []reconcile.Field{{Name: "basePlans", Normalize: reconcile.StripKeys("state")}}
 	local := map[string]json.RawMessage{
@@ -117,8 +106,6 @@ func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
 	}
 }
 
-// TestCompute_deterministicOrder asserts plan entries are sorted by product ID
-// so dry-run output and tests are stable.
 func TestCompute_deterministicOrder(t *testing.T) {
 	local := map[string]json.RawMessage{
 		"b": raw(`{"productId":"b"}`),
@@ -133,10 +120,6 @@ func TestCompute_deterministicOrder(t *testing.T) {
 	}
 }
 
-// TestBasePlanDeletes_removedPlansOnly asserts the base-plan shrink set names
-// exactly the live plans the file dropped, keyed productId/basePlanId and
-// sorted: a live-only product (a parent delete) and a local-only product (a
-// create) contribute nothing, and a plan still declared is never a delete.
 func TestBasePlanDeletes_removedPlansOnly(t *testing.T) {
 	local := map[string]json.RawMessage{
 		"premium": raw(`{"productId":"premium","basePlans":[{"basePlanId":"monthly"}]}`),
@@ -159,8 +142,6 @@ func TestBasePlanDeletes_removedPlansOnly(t *testing.T) {
 	}
 }
 
-// TestBasePlanDeletes_unaddressablePlan_refuses asserts a live base plan
-// without a basePlanId is an integrity error rather than a silent skip.
 func TestBasePlanDeletes_unaddressablePlan_refuses(t *testing.T) {
 	local := map[string]json.RawMessage{"premium": raw(`{"productId":"premium"}`)}
 	live := map[string]json.RawMessage{"premium": raw(`{"productId":"premium","basePlans":[{"state":"DRAFT"}]}`)}
@@ -169,10 +150,6 @@ func TestBasePlanDeletes_unaddressablePlan_refuses(t *testing.T) {
 	}
 }
 
-// TestComputeChildren_typedAndInDisplayOrder asserts the nested diff returns
-// typed identities in the order of the productId/parentId/offerId display key:
-// "a-b/..." sorts before "a/..." because '-' < '/', which a tuple sort would
-// invert. The plan views print that order, so it must not move.
 func TestComputeChildren_typedAndInDisplayOrder(t *testing.T) {
 	offer := raw(`{"offerTags":[]}`)
 	local := map[reconcile.Key]json.RawMessage{
@@ -197,8 +174,6 @@ func TestComputeChildren_typedAndInDisplayOrder(t *testing.T) {
 	}
 }
 
-// TestPlanEntries_orderAndOps pins the flattened order every plan view lists
-// (grow, move state, shrink) and the state verbs.
 func TestPlanEntries_orderAndOps(t *testing.T) {
 	p := reconcile.Plan{
 		Creates:         []reconcile.Change{{ProductID: "c"}},

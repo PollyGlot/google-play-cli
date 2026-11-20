@@ -13,8 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// googleError builds the canonical Google API error envelope for a status and
-// a reason, the exact shape internal/play parses into api.Error.Reasons.
 func googleError(status int, message, reason string) string {
 	return `{"error":{"code":` + itoa(status) + `,"message":"` + message +
 		`","errors":[{"reason":"` + reason + `","message":"` + message + `"}]}}`
@@ -32,9 +30,6 @@ func itoa(n int) string {
 	return string(b)
 }
 
-// TestClassify_apiFailures drives the classifier over the upstream failures
-// PRD #447 names, asserting the code, the retryable bit, and that the exit code
-// is unchanged from the pre-existing taxonomy.
 func TestClassify_apiFailures(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -140,8 +135,6 @@ func TestClassify_apiFailures(t *testing.T) {
 	}
 }
 
-// TestClassify_localFailures covers the local failure kinds of slice #454: they
-// share the API scheme, so one dispatch table covers everything.
 func TestClassify_localFailures(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -180,8 +173,6 @@ type errWrapper struct{ error }
 
 func (w errWrapper) Unwrap() error { return w.error }
 
-// diagnoserError is a stand-in for a command-local error that knows a more
-// precise code than its exit code implies.
 type diagnoserError struct{ code exit.Code }
 
 func (diagnoserError) Error() string               { return "boom" }
@@ -198,10 +189,6 @@ func TestClassify_diagnoserRefinementWins(t *testing.T) {
 	}
 }
 
-// TestCodeCatalog_notDraft pins the rows `subscriptions apply` refines a
-// refused base plan delete (#555) and a refused offer delete (#790) to: same
-// exit bucket as the 400 they wrap, not retryable (the caller must keep the
-// resource in the file as INACTIVE).
 func TestCodeCatalog_notDraft(t *testing.T) {
 	for _, code := range []exit.Code{exit.CodeBasePlanNotDraft, exit.CodeOfferNotDraft} {
 		doc, ok := exit.LookupCode(code)
@@ -224,15 +211,11 @@ func TestClassify_nilIsNotAFailure(t *testing.T) {
 	}
 }
 
-// TestClassify_neverReturnsAnEmptyCode is the completeness guard: classification
-// is total, so no error path can ship unclassified. It walks every exit code in
-// the documented taxonomy plus a spread of statuses and asserts a catalogued
-// code comes back every time.
 func TestClassify_neverReturnsAnEmptyCode(t *testing.T) {
 	var errs []error
 	for _, doc := range exit.Catalog() {
 		if doc.Code == 0 {
-			continue // success is not a failure to classify
+			continue
 		}
 		errs = append(errs, fixedCodeError{doc.Code})
 	}
@@ -258,10 +241,6 @@ type fixedCodeError struct{ code int }
 func (e fixedCodeError) Error() string { return "exit " + itoa(e.code) }
 func (e fixedCodeError) ExitCode() int { return e.code }
 
-// TestCodeCatalog_isAWellFormedRegistry is the registry-style test the PRD asks
-// for: it fails on a duplicate code, an empty meaning, a code whose exit code is
-// not in the documented taxonomy, and on any exit code the classifier cannot
-// name.
 func TestCodeCatalog_isAWellFormedRegistry(t *testing.T) {
 	validExit := map[int]bool{}
 	for _, d := range exit.Catalog() {
@@ -311,14 +290,7 @@ func upper(s string) string {
 	return string(b)
 }
 
-// TestClassify_throughRealCallPath drives the production internal/play/edits
-// path against a mocked 409 editAlreadyExists response: the classifier must
-// reach the api.Error through the EditConflictError that wraps it, so the code
-// survives the wrapping a real command does.
 func TestClassify_throughRealCallPath(t *testing.T) {
-	// Every request gets the canned 409, so the real internal/play call path
-	// runs with zero network (AGENTS.md: a test that reaches the network is
-	// wrong).
 	hc := &http.Client{Transport: testkit.NewFake(testkit.Any(http.StatusConflict,
 		googleError(http.StatusConflict, "Edit ID is required", "editAlreadyExists")))}
 	_, err := edits.OpenExplicit(context.Background(), hc, "com.example.app")

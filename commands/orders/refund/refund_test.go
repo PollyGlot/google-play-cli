@@ -21,13 +21,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newFake answers the orders.refund POST with status and body; the API's
-// success shape is a 204 with an empty body.
 func newFake(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// lastURL is the URL of the last API call, failing the test when none was made.
 func lastURL(t *testing.T, fake *testkit.Fake) string {
 	t.Helper()
 	calls := fake.Calls()
@@ -58,9 +55,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_refund_success asserts --confirm POSTs to :refund without a revoke
-// query (default: money back, entitlement kept) and emits a parseable success
-// object.
 func TestRun_refund_success(t *testing.T) {
 	fake := newFake(http.StatusNoContent, "")
 	rc := newRC(t, fake)
@@ -70,8 +64,6 @@ func TestRun_refund_success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// DESIGN §8: a ✓ confirmation lands on stderr (not stdout, so it never
-	// pollutes --output json); the default keeps the entitlement.
 	if !strings.HasPrefix(stderr.String(), "✓ ") || !strings.Contains(stderr.String(), "entitlement kept") {
 		t.Errorf("stderr missing the ✓ entitlement-kept confirmation:\n%s", stderr.String())
 	}
@@ -106,8 +98,6 @@ func TestRun_refund_success(t *testing.T) {
 	}
 }
 
-// TestRun_refund_revoke asserts --revoke maps to the revoke=true query parameter
-// and reports revoked:true.
 func TestRun_refund_revoke(t *testing.T) {
 	fake := newFake(http.StatusNoContent, "")
 	rc := newRC(t, fake)
@@ -120,8 +110,6 @@ func TestRun_refund_revoke(t *testing.T) {
 	if apiURL := lastURL(t, fake); !strings.Contains(apiURL, "revoke=true") {
 		t.Errorf("url %q must carry revoke=true", apiURL)
 	}
-	// The ✓ confirmation must name the revoked entitlement (distinct from the
-	// entitlement-kept default).
 	if !strings.HasPrefix(stderr.String(), "✓ ") || !strings.Contains(stderr.String(), "revoked the entitlement") {
 		t.Errorf("stderr missing the ✓ revoked-entitlement confirmation:\n%s", stderr.String())
 	}
@@ -140,15 +128,11 @@ func TestRun_refund_revoke(t *testing.T) {
 	}
 }
 
-// TestRun_missingConfirm_exit3_noNetwork asserts a refund without --confirm
-// refuses with exit 3 naming the flag, before any HTTP call.
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	fake := newFake(http.StatusNoContent, "")
 	rc := newRC(t, fake)
 	_, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234"})
 	assertExit(t, err, 3)
-	// The structured Flag is the signal an automated caller branches on, so pin
-	// the concrete type and that it names the confirm gate (ADR-0017).
 	var sfe *exit.SafetyFlagError
 	if !errors.As(err, &sfe) {
 		t.Fatalf("err %v is not *exit.SafetyFlagError", err)
@@ -164,8 +148,6 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_requiresConfirm_noNetwork asserts --dry-run previews offline
-// and surfaces requires:["confirm"] under --output json.
 func TestRun_dryRun_requiresConfirm_noNetwork(t *testing.T) {
 	fake := newFake(http.StatusNoContent, "")
 	rc := newRC(t, fake)
@@ -193,8 +175,6 @@ func TestRun_dryRun_requiresConfirm_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesManageOrders asserts a forbidden refund maps to exit 11 and
-// the refusal names CAN_MANAGE_ORDERS (agent-resolvable).
 func TestRun_403_namesManageOrders(t *testing.T) {
 	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
 	rc := newRC(t, fake)
@@ -205,12 +185,6 @@ func TestRun_403_namesManageOrders(t *testing.T) {
 	}
 }
 
-// TestRun_tooOld_specificRefusal asserts the API's older-than-3-years rejection
-// becomes a specific refusal (not a generic error), preserving the API exit
-// code (400 → 30). The assertion keys on a phrase that exists ONLY in
-// refundTooOldError.Error() (never in the raw API message) so it fails if the
-// classifier stops wrapping the too-old case (the raw *api.Error would still
-// echo "3 years" and exit 30, which would silently pass a weaker assertion).
 func TestRun_tooOld_specificRefusal(t *testing.T) {
 	fake := newFake(400, `{"error":{"message":"Orders older than 3 years cannot be refunded."}}`)
 	rc := newRC(t, fake)
@@ -221,8 +195,6 @@ func TestRun_tooOld_specificRefusal(t *testing.T) {
 	}
 }
 
-// TestRun_missingOrderID_exit2_noNetwork asserts an empty order ID is CLI misuse
-// caught before any HTTP call (and before the confirm gate).
 func TestRun_missingOrderID_exit2_noNetwork(t *testing.T) {
 	fake := newFake(http.StatusNoContent, "")
 	rc := newRC(t, fake)

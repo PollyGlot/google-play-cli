@@ -1,15 +1,3 @@
-// Package list implements `gplay team users list`: the first gplay command
-// keyed by the Developer account rather than a package (ADR-0015). It lists
-// every member of the account with their account-wide permissions, reading
-// users.list paginated to completion (no silent truncation) via
-// internal/play/team.
-//
-// The developer-id is resolved through the ADR-0015 cascade (active
-// Account.DeveloperID → project-local → GPLAY_DEVELOPER_ID → --developer-id);
-// an unresolved id is an auth-family failure (exit 10). Output consumes the
-// shared list-command machinery (ADR-0018 / #93): it is the 4th `list`
-// command, and the table marks account-wide admins distinctly (US24).
-// --output json is the verbatim (pagination-merged) users.list response.
 package list
 
 import (
@@ -31,16 +19,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	DeveloperID string
 	Columns     string
 }
 
-// forbiddenError wraps a 403 on users.list (the service account lacks the
-// account-level permission to manage users) with an actionable hint. It
-// carries no ExitCode of its own so the wrapped *api.Error (403 → exit 11)
-// stays authoritative.
 type forbiddenError struct {
 	developerID string
 	cause       error
@@ -51,9 +34,6 @@ func (e *forbiddenError) Error() string {
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
-// developerNotFoundError wraps a 404 on users.list (the developer-id is wrong
-// or the credential is not a member of it) with a hint. It carries no ExitCode
-// of its own so the wrapped *api.Error (404 → exit 30) stays authoritative.
 type developerNotFoundError struct {
 	developerID string
 	cause       error
@@ -77,9 +57,6 @@ func classifyError(developerID string, err error) error {
 	return err
 }
 
-// UserRow is the synthesized, one-line-per-member view rendered by the table
-// and markdown formatters. It is NOT the API shape; the JSON view bypasses it
-// and emits the raw users.list payload (ADR-0003).
 type UserRow struct {
 	Email       string
 	AccessState string
@@ -88,7 +65,6 @@ type UserRow struct {
 	Grants      int
 }
 
-// BuildRows projects the API users into one row per member.
 func BuildRows(users []playteam.User) []UserRow {
 	rows := make([]UserRow, 0, len(users))
 	for _, u := range users {
@@ -103,9 +79,6 @@ func BuildRows(users []playteam.User) []UserRow {
 	return rows
 }
 
-// columns is the single source of truth for the team-users table. Declaration
-// order is both the valid --columns keys and the default order (ADR-0018). The
-// admin column marks account-wide admins distinctly (US24).
 var columns = output.NewColumnSet(
 	output.Column[UserRow]{Key: "email", Header: "EMAIL", Value: func(r UserRow) string { return r.Email }},
 	output.Column[UserRow]{Key: "access", Header: "ACCESS", Value: func(r UserRow) string { return r.AccessState }},
@@ -119,15 +92,10 @@ var columns = output.NewColumnSet(
 	output.Column[UserRow]{Key: "grants", Header: "GRANTS", Value: func(r UserRow) string { return strconv.Itoa(r.Grants) }},
 )
 
-// ResolveColumns turns a --columns spec into validated, ordered columns,
-// shared with render tests so they build a Payload from the one registry.
 func ResolveColumns(spec string) ([]output.Column[UserRow], error) {
 	return columns.Resolve(spec)
 }
 
-// Payload satisfies output.Renderable. Raw carries the merged users.list body
-// for the ADR-0003 JSON pass-through; Rows is the synthesized view and Columns
-// the resolved display order.
 type Payload struct {
 	Raw     json.RawMessage          `json:"-"`
 	Rows    []UserRow                `json:"-"`
@@ -150,9 +118,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// Run is the business function the kernel invokes. It resolves the
-// developer-id, builds an authenticated client, lists users to completion, and
-// renders.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	cols, err := ResolveColumns(in.Columns)
 	if err != nil {
@@ -177,7 +142,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Raw: raw, Rows: BuildRows(users), Columns: cols}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team users list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

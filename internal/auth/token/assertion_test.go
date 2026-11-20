@@ -17,19 +17,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// exchange is what one token exchange put on the wire: the endpoint, the
-// grant type, and the decoded JWT assertion minus its per-run times and
-// signature.
 type exchange struct {
 	URL       string
 	GrantType string
 	Header    map[string]any
 	Claims    map[string]any
-	Lifetime  float64 // exp - iat, in seconds
+	Lifetime  float64
 }
 
-// captureExchange mints one token through Source on a fake token endpoint and
-// returns the exchange it sent.
 func captureExchange(t *testing.T, sa *serviceaccount.ServiceAccount, scopes ...string) exchange {
 	t.Helper()
 	var got exchange
@@ -77,8 +72,6 @@ func decodeSegment(t *testing.T, seg string) map[string]any {
 	return m
 }
 
-// testkitSA parses a key file on the testkit key, with a private_key_id so
-// the JWT header's kid is exercised.
 func testkitSA(t *testing.T, keyType string) *serviceaccount.ServiceAccount {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
@@ -99,11 +92,6 @@ func testkitSA(t *testing.T, keyType string) *serviceaccount.ServiceAccount {
 	return sa
 }
 
-// TestSource_pinsTheAssertion (#646) pins the JWT the token exchange sends.
-// The expected values were recorded by signing the testkit key through both
-// google.JWTConfigFromJSON and Source and comparing the two exchanges
-// (TestSource_matchesJWTConfigFromJSON, commit 8e31f34 of PR #646); with the
-// oauth2/google import gone, this pin is what holds them equal.
 func TestSource_pinsTheAssertion(t *testing.T) {
 	sa := testkitSA(t, "service_account")
 	for _, tc := range []struct {
@@ -132,8 +120,6 @@ func TestSource_pinsTheAssertion(t *testing.T) {
 	}
 }
 
-// TestSource_refusesANonServiceAccountKey: JWTConfigFromJSON refused any key
-// type but service_account before any network call; Source keeps that.
 func TestSource_refusesANonServiceAccountKey(t *testing.T) {
 	for _, keyType := range []string{"authorized_user", "external_account", ""} {
 		_, err := token.Source(context.Background(), testkitSA(t, keyType))

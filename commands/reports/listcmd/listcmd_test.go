@@ -139,7 +139,6 @@ func TestRun_filters(t *testing.T) {
 	if strings.Count(got, `"object"`) != 2 || strings.Contains(got, "2026-08") || strings.Contains(got, "com.other.app") {
 		t.Errorf("filters not applied:\n%s", got)
 	}
-	// --package narrows the listing on the wire, not only the output.
 	if calls := fake.Calls(); len(calls) != 1 || !strings.Contains(calls[0].Query, "prefix=stats%2Finstalls%2Finstalls_com.example.app_") {
 		t.Errorf("calls = %+v", calls)
 	}
@@ -188,8 +187,6 @@ func TestRun_accountWideFamilyListed(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	got := renderJSON(t, r)
-	// An account-wide family has no --dimension: the name suffix after the
-	// month (123-1) is no dimension to pick, so only the object name shows it.
 	if !strings.Contains(got, `"family": "earnings"`) || strings.Contains(got, `"package"`) || strings.Contains(got, `"split"`) ||
 		!strings.Contains(got, `"object": "earnings/earnings_202609_123-1.zip"`) {
 		t.Errorf("account-wide row:\n%s", got)
@@ -257,8 +254,6 @@ func TestRun_listsEveryStatisticsFamilyWithTheProduct(t *testing.T) {
 
 func TestRun_subscriptionStatsWithoutFinancialGrantIsAWarning(t *testing.T) {
 	b := fixture()
-	// A service account without the financial grant reads none of the
-	// finance families: subscription stats, earnings and sales.
 	b.Deny = map[string]int{"financial-stats/": 403, "earnings/": 403, "sales/": 403}
 	r, _, stderr, err := run(t, b, nil, Input{})
 	if err != nil {
@@ -274,10 +269,6 @@ func TestRun_subscriptionStatsWithoutFinancialGrantIsAWarning(t *testing.T) {
 	}
 }
 
-// TestRun_financeMonthsListed is #696's acceptance criterion: the inventory
-// shows the earnings and sales months, account-wide (no package), and a
-// --package narrows the per-package families without hiding the finance
-// exports, which hold every app's rows.
 func TestRun_financeMonthsListed(t *testing.T) {
 	b := fixture()
 	b.Objects["earnings/earnings_202608.zip"] = []byte("PK")

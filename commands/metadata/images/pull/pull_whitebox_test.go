@@ -6,15 +6,13 @@ import (
 	"testing"
 )
 
-// TestCappedWriter_failsOnOverflow asserts an oversize body is rejected (not
-// silently truncated into a corrupt image on disk).
 func TestCappedWriter_failsOnOverflow(t *testing.T) {
 	var out bytes.Buffer
 	dst := &cappedWriter{w: &out, max: 10}
 	if _, err := dst.Write([]byte("123456")); err != nil {
 		t.Fatalf("first chunk under the cap: %v", err)
 	}
-	_, err := dst.Write([]byte("78901")) // 11 bytes in total, cap 10
+	_, err := dst.Write([]byte("78901"))
 	if err == nil {
 		t.Fatal("cappedWriter must error when the source exceeds the cap")
 	}
@@ -26,12 +24,10 @@ func TestCappedWriter_failsOnOverflow(t *testing.T) {
 	}
 }
 
-// TestCappedWriter_passesAtOrUnderCap asserts a body at exactly the cap is
-// passed through in full with no error.
 func TestCappedWriter_passesAtOrUnderCap(t *testing.T) {
 	var out bytes.Buffer
 	dst := &cappedWriter{w: &out, max: 10}
-	if _, err := dst.Write([]byte("1234567890")); err != nil { // exactly 10
+	if _, err := dst.Write([]byte("1234567890")); err != nil {
 		t.Fatalf("a body at the cap should pass: %v", err)
 	}
 	if out.Len() != 10 {

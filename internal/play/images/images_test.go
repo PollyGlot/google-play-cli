@@ -1,8 +1,3 @@
-// Package images_test exercises the play-layer Store image operations
-// (edits.images) against a fake transport. List/Upload/Delete/DeleteAll are
-// the four verbs behind `gplay metadata images list / pull / apply`; each
-// runs inside an already-open Edit, so the tests drive the bare operation,
-// not the Edit lifecycle.
 package images_test
 
 import (
@@ -22,13 +17,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// fakeWith answers every request with status and body.
 func fakeWith(status int, body string) *testkit.Fake {
 	return testkit.NewFake(testkit.Any(status, body))
 }
 
-// onlyCall returns the single request the Fake served, failing the test on
-// any other count.
 func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := f.Calls()
@@ -38,10 +30,6 @@ func onlyCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return calls[0]
 }
 
-// TestTypes_modelsTheEightApiTypes asserts the package models exactly the 8
-// AppImageType values the API exposes, with the singular/gallery split
-// explicit, no Chromebook type (never in AppImageType) and no promoGraphic
-// (removed from it: Play answers a request on that slot with a 400).
 func TestTypes_modelsTheEightApiTypes(t *testing.T) {
 	got := images.Types()
 	if len(got) != 8 {
@@ -75,10 +63,6 @@ func TestTypes_modelsTheEightApiTypes(t *testing.T) {
 	}
 }
 
-// TestList_parsesImages_andReturnsRawBody asserts List GETs
-// edits.images.list on a (language, imageType) slot, parses the
-// {"images":[...]} envelope into an Image slice in display (list) order, and
-// hands back the raw body verbatim for the ADR-0003 JSON pass-through.
 func TestList_parsesImages_andReturnsRawBody(t *testing.T) {
 	raw := `{"images":[` +
 		`{"id":"a1","url":"https://play/img/a1","sha1":"deadbeef","sha256":"aaaa"},` +
@@ -104,9 +88,6 @@ func TestList_parsesImages_andReturnsRawBody(t *testing.T) {
 	}
 }
 
-// TestList_absentSlotIsEmpty asserts a slot with no images online (the API
-// returns no `images` key, or an empty list) parses to a zero-length slice
-// and no error: the "missing == empty" precondition on the read side.
 func TestList_absentSlotIsEmpty(t *testing.T) {
 	transport := fakeWith(200, `{"kind":"androidpublisher#imagesListResponse"}`)
 	hc := &http.Client{Transport: transport}
@@ -119,9 +100,6 @@ func TestList_absentSlotIsEmpty(t *testing.T) {
 	}
 }
 
-// TestUpload_usesMediaProtocol_andParsesImage asserts Upload POSTs the bytes
-// to the upload sub-host with uploadType=media, and parses the
-// {"image":{...}} envelope.
 func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
 	transport := fakeWith(200, `{"image":{"id":"new1","url":"https://play/img/new1","sha1":"s1","sha256":"s256"}}`)
 	hc := &http.Client{Transport: transport}
@@ -153,11 +131,6 @@ func TestUpload_usesMediaProtocol_andParsesImage(t *testing.T) {
 	}
 }
 
-// TestUpload_announcesSniffedMediaType pins #560: edits.images.upload accepts
-// only image/* and answers application/octet-stream with a 400, so every
-// upload failed. Real encoder output (true magic bytes) must go out as
-// image/png or image/jpeg; any other type is announced as sniffed, never
-// masked as octet-stream, so Play's rejection names the real type.
 func TestUpload_announcesSniffedMediaType(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 4, 4))
 	var pngBuf, jpegBuf bytes.Buffer
@@ -191,8 +164,6 @@ func TestUpload_announcesSniffedMediaType(t *testing.T) {
 	}
 }
 
-// TestDelete_targetsOneImage asserts Delete DELETEs the per-image path
-// (.../{imageType}/{imageId}).
 func TestDelete_targetsOneImage(t *testing.T) {
 	transport := fakeWith(204, ``)
 	hc := &http.Client{Transport: transport}
@@ -206,8 +177,6 @@ func TestDelete_targetsOneImage(t *testing.T) {
 	}
 }
 
-// TestDeleteAll_clearsTheSlot asserts DeleteAll DELETEs the slot path (no
-// imageId): the only way to reorder a gallery per ADR-0013.
 func TestDeleteAll_clearsTheSlot(t *testing.T) {
 	transport := fakeWith(200, `{"deleted":[{"id":"a1"},{"id":"b2"}]}`)
 	hc := &http.Client{Transport: transport}
@@ -221,9 +190,6 @@ func TestDeleteAll_clearsTheSlot(t *testing.T) {
 	}
 }
 
-// TestList_non2xx_returnsApiError asserts an API failure surfaces as an
-// *api.Error carrying the operation and status, like the rest of the play
-// layer.
 func TestList_non2xx_returnsApiError(t *testing.T) {
 	transport := fakeWith(403, `{"error":{"message":"no access","errors":[{"reason":"forbidden"}]}}`)
 	hc := &http.Client{Transport: transport}
@@ -236,11 +202,6 @@ func TestList_non2xx_returnsApiError(t *testing.T) {
 	}
 }
 
-// playStore is a fake that models Google Play's image store the way
-// ADR-0013's soundness assumption requires: it hashes the uploaded bytes
-// exactly as received and reports each image's sha256 = sha256(bytes). It is
-// the in-test stand-in for the live integration the assumption ultimately
-// needs.
 func playStore() *testkit.Fake {
 	var stored []images.Image
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
@@ -260,13 +221,6 @@ func playStore() *testkit.Fake {
 	})
 }
 
-// TestSha256Soundness_uploadThenList is the ADR-0013 soundness gate: upload
-// an image, List the slot, and assert the remote sha256 equals sha256 of the
-// exact local bytes. If this ever fails against live Play, the fine-grained
-// content diff in `images apply` is unsound and the always-replace fallback
-// must be used instead. Here it is verified against a transport that stores
-// bytes verbatim (the assumption made concrete); the result is recorded on
-// issue #131.
 func TestSha256Soundness_uploadThenList(t *testing.T) {
 	local := []byte("\x89PNG\r\n\x1a\n" + strings.Repeat("pixels", 100))
 	want := sha256.Sum256(local)
@@ -289,8 +243,6 @@ func TestSha256Soundness_uploadThenList(t *testing.T) {
 	}
 }
 
-// TestOriginalURL pins the size option pull asks googleusercontent for: the
-// bare url images.list returns serves a 512px thumbnail, "=s0" the original.
 func TestOriginalURL(t *testing.T) {
 	cases := []struct{ name, in, want string }{
 		{"bare url gains =s0", "https://lh3.googleusercontent.com/AbC-123_x", "https://lh3.googleusercontent.com/AbC-123_x=s0"},

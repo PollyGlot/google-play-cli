@@ -1,9 +1,3 @@
-// This file is the migration proof for #516: countryavailability was the first
-// package to take its verb and URL from internal/apiregistry instead of a local
-// literal. The pre-existing countryavailability_test.go is untouched and still
-// asserts the exact path; what is added here is the part that file never
-// checked, the absolute URL (host included) and the behaviour on an empty
-// parameter, so the next migration batches have a template to copy.
 package countryavailability_test
 
 import (
@@ -18,8 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// urlRT records the whole request URL, not just its path (a testkit.Fake
-// keeps no scheme).
 type urlRT struct{ url, verb string }
 
 func (r *urlRT) client() *http.Client {
@@ -30,9 +22,6 @@ func (r *urlRT) client() *http.Client {
 	})}
 }
 
-// TestGet_absoluteURLUnchanged pins the full URL and verb the resolver
-// produces, so a change in the Discovery snapshot or in the resolver's
-// reconstruction cannot silently move this call to another endpoint.
 func TestGet_absoluteURLUnchanged(t *testing.T) {
 	rt := &urlRT{}
 	if _, _, err := countryavailability.Get(context.Background(), rt.client(), "com.example.app", "edit-1", "production"); err != nil {
@@ -47,8 +36,6 @@ func TestGet_absoluteURLUnchanged(t *testing.T) {
 	}
 }
 
-// TestGet_emptyTrackFailsBeforeTheWire asserts an empty path parameter is
-// refused locally, as an *api.Error, rather than sent as a truncated URL.
 func TestGet_emptyTrackFailsBeforeTheWire(t *testing.T) {
 	rt := &urlRT{}
 	_, _, err := countryavailability.Get(context.Background(), rt.client(), "com.example.app", "edit-1", "")

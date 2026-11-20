@@ -1,6 +1,3 @@
-// Package remove_test exercises `gplay team users remove` at the command
-// level: the destructive --confirm gate (exit 3), CI=true not auto-confirming,
-// the --dry-run preview, and the delete + error-code mapping.
 package remove_test
 
 import (
@@ -26,8 +23,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRemove_confirm_deletes asserts a confirmed remove issues users.delete by
-// email path.
 func TestRemove_confirm_deletes(t *testing.T) {
 	rt := teamtest.New(teamtest.Fail("DELETE", "/users/bob@example.com", 204, ""))
 	rc := teamtest.NewRC(t, rt)
@@ -40,7 +35,6 @@ func TestRemove_confirm_deletes(t *testing.T) {
 	if len(calls) != 1 || calls[0].Method != "DELETE" || !strings.HasSuffix(calls[0].Path, "/users/bob@example.com") {
 		t.Fatalf("expected one DELETE .../users/bob@example.com; calls=%v", calls)
 	}
-	// Empty 2xx body → gplay success object for --output json.
 	var b strings.Builder
 	if err := r.Renderers().JSON(&b); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -54,9 +48,6 @@ func TestRemove_confirm_deletes(t *testing.T) {
 	}
 }
 
-// TestRemove_withoutConfirm_exit3 asserts the destructive gate refuses without
-// --confirm (exit 3, naming the flag) and makes no DELETE; CI=true must not
-// auto-confirm.
 func TestRemove_withoutConfirm_exit3(t *testing.T) {
 	t.Setenv("CI", "true")
 	rt := teamtest.New(teamtest.Fail("DELETE", "/users/bob@example.com", 204, ""))
@@ -74,8 +65,6 @@ func TestRemove_withoutConfirm_exit3(t *testing.T) {
 	}
 }
 
-// TestRemove_dryRun_previews asserts --dry-run previews the target with no HTTP
-// and reports requires:["confirm"].
 func TestRemove_dryRun_previews(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -96,7 +85,6 @@ func TestRemove_dryRun_previews(t *testing.T) {
 	}
 }
 
-// TestRemove_apiErrors maps a 404 to exit 30 and a 403 to exit 11.
 func TestRemove_apiErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -117,7 +105,6 @@ func TestRemove_apiErrors(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := removecmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"confirm", "dry-run", "developer-id", "output"} {

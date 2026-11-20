@@ -60,6 +60,10 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   `*.query` methods, which take their token in the POST body. The fact is
   declared per method in the registry
   ([ADR-0065](./0065-api-registry-and-discovery-snapshot.md)).
+- **A POST page resends the first request unchanged except for its
+  `pageToken`.** Play requires every other parameter of a vitals `*.query`
+  page to match the previous call, so the request body is kept as raw JSON
+  values and only the token is replaced.
 - **A walk follows the continuation token to the end** (`api.Paginate`), or to
   an explicit `--limit`, which it reports as truncation.
 - **The Reporting API needs it most**: its default pages are small (10

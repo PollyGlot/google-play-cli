@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config/configtest"
 )
 
-// TestGlobal_addAndSaveLoad_roundTrips verifies the in-memory FS seam
-// without t.TempDir: proof that the FS interface lets the config tests
-// run hermetic and in-memory.
 func TestGlobal_addAndSaveLoad_roundTrips(t *testing.T) {
 	fsys := configtest.NewMemFS("/", "/home/u")
 	ctx := context.Background()
@@ -131,18 +128,10 @@ func TestGlobal_removeAccount_unknownReturnsErr(t *testing.T) {
 	}
 }
 
-// TestGlobal_Save_isAtomicViaRename asserts that Save writes through a
-// `.tmp` sibling + rename rather than truncating the destination in
-// place. This is the guard against a SIGKILL / disk-full corrupting
-// config.json into a half-written state that every subsequent gplay
-// invocation fails to parse. The test uses MemFS but the contract is
-// FS-level: a failing Rename must leave the original file (if any)
-// intact and not write the destination path.
 func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
 	fsys := configtest.NewMemFS("/", "/home/u")
 	path := "/cfg/config.json"
 
-	// Seed an existing valid config.
 	if err := fsys.WriteFile(path, []byte(`{"accounts":[{"name":"prior","active":true}]}`), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -152,7 +141,6 @@ func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 
-	// Final file content reflects the new write.
 	data, err := fsys.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -160,18 +148,11 @@ func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
 	if !bytesContains(data, "new") {
 		t.Errorf("Save did not land the new content; got %s", data)
 	}
-	// And the `.tmp` sibling must be gone (rename consumed it).
 	if _, err := fsys.Stat(path + ".tmp"); err == nil {
 		t.Errorf("Save left a .tmp sibling around after rename")
 	}
 }
 
-// TestGlobal_legacyConfigWithoutPackagesField_loadsCleanly asserts the
-// on-disk schema is backwards-compatible: a global config written before
-// the per-Account Packages field existed (i.e. without a `packages`
-// key) must still load without error and surface an empty Packages
-// slice. The omitempty tag also guarantees re-saving such a config does
-// not introduce noisy `"packages":null` keys.
 func TestGlobal_legacyConfigWithoutPackagesField_loadsCleanly(t *testing.T) {
 	fsys := configtest.NewMemFS("/", "/home/u")
 	path := "/cfg/config.json"

@@ -1,13 +1,3 @@
-// Package list implements `gplay team grants list`: list the per-app Grants
-// across the Developer account's members. The API has no grants.list/get:
-// Grants are a field of the User, so this reads the full user list
-// (paginated to completion via internal/play/team) and projects the grants.
-//
-// Optional filters: --package answers "who can touch this app", --user answers
-// "what apps this person touches", neither = all grants. It is the 5th `list`
-// command and consumes the shared list machinery (ADR-0018 / #93). --output
-// json is a faithful {"grants":[…]} projection (there is no native
-// grants.list response to pass through verbatim).
 package list
 
 import (
@@ -26,7 +16,6 @@ import (
 	playteam "github.com/PollyGlot/google-play-cli/internal/play/team"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	DeveloperID string
 	Package     string
@@ -67,17 +56,12 @@ func classifyError(developerID string, err error) error {
 	return err
 }
 
-// GrantRow is one projected per-app grant (member + package + app-level
-// permissions). It is NOT a native API shape: it is assembled from each
-// User's grants field.
 type GrantRow struct {
 	Email       string
 	Package     string
 	Permissions []string
 }
 
-// project flattens every member's grants into rows, applying the optional
-// package/user filters (case-insensitive on the email, exact on the package).
 func project(users []playteam.User, pkgFilter, userFilter string) []GrantRow {
 	pkgFilter = strings.TrimSpace(pkgFilter)
 	userFilter = strings.ToLower(strings.TrimSpace(userFilter))
@@ -102,8 +86,6 @@ var columns = output.NewColumnSet(
 	output.Column[GrantRow]{Key: "permissions", Header: "PERMISSIONS", Value: func(r GrantRow) string { return strings.Join(r.Permissions, ",") }},
 )
 
-// ResolveColumns turns a --columns spec into validated, ordered columns,
-// shared with render tests.
 func ResolveColumns(spec string) ([]output.Column[GrantRow], error) {
 	return columns.Resolve(spec)
 }
@@ -114,8 +96,6 @@ type grantJSON struct {
 	AppLevelPermissions []string `json:"appLevelPermissions"`
 }
 
-// Payload satisfies output.Renderable. Rows is the projected view and Columns
-// the resolved display order; JSON is a faithful {"grants":[…]} projection.
 type Payload struct {
 	Rows    []GrantRow
 	Columns []output.Column[GrantRow]
@@ -139,8 +119,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}{Grants: grants})
 }
 
-// Run resolves the developer-id, reads the full user list to completion,
-// projects (and filters) the grants, and renders.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	cols, err := ResolveColumns(in.Columns)
 	if err != nil {
@@ -161,7 +139,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Rows: project(users, in.Package, in.User), Columns: cols}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team grants list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

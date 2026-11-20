@@ -1,6 +1,3 @@
-// Package set_test exercises `gplay team users set` at the command level: the
-// declarative replace via users.patch, the bare-set footgun (exit 2), --clear,
-// a reducing set being ungated, and the admin-conferring exit-3 gate.
 package set_test
 
 import (
@@ -44,8 +41,6 @@ func previewMap(t *testing.T, rc *kernel.RunContext, in setcmd.Input) map[string
 	return m
 }
 
-// TestSet_live_replaces asserts a declarative set issues users.patch with
-// updateMask=developerAccountPermissions and the resolved enums.
 func TestSet_live_replaces(t *testing.T) {
 	rt := teamtest.New(teamtest.Fail("PATCH", "/users/bob@example.com", 200, `{"email":"bob@example.com"}`))
 	rc := teamtest.NewRC(t, rt)
@@ -66,8 +61,6 @@ func TestSet_live_replaces(t *testing.T) {
 	}
 }
 
-// TestSet_bare_exit2 asserts a bare set (no selector) is a misuse and makes no
-// write: the footgun guard.
 func TestSet_bare_exit2(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -80,7 +73,6 @@ func TestSet_bare_exit2(t *testing.T) {
 	}
 }
 
-// TestSet_clear_empties asserts --clear sends an explicit empty permission set.
 func TestSet_clear_empties(t *testing.T) {
 	rt := teamtest.New(teamtest.Fail("PATCH", "/users/bob@example.com", 200, `{"email":"bob@example.com"}`))
 	rc := teamtest.NewRC(t, rt)
@@ -95,8 +87,6 @@ func TestSet_clear_empties(t *testing.T) {
 	}
 }
 
-// TestSet_reducing_isUngated asserts a permission-reducing set previews/writes
-// without any gate (ADR-0017 §2).
 func TestSet_reducing_isUngated(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -106,8 +96,6 @@ func TestSet_reducing_isUngated(t *testing.T) {
 	}
 }
 
-// TestSet_admin_withoutGrantAdmin_exit3 asserts an admin-conferring set still
-// requires --grant-admin.
 func TestSet_admin_withoutGrantAdmin_exit3(t *testing.T) {
 	rt := teamtest.New(teamtest.Fail("PATCH", "/users/bob@example.com", 200, `{}`))
 	rc := teamtest.NewRC(t, rt)
@@ -120,7 +108,6 @@ func TestSet_admin_withoutGrantAdmin_exit3(t *testing.T) {
 	}
 }
 
-// TestSet_notMember_exit30 maps a users.patch 404 to exit 30 with the add hint.
 func TestSet_notMember_exit30(t *testing.T) {
 	rt := teamtest.New(teamtest.Fail("PATCH", "/users/ghost@example.com", 404, `{"error":{"message":"not found"}}`))
 	rc := teamtest.NewRC(t, rt)
@@ -133,7 +120,6 @@ func TestSet_notMember_exit30(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := setcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"role", "permissions", "clear", "grant-admin", "dry-run", "developer-id", "output"} {

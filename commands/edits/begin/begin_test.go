@@ -23,9 +23,6 @@ import (
 
 const pkg = "com.example.app"
 
-// newBeginFake serves the edits.insert POST (answering editID) and the
-// edits.delete DELETE (the rollback path when the pin write fails); any other
-// request fails the round trip.
 func newBeginFake(editID string) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -38,8 +35,6 @@ func newBeginFake(editID string) *testkit.Fake {
 	})
 }
 
-// countCalls returns the edits.insert and edits.delete calls, and fails the
-// test on any other request (even where Run's error would hide it).
 func countCalls(t *testing.T, f *testkit.Fake) (inserts, deletes int) {
 	t.Helper()
 	for _, c := range f.Calls() {
@@ -55,16 +50,12 @@ func countCalls(t *testing.T, f *testkit.Fake) (inserts, deletes int) {
 	return inserts, deletes
 }
 
-// failWriteFS is an OSFS whose WriteFile always fails, to drive begin's
-// pin-write-failure rollback (it must discard the just-opened Edit).
 type failWriteFS struct{ config.FS }
 
 func (failWriteFS) WriteFile(string, []byte, fs.FileMode) error {
 	return errors.New("disk full")
 }
 
-// newRC wires a RunContext routed through rt, pinned to a project whose .gplay/
-// is dir, and returns it plus the resolved .gplay/ directory.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
@@ -109,7 +100,6 @@ func TestRun_opensEditAndWritesPin(t *testing.T) {
 	if pin.EditID != "edit-42" {
 		t.Errorf("pinned editId = %q, want edit-42", pin.EditID)
 	}
-	// JSON payload mirrors the local pin state.
 	var buf bytes.Buffer
 	if err := output.Render(&buf, output.FormatJSON, r.Renderers()); err != nil {
 		t.Fatalf("render: %v", err)
@@ -136,9 +126,6 @@ func TestRun_alreadyOpen_exit60_noNetwork(t *testing.T) {
 }
 
 func TestRun_pinWriteFailure_discardsServerEdit(t *testing.T) {
-	// OpenExplicit succeeds, but persisting the pin fails. begin must roll back
-	// by discarding the just-opened server-side Edit so no orphan is left, and
-	// must leave no pin behind.
 	fake := newBeginFake("edit-orphan")
 	rc, gplayDir := newRC(t, fake)
 	rc.FS = failWriteFS{config.OSFS{}}
@@ -162,7 +149,7 @@ func TestRun_pinWriteFailure_discardsServerEdit(t *testing.T) {
 func TestRun_noProject_exit2(t *testing.T) {
 	fake := newBeginFake("edit-x")
 	rc, _ := newRC(t, fake)
-	rc.Resolved = &config.Resolved{Pin: pkg} // no ProjectSharedPath → no .gplay/
+	rc.Resolved = &config.Resolved{Pin: pkg}
 
 	_, err := begincmd.Run(rc, begincmd.Input{Package: pkg})
 	if code := exitOf(t, err); code != 2 {

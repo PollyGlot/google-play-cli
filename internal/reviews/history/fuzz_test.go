@@ -8,15 +8,6 @@ import (
 	"unicode/utf8"
 )
 
-// FuzzHistoryParse fuzzes the reviews-report reader, which decodes a UTF-16
-// CSV fetched from the developer's GCS bucket: its cells are review text
-// written by anyone on the Play Store. Two properties:
-//
-//   - On arbitrary bytes (raw) Parse never panics and never returns rows
-//     alongside an error.
-//   - Any review title and body a well-formed report carries (quotes, commas,
-//     newlines, non-BMP runes) comes back byte for byte in the right field.
-//     The report is built with encoding/csv and encoded like Google's export.
 func FuzzHistoryParse(f *testing.F) {
 	f.Add(utf16LE(sampleCSV), "Génial", "Très bonne app, 日本語 too 🎉")
 	f.Add([]byte{}, "", "")
@@ -30,8 +21,6 @@ func FuzzHistoryParse(f *testing.F) {
 			t.Fatalf("Parse(%q) returned %d rows alongside error %v", raw, len(rows), err)
 		}
 
-		// encoding/csv folds a quoted \r\n to \n on read, and invalid UTF-8
-		// cannot survive a UTF-16 round trip: neither is a Parse defect.
 		if !utf8.ValidString(title) || !utf8.ValidString(text) ||
 			strings.ContainsRune(title, '\r') || strings.ContainsRune(text, '\r') {
 			return

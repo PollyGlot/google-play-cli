@@ -1,9 +1,3 @@
-// Migration proof for #518: appsigning now takes its verbs and URLs from
-// internal/apiregistry instead of local literals. The package had no test at
-// all, so this file is also its first: it pins the ABSOLUTE URL and the verb of
-// both calls, including the colon verbs (`appSigning:enrollApp`,
-// `appSigning:rotateAppSigningKey`) and the fact that the sole path parameter
-// is `name`, not `packageName`.
 package appsigning_test
 
 import (
@@ -19,10 +13,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
 )
 
-// pinned answers {} to every call and records what was sent.
 func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-// first is the first call f recorded, or the zero Call when none was sent.
 func first(f *testkit.Fake) testkit.Call {
 	if calls := f.Calls(); len(calls) > 0 {
 		return calls[0]
@@ -73,9 +65,6 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 	}
 }
 
-// TestEmptyNameFailsBeforeTheWire asserts a missing path parameter is refused
-// locally rather than sent as a truncated URL: enrolment changes the live
-// signing key of an app, so a malformed request must not reach the wire.
 func TestEmptyNameFailsBeforeTheWire(t *testing.T) {
 	rt := pinned()
 	_, _, err := appsigning.Enroll(context.Background(), &http.Client{Transport: rt}, "", appsigning.EnrollOpts{})

@@ -13,17 +13,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// DescribeFlag is the flag name shared by every metric-set command: with it
-// the command calls the set's `.get` (the descriptor) instead of its `:query`
-// (the timeline) and prints data freshness per aggregation period (#545).
 const DescribeFlag = "describe"
 
-// DescribeHelp is the flag help shared by every metric-set command.
 const DescribeHelp = "describe the metric set instead of querying it: latest available end time per aggregation period (window flags do not apply)"
 
-// DescribePayload renders a metric-set descriptor: the verbatim `.get`
-// response for the JSON pass-through (ADR-0003), plus the parsed freshness
-// entries for table/markdown.
 type DescribePayload struct {
 	Raw         json.RawMessage
 	Freshnesses []vitals.Freshness
@@ -35,7 +28,6 @@ var describeColumns = []output.Column[vitals.Freshness]{
 	{Key: "timezone", Header: "TIMEZONE", Value: func(f vitals.Freshness) string { return f.TimeZone }},
 }
 
-// Renderers satisfies output.Renderable.
 func (p DescribePayload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return output.RenderTable(w, describeColumns, p.Freshnesses) },
@@ -44,10 +36,6 @@ func (p DescribePayload) Renderers() output.Renderers {
 	}
 }
 
-// Describe resolves the package, issues the set's `.get` and returns the
-// DescribePayload. It is the `--describe` body shared by `vitals query`, the
-// presets and `vitals errors counts`, the way Execute is shared for `:query`.
-// No freshness note goes to stderr here: the freshness IS the output.
 func Describe(rc *kernel.RunContext, set vitals.MetricSet, flag string) (output.Renderable, error) {
 	pkg, err := rc.Package(flag)
 	if err != nil {
@@ -68,12 +56,6 @@ func Describe(rc *kernel.RunContext, set vitals.MetricSet, flag string) (output.
 	return DescribePayload{Raw: raw, Freshnesses: fresh}, nil
 }
 
-// ChangedFlags returns, among names, the flags the user set on the command
-// line (cobra's Changed state, so a flag left at its default such as --since
-// 28d is not listed). The cobra layer records it into the command's input and
-// the Run layer decides: that keeps the rejection inside kernel.Run, where the
-// --output json error envelope is emitted (ADR-0023), rather than short-
-// circuiting before it.
 func ChangedFlags(cmd *cobra.Command, names ...string) []string {
 	var out []string
 	for _, f := range names {
@@ -84,10 +66,6 @@ func ChangedFlags(cmd *cobra.Command, names ...string) []string {
 	return out
 }
 
-// RejectWindowFlags is the guard behind `--describe`: the descriptor has no
-// window, metrics or slicing, so a query-shaping flag set alongside --describe
-// is CLI misuse, named explicitly rather than silently ignored. changed is the
-// ChangedFlags list of the command's window flags; nil when --describe is off.
 func RejectWindowFlags(describe bool, changed []string) error {
 	if !describe || len(changed) == 0 {
 		return nil
@@ -100,7 +78,6 @@ func RejectWindowFlags(describe bool, changed []string) error {
 		DescribeFlag, strings.Join(flags, ", "), plural(len(flags), "does", "do"))
 }
 
-// plural picks the verb form for a count, so the error reads as a sentence.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one

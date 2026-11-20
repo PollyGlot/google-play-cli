@@ -16,17 +16,14 @@ func testIndex(t *testing.T) schemaindex.Index {
 	return idx
 }
 
-// TestMatch_projections table-tests the pure match function across all three
-// projections (method id, REST path, schema name), case-insensitivity, the
-// --method filter, --list, and the no-match case.
 func TestMatch_projections(t *testing.T) {
 	idx := testIndex(t)
 
 	tests := []struct {
 		name        string
 		in          Input
-		wantMethod  string // a method id that must be present ("" = none required)
-		wantSchema  string // a schema name that must be present ("" = none required)
+		wantMethod  string
+		wantSchema  string
 		wantNoMatch bool
 		check       func(t *testing.T, r result)
 	}{
