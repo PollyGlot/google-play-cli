@@ -7,6 +7,8 @@ command runs (see Consequences). Amended by #599 for 2.0.0: a `resource` field
 names the target of the failed call, and `package` carries only real package
 names (see the amendment at the end).
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay is agent-first and CI-first. On success under `--output json` it emits
@@ -150,3 +152,8 @@ Decision (2026-09-26):
   each through a 403 and fails if its target comes out as a package.
 
 stderr is unchanged: the human line still reads `<operation> on <id>: ...`.
+
+Implementation note: Play App Signing's `name` parameter takes a package name
+or a numeric Play Console app ID. gplay tells them apart exactly, since a
+package name always contains a dot and is never all digits: an all-digit
+target is reported as `app`, anything else as `package`.

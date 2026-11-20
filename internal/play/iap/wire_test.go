@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire_listings pins the three paginated reads, which move onto the shared
-// paginator (#586), byte for byte: testdata/wire.golden was recorded before
-// the move and must not move with it.
 func TestWire_listings(t *testing.T) {
 	ctx := context.Background()
 	const pkg = "com.example.app"

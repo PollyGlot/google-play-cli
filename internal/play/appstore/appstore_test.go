@@ -15,9 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appstore"
 )
 
-// testRoundTripper is the offline transport every test in this package runs
-// through: no test here ever reaches the network.
-
 func resp(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,
@@ -26,9 +23,6 @@ func resp(status int, body string) *http.Response {
 	}
 }
 
-// TestCreateHostedApp_requestShape pins the wire shape of the create call: POST
-// to the app-store-keyed :create endpoint, the app package in the JSON body
-// (never in the path), a JSON content type, and no Edit.
 func TestCreateHostedApp_requestShape(t *testing.T) {
 	var gotMethod, gotURL, gotCT string
 	var gotBody []byte
@@ -55,9 +49,6 @@ func TestCreateHostedApp_requestShape(t *testing.T) {
 	if strings.Contains(gotURL, "/edits/") {
 		t.Errorf("url %q must not open an Edit", gotURL)
 	}
-	// The app package rides the BODY, not the path: the path key is the app
-	// store package name. A path carrying the app package would be a different
-	// (later-slice) endpoint.
 	if strings.Contains(gotURL, "com.example.app") {
 		t.Errorf("url %q must not carry the app package: it belongs in the request body", gotURL)
 	}
@@ -76,9 +67,6 @@ func TestCreateHostedApp_requestShape(t *testing.T) {
 	}
 }
 
-// TestCreateHostedApp_storePackagePathEscaped asserts the app store package name
-// is path-escaped, so a stray reserved character cannot break out of its path
-// segment.
 func TestCreateHostedApp_storePackagePathEscaped(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -94,15 +82,11 @@ func TestCreateHostedApp_storePackagePathEscaped(t *testing.T) {
 	if !strings.Contains(gotURL, "com.example%20store%2Fx") {
 		t.Errorf("url %q missing the escaped app store package name", gotURL)
 	}
-	// The escaping must not swallow the :create suffix.
 	if !strings.HasSuffix(gotURL, "/apps:create") {
 		t.Errorf("url %q lost the :create suffix", gotURL)
 	}
 }
 
-// TestCreateHostedApp_rawPassthrough asserts the verbatim body is returned even
-// when it carries fields the (currently empty) response schema does not model:
-// ADR-0003 pass-through must never be filtered through a typed struct.
 func TestCreateHostedApp_rawPassthrough(t *testing.T) {
 	const body = `{"unmodeledFutureField":"kept","nested":{"a":1}}`
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -117,8 +101,6 @@ func TestCreateHostedApp_rawPassthrough(t *testing.T) {
 	}
 }
 
-// TestCreateHostedApp_emptyBody asserts a 2xx with no body is not an error: the
-// response schema carries no fields, so an acknowledgement is a success.
 func TestCreateHostedApp_emptyBody(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(200, ""), nil
@@ -132,9 +114,6 @@ func TestCreateHostedApp_emptyBody(t *testing.T) {
 	}
 }
 
-// TestCreateHostedApp_403_exit11 asserts a forbidden create (the caller is not
-// an enrolled app store, or the service account lacks the grant) maps to the
-// authz exit code.
 func TestCreateHostedApp_403_exit11(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil
@@ -143,8 +122,6 @@ func TestCreateHostedApp_403_exit11(t *testing.T) {
 	assertExit(t, err, 11)
 }
 
-// TestCreateHostedApp_404_exit30 asserts an unknown app store package maps to
-// the API-misuse exit code.
 func TestCreateHostedApp_404_exit30(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"app store not found"}}`), nil
@@ -153,8 +130,6 @@ func TestCreateHostedApp_404_exit30(t *testing.T) {
 	assertExit(t, err, 30)
 }
 
-// TestCreateHostedApp_409_exit60 asserts an already-created hosted app record
-// (the natural repeat-call rejection) maps to the state-conflict exit code.
 func TestCreateHostedApp_409_exit60(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(409, `{"error":{"message":"already exists"}}`), nil
@@ -163,8 +138,6 @@ func TestCreateHostedApp_409_exit60(t *testing.T) {
 	assertExit(t, err, 60)
 }
 
-// TestCreateHostedApp_5xx_exit40 asserts an upstream outage maps to the
-// retry-safe exit code.
 func TestCreateHostedApp_5xx_exit40(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(503, `{"error":{"message":"backend unavailable"}}`), nil
@@ -173,8 +146,6 @@ func TestCreateHostedApp_5xx_exit40(t *testing.T) {
 	assertExit(t, err, 40)
 }
 
-// TestCreateHostedApp_transport_exit50 asserts a transport failure (no HTTP
-// response at all) maps to the network exit code.
 func TestCreateHostedApp_transport_exit50(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("dial tcp: connection refused")

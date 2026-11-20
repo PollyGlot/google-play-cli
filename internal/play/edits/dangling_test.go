@@ -10,15 +10,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
 
-// coded is an error carrying its own exit code, like every typed gplay error.
 type coded int
 
 func (c coded) Error() string { return "coded failure" }
 func (c coded) ExitCode() int { return int(c) }
 
-// TestDanglingEditError_exitCodeAndMessage pins the exit-code contract of a
-// KeepOnFailure Edit (DESIGN §9): the wrapped failure's code wins, 60 only
-// when the cause carries none, and the message keeps the Edit ID and cause.
 func TestDanglingEditError_exitCodeAndMessage(t *testing.T) {
 	cases := []struct {
 		name string

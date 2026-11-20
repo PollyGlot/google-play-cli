@@ -1,7 +1,3 @@
-// Package details_test exercises the high-level details.Get entry
-// point: open an Edit (read-only), fetch details.get + listings.get on
-// the default language, discard the Edit. The transport NEVER sees a
-// PUT or a :commit: `apps view` is read-only by construction.
 package details_test
 
 import (
@@ -19,28 +15,20 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// infoRT routes the apps view sequence: edits.insert, edits.details.get,
-// edits.listings.get(defaultLanguage), edits.delete. Configurable status
-// codes on details.get and listings.get exercise the error paths without
-// re-declaring the transport. A PUT or a :commit fails the test: a
-// read-only info command must never write.
 type infoRT struct {
 	t       *testing.T
 	editID  string
-	details string // body returned by /details (200 unless detailsCode set)
-	listing string // body returned by /listings/{lang} (200 unless listingCode set)
-	icon    string // body returned by /listings/{lang}/icon (defaults to empty slot)
+	details string
+	listing string
+	icon    string
 
-	detailsCode int // 0 → 200
-	listingCode int // 0 → 200
-	iconCode    int // 0 → 200
+	detailsCode int
+	listingCode int
+	iconCode    int
 
 	fake *testkit.Fake
 }
 
-// client returns the client whose transport is r's fake. A request no case
-// claims (a PUT, a :commit) fails the round trip, and the call still shows
-// in calls().
 func (r *infoRT) client() *http.Client {
 	r.fake = testkit.NewFake(r.respond)
 	return &http.Client{Transport: r.fake}
@@ -57,7 +45,7 @@ func (r *infoRT) respond(c testkit.Call) (int, string, bool) {
 	case c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/icon"):
 		body := r.icon
 		if body == "" {
-			body = `{"images":[]}` // missing == empty (ADR-0013)
+			body = `{"images":[]}`
 		}
 		return r.iconCode, body, true
 	case c.Method == http.MethodGet && strings.Contains(c.Path, "/listings/"):
@@ -66,7 +54,6 @@ func (r *infoRT) respond(c testkit.Call) (int, string, bool) {
 	return 0, "", false
 }
 
-// calls lists the requests served, as "METHOD path".
 func (r *infoRT) calls() []string {
 	var out []string
 	for _, c := range r.fake.Calls() {
@@ -87,11 +74,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestGet_happyPath asserts the full read-only sequence:
-// insert → details.get → listings.get(defaultLanguage) → delete. The
-// returned *Details surfaces defaultLanguage, title, contactEmail; the
-// raw payload is the gplay envelope {"details":..,"listing":..} (an
-// explicit exception to ADR-0003: apps view combines two endpoints).
 func TestGet_happyPath(t *testing.T) {
 	detailsBody := `{"contactEmail":"hi@example.com","contactPhone":"+1","contactWebsite":"https://x","defaultLanguage":"en-US"}`
 	listingBody := `{"language":"en-US","title":"MyApp","shortDescription":"hi","fullDescription":"world","video":""}`
@@ -120,8 +102,6 @@ func TestGet_happyPath(t *testing.T) {
 		t.Errorf("ContactEmail = %q, want %q", d.ContactEmail, "hi@example.com")
 	}
 
-	// The icon read (edits.images.list on the default language's icon
-	// slot) runs inside the SAME Edit, between listings.get and discard.
 	wantSequence := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"GET /androidpublisher/v3/applications/com.example.app/edits/edit-info/details",
@@ -138,12 +118,6 @@ func TestGet_happyPath(t *testing.T) {
 		}
 	}
 
-	// The raw envelope is the gplay-shaped {"details":..,"listing":..}
-	//: explicit exception to ADR-0003 because apps view merges multiple
-	// endpoints. Each sub-object must be the upstream body verbatim so
-	// jq/--output json consumers see the API field names unchanged. With
-	// no icon in the slot, the optional icon key is omitted entirely and
-	// d.Icon is nil.
 	var env struct {
 		Details json.RawMessage `json:"details"`
 		Listing json.RawMessage `json:"listing"`
@@ -166,10 +140,6 @@ func TestGet_happyPath(t *testing.T) {
 	}
 }
 
-// TestGet_iconPresent_addsIconKey asserts that when the default
-// language's icon slot is non-empty, Get adds an "icon" key
-// {"url":..,"sha256":..} (verbatim edits.images field values) to the
-// envelope and populates d.Icon. The icon read shares the one Edit.
 func TestGet_iconPresent_addsIconKey(t *testing.T) {
 	detailsBody := `{"contactEmail":"hi@example.com","defaultLanguage":"en-US"}`
 	listingBody := `{"language":"en-US","title":"MyApp"}`
@@ -212,7 +182,6 @@ func TestGet_iconPresent_addsIconKey(t *testing.T) {
 	if env.Icon.Sha256 != "ICON_SHA_256" || env.Icon.URL != "https://play.example/icon.png" {
 		t.Errorf("envelope.icon = %+v, want verbatim url+sha256", env.Icon)
 	}
-	// Exactly one Edit was opened (single insert), reused for all reads.
 	inserts := 0
 	for _, c := range rt.calls() {
 		if strings.HasSuffix(c, "/edits") && strings.HasPrefix(c, "POST ") {
@@ -224,8 +193,6 @@ func TestGet_iconPresent_addsIconKey(t *testing.T) {
 	}
 }
 
-// TestGet_iconRead403_mapsExit11 asserts a 403 on the icon read bubbles
-// up as exit 11 (authorization) via the shared error mapping.
 func TestGet_iconRead403_mapsExit11(t *testing.T) {
 	rt := &infoRT{
 		t:        t,
@@ -242,8 +209,6 @@ func TestGet_iconRead403_mapsExit11(t *testing.T) {
 	}
 }
 
-// TestGet_iconRead404_mapsExit30 asserts a 404 on the icon read maps to
-// exit 30 (API 4xx other than auth/perms).
 func TestGet_iconRead404_mapsExit30(t *testing.T) {
 	rt := &infoRT{
 		t:        t,
@@ -260,11 +225,6 @@ func TestGet_iconRead404_mapsExit30(t *testing.T) {
 	}
 }
 
-// TestGet_detailsGet403_mapsExit11_discardsEdit asserts that a 403 on
-// details.get bubbles up as an *api.Error (ExitCode = 11) AND the
-// opened Edit is still discarded by WithReadOnlyEdit's deferred
-// cleanup. A dangling Edit on a permission failure would block the
-// user's next publish for 24h.
 func TestGet_detailsGet403_mapsExit11_discardsEdit(t *testing.T) {
 	rt := &infoRT{
 		t:           t,
@@ -288,7 +248,6 @@ func TestGet_detailsGet403_mapsExit11_discardsEdit(t *testing.T) {
 	if !strings.Contains(apiErr.Operation, "details.get") {
 		t.Errorf("api.Error.Operation = %q, want it to mention details.get", apiErr.Operation)
 	}
-	// The Edit must still be discarded after a failed details.get.
 	sawDelete := false
 	for _, c := range rt.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-403") {
@@ -300,20 +259,11 @@ func TestGet_detailsGet403_mapsExit11_discardsEdit(t *testing.T) {
 	}
 }
 
-// TestGet_emptyDefaultLanguage_errorsBeforeListingsCall asserts the
-// invariant the legacy GetDefaultLanguage already enforces (details.go
-// "An empty defaultLanguage with a 2xx response is an API contract
-// violation"): an empty defaultLanguage must fail fast in fetchDetails
-// rather than silently flowing into a malformed /listings/ URL. The
-// Edit is still discarded.
 func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 	rt := &infoRT{
-		t:      t,
-		editID: "edit-empty-lang",
-		// defaultLanguage absent → parsed.DefaultLanguage = "".
+		t:       t,
+		editID:  "edit-empty-lang",
 		details: `{"contactEmail":"hi@example.com"}`,
-		// Listing body that would be served IF the test ever reached
-		// listings.get: we want the test to fail noisily if it does.
 		listing: `{"language":"","title":"WOULDNT-REACH-HERE"}`,
 	}
 	hc := rt.client()
@@ -329,13 +279,11 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 	if !strings.Contains(apiErr.Operation, "details.get") {
 		t.Errorf("api.Error.Operation = %q, want it to mention details.get", apiErr.Operation)
 	}
-	// listings.get must NOT have been called.
 	for _, c := range rt.calls() {
 		if strings.Contains(c, "/listings/") {
 			t.Errorf("listings.get was called after an empty defaultLanguage; calls = %v", rt.calls())
 		}
 	}
-	// The Edit must still be discarded.
 	sawDelete := false
 	for _, c := range rt.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-empty-lang") {
@@ -347,19 +295,11 @@ func TestGet_emptyDefaultLanguage_errorsBeforeListingsCall(t *testing.T) {
 	}
 }
 
-// brokenBody is a body that errors on the first Read so getJSON's
-// io.ReadAll surfaces an error mid-stream: the case CodeRabbit
-// flagged: a truncated response on a 2xx status must not be silently
-// passed to json.Unmarshal as if the body were complete.
 type brokenBody struct{}
 
 func (brokenBody) Read(_ []byte) (int, error) { return 0, errors.New("simulated read error") }
 func (brokenBody) Close() error               { return nil }
 
-// detailsBodyReadErrorRT delivers a 200 status on details.get but
-// returns a body that errors on every Read, so the success-body read
-// fails. Insert + delete still succeed so the test can also assert the
-// Edit is discarded.
 type detailsBodyReadErrorRT struct {
 	t      *testing.T
 	editID string
@@ -394,10 +334,6 @@ func (r *detailsBodyReadErrorRT) calls() []string {
 	return append([]string(nil), r.lines...)
 }
 
-// TestGet_bodyReadFailure_surfacesAsAPIError asserts that a network
-// read failure on the success body of details.get is wrapped in
-// *api.Error rather than silently flowing into json.Unmarshal as if
-// the body were complete. The Edit is still discarded.
 func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	rt := &detailsBodyReadErrorRT{t: t, editID: "edit-readerr"}
 	hc := rt.client()
@@ -419,7 +355,6 @@ func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	if code := exitCodeOf(t, err); code != 50 {
 		t.Errorf("ExitCode() = %d, want 50 (a body cut mid-read is a network failure)", code)
 	}
-	// Edit must still be discarded.
 	sawDelete := false
 	for _, c := range rt.calls() {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-readerr") {
@@ -431,9 +366,6 @@ func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	}
 }
 
-// TestGet_detailsGet404_mapsExit30 asserts a 404 on details.get surfaces
-// as exit 30 (API 4xx other than auth/perms). Real-world trigger:
-// service account never invited on the app, or wrong package name.
 func TestGet_detailsGet404_mapsExit30(t *testing.T) {
 	rt := &infoRT{
 		t:           t,

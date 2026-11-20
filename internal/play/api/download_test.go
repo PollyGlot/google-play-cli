@@ -25,8 +25,6 @@ func downloadCall() api.Call {
 	}
 }
 
-// A media payload has no size cap: Download streams past the 4 MiB limit Do
-// enforces on a JSON body, and reports the bytes it wrote.
 func TestDownload_streamsPastTheJSONLimit(t *testing.T) {
 	payload := strings.Repeat("x", api.MaxAPISuccessBodyRead+10)
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, payload))
@@ -54,8 +52,6 @@ func TestDownload_refusalCarriesTheEnvelope(t *testing.T) {
 	}
 }
 
-// A body cut by the network is the retry-safe bucket, as in Do; a writer that
-// refuses the bytes keeps its own error reachable and the answer's status.
 func TestDownload_tellsACutBodyFromARefusingWriter(t *testing.T) {
 	cut := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		resp := testkit.Response(http.StatusOK, "")
@@ -77,8 +73,6 @@ func TestDownload_tellsACutBodyFromARefusingWriter(t *testing.T) {
 	}
 }
 
-// Call.URL sends a URL an API response handed back verbatim, with GET, and
-// ignores the Method template, its Params and any Query.
 func TestDo_handedBackURLIsSentVerbatim(t *testing.T) {
 	const u = "https://play-lh.googleusercontent.com/abc=w512-h512?x=1"
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, "img"))

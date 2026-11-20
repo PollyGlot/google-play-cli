@@ -21,40 +21,32 @@ const (
 	sessionURI  = "https://androidpublisher.googleapis.com/upload/session/abc123"
 )
 
-// putRecord captures what a chunk/probe PUT carried, so a test can assert the
-// exact Content-Range sequence the helper produced.
 type putRecord struct {
 	contentRange string
 	bodyLen      int
 }
 
-// resumeRT is a scripted RoundTripper: it answers the initiate POST from
-// initResp and serves putSteps in order for each PUT to the session URI. A
-// step with status 0 simulates a transport error.
 type resumeRT struct {
 	t *testing.T
 
 	initStatus int
 	initBody   string
-	initNoLoc  bool // omit the Location header on the initiate response
+	initNoLoc  bool
 
 	putSteps []step
 	putIdx   int
 	puts     []putRecord
 
-	// waits records every backoff the helper asked for (see run).
 	waits []time.Duration
-	// onPut, when set, runs before PUT number i (0-based) is answered.
 	onPut func(i int)
 }
 
-// step is one scripted PUT outcome.
 type step struct {
-	status  int    // 0 => transport error
-	rng     string // Range header value for a 308
-	body    string // response body for a 2xx (or error envelope)
-	hang    bool   // block until the request's ctx is done (a stalled connection)
-	cutBody bool   // the 2xx body fails mid-read (the final response is lost)
+	status  int
+	rng     string
+	body    string
+	hang    bool
+	cutBody bool
 }
 
 func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
@@ -116,15 +108,12 @@ type net0Error struct{}
 
 func (*net0Error) Error() string { return "simulated transport failure" }
 
-// errReader fails every read, standing in for a connection reset mid-body.
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("simulated reset mid-body") }
 
 func reader(n int) io.ReaderAt { return bytes.NewReader(make([]byte, n)) }
 
-// run uploads size bytes through rt with the backoff recorded (not slept) into
-// rt.waits and a one-minute chunk bound.
 func run(t *testing.T, rt *resumeRT, size int) ([]byte, int, error) {
 	t.Helper()
 	return runCtx(t, context.Background(), rt, size, time.Minute)
@@ -137,8 +126,6 @@ func runCtx(t *testing.T, ctx context.Context, rt *resumeRT, size int, chunkTime
 	return api.ResumableUpload(ctx, hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", reader(size), int64(size))
 }
 
-// TestResumable_happyPath_singleChunk: a sub-chunk-size artifact is one
-// initiate + one PUT whose 2xx body is returned verbatim (ADR-0003).
 func TestResumable_happyPath_singleChunk(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{{status: 200, body: `{"versionCode":42}`}}}
 	body, status, err := run(t, rt, 1024)
@@ -159,8 +146,6 @@ func TestResumable_happyPath_singleChunk(t *testing.T) {
 	}
 }
 
-// TestResumable_multiChunk: an artifact spanning >2 chunks PUTs each 8 MiB
-// slice in order, advancing on 308, finishing on the final 2xx.
 func TestResumable_multiChunk(t *testing.T) {
 	size := api.ResumableChunkSize*2 + 500
 	rt := &resumeRT{t: t, putSteps: []step{
@@ -190,15 +175,12 @@ func TestResumable_multiChunk(t *testing.T) {
 	}
 }
 
-// TestResumable_5xxMidUpload_resumesFromAckedOffset: a 5xx on the first chunk
-// triggers an offset probe; the server reports it committed chunk 1 anyway, so
-// the helper resumes from that acknowledged offset (no re-send) and finishes.
 func TestResumable_5xxMidUpload_resumesFromAckedOffset(t *testing.T) {
 	size := api.ResumableChunkSize + 300
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 500},                            // chunk 1 PUT: upstream hiccup
-		{status: 308, rng: "bytes=0-8388607"},    // probe (bytes */size): server DID commit chunk 1
-		{status: 200, body: `{"versionCode":9}`}, // chunk 2 (final), resumed from offset 8388608
+		{status: 500},
+		{status: 308, rng: "bytes=0-8388607"},
+		{status: 200, body: `{"versionCode":9}`},
 	}}
 	body, status, err := run(t, rt, size)
 	if err != nil {
@@ -210,24 +192,19 @@ func TestResumable_5xxMidUpload_resumesFromAckedOffset(t *testing.T) {
 	if len(rt.puts) != 3 {
 		t.Fatalf("PUT count = %d, want 3 (chunk1, probe, chunk2)", len(rt.puts))
 	}
-	// The probe carries the "bytes */size" query form and no body.
 	if rt.puts[1].contentRange != "bytes */8388908" || rt.puts[1].bodyLen != 0 {
 		t.Errorf("probe = {range=%q len=%d}, want {bytes */8388908, 0}", rt.puts[1].contentRange, rt.puts[1].bodyLen)
 	}
-	// The resumed final chunk starts at the acknowledged offset, not 0.
 	if rt.puts[2].contentRange != "bytes 8388608-8388907/8388908" {
 		t.Errorf("resumed chunk Content-Range = %q, want bytes 8388608-8388907/8388908", rt.puts[2].contentRange)
 	}
 }
 
-// TestResumable_transportErrorMidUpload_probeAndResume: a transport error (not
-// an HTTP status) on a chunk PUT is recovered the same way: probe, then
-// resume from the acknowledged offset.
 func TestResumable_transportErrorMidUpload_probeAndResume(t *testing.T) {
 	size := api.ResumableChunkSize + 100
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 0},                           // chunk 1 PUT: connection dropped
-		{status: 308, rng: "bytes=0-8388607"}, // probe: server has chunk 1
+		{status: 0},
+		{status: 308, rng: "bytes=0-8388607"},
 		{status: 200, body: `{"versionCode":3}`},
 	}}
 	_, _, err := run(t, rt, size)
@@ -239,8 +216,6 @@ func TestResumable_transportErrorMidUpload_probeAndResume(t *testing.T) {
 	}
 }
 
-// TestResumable_initiateFailure: a non-2xx initiate is an *api.Error carrying
-// the upstream status (403 → exit 11), before any PUT.
 func TestResumable_initiateFailure(t *testing.T) {
 	rt := &resumeRT{t: t, initStatus: 403, initBody: `{"error":{"message":"denied","errors":[{"reason":"forbidden"}]}}`}
 	_, _, err := run(t, rt, 1024)
@@ -262,8 +237,6 @@ func TestResumable_initiateFailure(t *testing.T) {
 	}
 }
 
-// TestResumable_initiateNoLocation: a 2xx initiate without a Location header is
-// a protocol violation surfaced as an *api.Error.
 func TestResumable_initiateNoLocation(t *testing.T) {
 	rt := &resumeRT{t: t, initStatus: 200, initNoLoc: true}
 	_, _, err := run(t, rt, 1024)
@@ -275,8 +248,6 @@ func TestResumable_initiateNoLocation(t *testing.T) {
 	}
 }
 
-// TestResumable_terminal4xxDuringChunks: a 4xx on a chunk PUT is terminal (no
-// probe/resume). For bundles.upload, a 400 maps to exit 20 (malformed AAB).
 func TestResumable_terminal4xxDuringChunks(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{
 		{status: 400, body: `{"error":{"message":"malformed bundle"}}`},
@@ -300,17 +271,14 @@ func TestResumable_terminal4xxDuringChunks(t *testing.T) {
 	}
 }
 
-// TestResumable_probeTransientFailure_retriesUnderStallBound: a 5xx to the
-// offset probe itself is transient: the helper retries the probe under the
-// stall bound instead of aborting the upload on the first failure.
 func TestResumable_probeTransientFailure_retriesUnderStallBound(t *testing.T) {
 	size := api.ResumableChunkSize + 300
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 500},                            // chunk 1 PUT: upstream hiccup
-		{status: 503},                            // probe #1: also hiccups
-		{status: 0},                              // probe #2: connection dropped
-		{status: 308, rng: "bytes=0-8388607"},    // probe #3: server has chunk 1
-		{status: 200, body: `{"versionCode":5}`}, // final chunk, resumed
+		{status: 500},
+		{status: 503},
+		{status: 0},
+		{status: 308, rng: "bytes=0-8388607"},
+		{status: 200, body: `{"versionCode":5}`},
 	}}
 	body, status, err := run(t, rt, size)
 	if err != nil {
@@ -324,13 +292,11 @@ func TestResumable_probeTransientFailure_retriesUnderStallBound(t *testing.T) {
 	}
 }
 
-// TestResumable_probeTerminal4xx_isImmediate: a 4xx to the probe is terminal:
-// no retry, the error surfaces with its upstream status.
 func TestResumable_probeTerminal4xx_isImmediate(t *testing.T) {
 	size := api.ResumableChunkSize + 300
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 500}, // chunk 1 PUT: upstream hiccup
-		{status: 404, body: `{"error":{"message":"session gone"}}`}, // probe: terminal
+		{status: 500},
+		{status: 404, body: `{"error":{"message":"session gone"}}`},
 	}}
 	_, _, err := run(t, rt, size)
 	var apiErr *api.Error
@@ -342,13 +308,10 @@ func TestResumable_probeTerminal4xx_isImmediate(t *testing.T) {
 	}
 }
 
-// TestResumable_ackedOffsetBeyondSize_isProtocolError: a 308 Range past the
-// artifact's end is rejected as a protocol error instead of computing a
-// negative chunk length.
 func TestResumable_ackedOffsetBeyondSize_isProtocolError(t *testing.T) {
 	size := api.ResumableChunkSize + 300
 	rt := &resumeRT{t: t, putSteps: []step{
-		{status: 308, rng: "bytes=0-999999999"}, // acked offset 10^9 > size
+		{status: 308, rng: "bytes=0-999999999"},
 	}}
 	_, _, err := run(t, rt, size)
 	var apiErr *api.Error
@@ -360,8 +323,6 @@ func TestResumable_ackedOffsetBeyondSize_isProtocolError(t *testing.T) {
 	}
 }
 
-// shortReader reports a full size but returns fewer bytes than asked: the
-// artifact shrank (or lied about its size) between stat and read.
 type shortReader struct{ actual int }
 
 func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
@@ -379,9 +340,6 @@ func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
 	return n, nil
 }
 
-// TestResumable_shortRead_isLocalIOError: a short ReadAt (clean io.EOF
-// included) must not upload the zero-filled tail of the buffer: it is a
-// LocalIOError (exit 20).
 func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{}}
 	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}

@@ -24,9 +24,6 @@ func resp(status int, body string) *http.Response {
 
 const createdBody = `{"deviceTierConfigId":"42","deviceGroups":[{"name":"high"},{"name":"low"}],"deviceTierSet":{"deviceTiers":[{"level":1},{"level":0}]},"userCountrySets":[{"name":"latam"}]}`
 
-// TestCreate_postsBody_noEdit asserts Create posts the body to the
-// deviceTierConfigs collection (no /edits/ segment) and returns the created
-// config + verbatim raw.
 func TestCreate_postsBody_noEdit(t *testing.T) {
 	var gotURL, gotMethod string
 	var gotBody []byte
@@ -62,8 +59,6 @@ func TestCreate_postsBody_noEdit(t *testing.T) {
 	}
 }
 
-// TestCreate_allowUnknownDevices_queryParam asserts the flag adds the query
-// param only when true.
 func TestCreate_allowUnknownDevices_queryParam(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -79,8 +74,6 @@ func TestCreate_allowUnknownDevices_queryParam(t *testing.T) {
 	}
 }
 
-// TestList_paginationAndPassthrough asserts pageSize/pageToken are sent and the
-// nextPageToken is preserved.
 func TestList_paginationAndPassthrough(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -105,7 +98,6 @@ func TestList_paginationAndPassthrough(t *testing.T) {
 	}
 }
 
-// TestGet_byID asserts the single-resource path.
 func TestGet_byID(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -121,7 +113,6 @@ func TestGet_byID(t *testing.T) {
 	}
 }
 
-// TestErrors_mapExitCodes asserts 403→11, 404→30, 500→40 via *api.Error.
 func TestErrors_mapExitCodes(t *testing.T) {
 	for _, tc := range []struct {
 		status, want int

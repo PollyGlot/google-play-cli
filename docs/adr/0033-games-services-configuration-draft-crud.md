@@ -4,6 +4,8 @@
 
 accepted; decision 3 (verbs) amended below (2026-09-26)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 [ADR-0026](./0026-maximal-admin-api-coverage.md) puts every Play admin API in
@@ -96,3 +98,11 @@ shipped as `update`/`delete` and were renamed in 2.0.0 without an alias
 remove` (still destructive, `--confirm`). The whole-body flag `--from-json`
 became `--file`, the name every other whole-body input uses, and the list page
 size `--max-results` became `--page-size`.
+
+## Implementation notes
+
+- **Its own host, the shared scope.** `gamesConfiguration` is reached on its
+  own host (resolved from the registry), but its Discovery document declares
+  only the `androidpublisher` OAuth scope, so unlike vitals
+  ([ADR-0027](./0027-vitals-second-service-scope-readonly.md)) it needs no
+  per-command scope and uses the default token.

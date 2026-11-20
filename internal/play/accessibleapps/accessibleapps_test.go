@@ -24,9 +24,6 @@ func resp(status int, body string) *http.Response {
 
 const pageBody = `{"apps":[{"name":"apps/com.example.a","packageName":"com.example.a","displayName":"Example A"},{"name":"apps/com.example.b","packageName":"com.example.b","displayName":"Example B"}],"nextPageToken":"tok-2"}`
 
-// TestSearch_hitsReportingHost_parsesPage asserts Search targets the
-// Reporting service's apps:search endpoint (not the androidpublisher host),
-// makes a GET, parses the page, and returns the body verbatim.
 func TestSearch_hitsReportingHost_parsesPage(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -60,9 +57,6 @@ func TestSearch_hitsReportingHost_parsesPage(t *testing.T) {
 	}
 }
 
-// TestSearch_pagingParams asserts pageSize (>0) and pageToken are sent as
-// query params, and pageSize <= 0 is omitted so the server applies its
-// default.
 func TestSearch_pagingParams(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -81,7 +75,6 @@ func TestSearch_pagingParams(t *testing.T) {
 		t.Errorf("url %q should carry pageToken=tok-1", gotURL)
 	}
 
-	// pageSize <= 0 must be omitted.
 	if _, _, err := accessibleapps.Search(context.Background(), hc, 0, ""); err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -90,8 +83,6 @@ func TestSearch_pagingParams(t *testing.T) {
 	}
 }
 
-// TestSearch_apiError_carriesStatus asserts a non-2xx becomes an *api.Error
-// with the status, so the exit-code taxonomy can map it (403 → exit 11).
 func TestSearch_apiError_carriesStatus(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return resp(http.StatusForbidden, `{"error":{"code":403,"message":"no reporting access"}}`), nil
@@ -111,9 +102,6 @@ func TestSearch_apiError_carriesStatus(t *testing.T) {
 	}
 }
 
-// TestSearch_emptyResult asserts an empty page decodes cleanly to zero Apps
-// and an empty token (a valid, common state: the credential simply sees no
-// Apps on the Reporting side).
 func TestSearch_emptyResult(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return resp(200, `{}`), nil

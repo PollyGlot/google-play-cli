@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 [ADR-0026](0026-maximal-admin-api-coverage.md) puts every Play **admin** API in
@@ -65,6 +67,9 @@ an androidpublisher Edit upload ([ADR-0027](0027-vitals-second-service-scope-rea
   whose `add`/`remove` grammar exists precisely because gplay cannot *create* an
   app on Play, whereas a DeviceTierConfig **is** created server-side). An
   app-scoped Publisher resource family parallel to `compliance`/`testers`.
+  The resource is immutable: the API exposes create, get and list, with no
+  update, patch or delete, and the id is server-assigned, so a create never
+  overwrites an existing config.
 
 ### 2. Three new domain verbs (admitted under ADR-0019 §2)
 

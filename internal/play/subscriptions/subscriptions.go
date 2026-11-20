@@ -1,15 +1,3 @@
-// Package subscriptions calls the Android Publisher monetization.subscriptions
-// endpoints: the subscription level of the Monetization catalog (GLOSSARY.md).
-// These are Edit-free, application-scoped calls on the package axis
-// (applications/{packageName}/subscriptions...), like deviceTierConfigs and
-// orders. Raw HTTP (ADR-0007), never the google-go-sdk.
-//
-// This package ships the declarative-catalog surface of PRD #51: the
-// subscription level (list followed to completion, create, patch with a
-// caller-scoped updateMask, delete: slice #367), the pricing helper
-// convertRegionPrices (#368), and the offers sub-resource plus the base-plan/
-// offer state ops (offers.go, #369). Subscriber price migration (#370) is the
-// remaining monetization write. See ADR-0041.
 package subscriptions
 
 import (
@@ -25,7 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
-// op* tag *api.Error with the REST reference method id.
 const (
 	opList    = "monetization.subscriptions.list"
 	opCreate  = "monetization.subscriptions.create"
@@ -34,11 +21,6 @@ const (
 	opConvert = "monetization.convertRegionPrices"
 )
 
-// m* are the registry entries this package calls. Resolving them at init turns
-// an unregistered or vanished method into a startup panic CI catches (the
-// registry tests resolve every entry), never a runtime surprise for a user;
-// verb and URL template then come from the Discovery snapshot instead of
-// literals maintained here (#513).
 var (
 	mList    = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.list")
 	mCreate  = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.create")
@@ -47,49 +29,30 @@ var (
 	mConvert = apiregistry.MustResolve("androidpublisher.monetization.convertRegionPrices")
 )
 
-// The State* values are the BasePlan.state and SubscriptionOffer.state enum.
-// ACTIVE and INACTIVE are the targets a catalog file may declare; DRAFT is
-// the state of a resource that has never been activated.
 const (
 	StateDraft    = "DRAFT"
 	StateActive   = "ACTIVE"
 	StateInactive = "INACTIVE"
 )
 
-// Money mirrors the Money schema: whole units (a decimal int64 string) plus
-// nano (10^-9) units, tagged with an ISO-4217 currency.
 type Money struct {
 	CurrencyCode string `json:"currencyCode,omitempty"`
 	Units        string `json:"units,omitempty"`
 	Nanos        int32  `json:"nanos,omitempty"`
 }
 
-// listPageSize is the page size subscriptions.list and the offers walk
-// request; List follows nextPageToken to completion regardless
-// (reconciliation needs the whole catalog, silent truncation would surface as
-// phantom deletes in a plan). It is sized against api.MaxAPISuccessBodyRead:
-// Play pretty-prints, and a subscription with three base plans priced in
-// every region weighs about 140 KB, so 100 of them came to 13 MB, past the
-// 4 MiB cap; 20 stay near 2.8 MB (bodycap_test.go, #790).
 const listPageSize = 20
 
-// Item is one live subscription: the parsed product ID plus the verbatim
-// resource bytes (the unit `pull` writes to a catalog file, ADR-0003 spirit).
 type Item struct {
 	ProductID string
 	Raw       json.RawMessage
 }
 
-// listPage mirrors the ListSubscriptionsResponse envelope, keeping each
-// subscription as raw bytes so the pass-through survives the merge.
 type listPage struct {
 	Subscriptions []json.RawMessage `json:"subscriptions"`
 	NextPageToken string            `json:"nextPageToken"`
 }
 
-// List reads the complete live subscription catalog of a package, following
-// nextPageToken to completion (no silent truncation: a missing page would read
-// as deletes in a Reconciliation plan). No Edit: the GET is application-scoped.
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opList, Target: pkg, What: "monetization.subscriptions.list"},
 		func(token string, _ int) ([]Item, string, error) {
@@ -124,10 +87,6 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	return items, err
 }
 
-// Create creates a subscription from the catalog-file resource, sent verbatim
-// as the request body. productId and regionsVersion.version ride as query
-// parameters: the API requires the regions version pin for any write that
-// carries regional prices (ADR-0041 §7).
 func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, body json.RawMessage) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("productId", productID)
@@ -140,10 +99,6 @@ func Create(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion
 	})
 }
 
-// Patch updates a subscription from the catalog-file resource, sent verbatim,
-// with the updateMask scoped to exactly the fields the caller reconciles: the
-// mechanism that keeps anything outside the caller's managed set out of reach
-// of an apply (ADR-0041 §5).
 func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion string, updateMask []string, body json.RawMessage, lt latency.Tolerance) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
@@ -157,10 +112,6 @@ func Patch(ctx context.Context, hc *http.Client, pkg, productID, regionsVersion 
 	})
 }
 
-// Delete deletes a subscription. Reaching here means the plan carried a delete
-// and the operator passed --confirm; the API additionally refuses to delete a
-// subscription that ever had a published base plan, so the gate covers intent
-// while the server covers damage (ADR-0041).
 func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
 	_, err := api.Do(ctx, hc, api.Call{
 		Method: mDelete, Op: opDelete, Target: pkg,
@@ -169,11 +120,6 @@ func Delete(ctx context.Context, hc *http.Client, pkg, productID string) error {
 	return err
 }
 
-// ConvertRegionPrices derives per-region prices from one base price using
-// today's exchange rates and Google's country-specific pricing patterns
-// (monetization.convertRegionPrices): the pricing helper of the Monetization
-// catalog (ADR-0041 §9). Read-only in effect: it computes, it never writes
-// catalog state. The verbatim response is the ADR-0003 pass-through.
 func ConvertRegionPrices(ctx context.Context, hc *http.Client, pkg string, price Money) (json.RawMessage, error) {
 	return api.Do(ctx, hc, api.Call{
 		Method: mConvert, Op: opConvert, Target: pkg,

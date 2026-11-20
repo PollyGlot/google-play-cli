@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 A CI job or an agent that provisions Play resources is often re-run: a later
@@ -46,7 +48,8 @@ Two facts constrain the answer:
 5. **Edits.** For a resource inside an Edit the read runs in the same Edit as
    the create, so a resource staged earlier in an explicit Edit counts as
    existing. A skip in an implicit Edit discards the Edit instead of committing
-   it (`edits.ErrNothingToCommit`); if that discard fails, the skip reports
+   it (`edits.ErrNothingToCommit`), since an empty commit is not a no-op: it
+   counts against Google's publish rate limit. If that discard fails, the skip reports
    the Edit left open with its ID (a dangling-Edit error, the DELETE's exit
    code) rather than exit 0. In an explicit Edit it adds nothing, and a commit
    flag passed alongside is not reported as staged.

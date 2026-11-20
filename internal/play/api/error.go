@@ -9,27 +9,14 @@ import (
 	"strings"
 )
 
-// Error is the canonical error type returned by every internal/play/*
-// module on an upstream failure. It carries the HTTP status (or 0 for
-// transport-level failures), the operation name (e.g. "edits.insert"),
-// what the call targeted (see Target), and a human-readable message extracted
-// from the API error envelope. It implements gplay's Coder contract so
-// exit.For can map it to a semantic exit code without an explicit
-// dispatcher.
 type Error struct {
-	Operation string // e.g. "edits.insert", "bundles.upload"
-	// Package is the Android package the call targeted. Only a real package
-	// name goes here: it becomes the envelope's `package` field, which
-	// consumers read as a package (#599).
-	Package string
-	// Resource is the target of a call on any other addressing axis (a
-	// developer account, a Play Games application, a bucket...). Leave it zero
-	// on the package axis; Target folds Package into it.
+	Operation  string
+	Package    string
 	Resource   Resource
-	StatusCode int      // 0 = transport-level (no HTTP response)
-	Message    string   // extracted via APIErrorMessage when a body is available
-	Reasons    []string // error.errors[].reason values from the envelope (e.g. "editAlreadyExists")
-	Cause      error    // underlying transport error, if any
+	StatusCode int
+	Message    string
+	Reasons    []string
+	Cause      error
 }
 
 func (e *Error) Error() string {
@@ -38,12 +25,6 @@ func (e *Error) Error() string {
 	}
 	suffix := ""
 	if len(e.Reasons) > 0 {
-		// Reasons carry the discriminating Google API signal (e.g.
-		// editAlreadyExists, rateLimitExceeded). Including them in the
-		// human-visible string means a user reading `gplay` output,
-		// or a CI log: can immediately see why an API rejection
-		// landed without dumping the full envelope. Joined with "," to
-		// keep the line compact when more than one reason is returned.
 		suffix = " [reason: " + strings.Join(e.Reasons, ",") + "]"
 	}
 	on := e.Target().ID
@@ -53,33 +34,16 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s on %s: %s (HTTP %d)%s", e.Operation, on, e.Message, e.StatusCode, suffix)
 }
 
-// Unwrap exposes the transport-level cause (if any) so errors.Is /
-// errors.As traverse the chain naturally.
 func (e *Error) Unwrap() error { return e.Cause }
 
-// ExitCode satisfies the gplay Coder contract. The mapping table mostly
-// lives in StatusToExitCode and matches docs/DESIGN.md §9; the one
-// operation-aware nuance handled here is the artifact uploads
-// (bundles.upload / apks.upload), where 400 and 404 mean "malformed
-// artifact" (or, for APKs, an AAB-required app) and must surface as exit
-// 20 (not the generic 30). Auth (403), conflict (409), 5xx and
-// transport-level failures still win over the operation hint: a 403 on
-// bundles.upload is still an auth problem.
-//
-// With no HTTP status, a cause that already carries an exit code wins over
-// the network bucket: oauth2.Transport fails the request before it leaves
-// when the /token exchange is refused, so a *token.AuthError (exit 10) arrives
-// here as a transport error and must not surface as a retry-safe exit 50.
 func (e *Error) ExitCode() int {
 	if e == nil {
 		return 0
 	}
 	if isBodyRead(e.Cause) {
-		return StatusToExitCode(0) // a 2xx cut mid-body: the network failed, not the API
+		return StatusToExitCode(0)
 	}
 	if e.StatusCode == 0 {
-		// Local mirror of exit.Coder: package exit imports api, so api
-		// cannot import it back.
 		var coder interface{ ExitCode() int }
 		if errors.As(e.Cause, &coder) {
 			return coder.ExitCode()
@@ -94,13 +58,6 @@ func (e *Error) ExitCode() int {
 	return StatusToExitCode(e.StatusCode)
 }
 
-// NeverSent reports whether the cause of a transport-level failure (an *Error
-// with no StatusCode) proves the request never left the machine: a refused
-// token exchange (the cause carries its own exit code), a DNS or a dial
-// failure. Any other transport failure may have reached Google's write path,
-// the line internal/transport.neverApplied draws before replaying a
-// non-idempotent write. Shared by the callers that must say whether a failed
-// write may have been applied (edits.commit, the iap batch calls).
 func NeverSent(cause error) bool {
 	var coder interface{ ExitCode() int }
 	if errors.As(cause, &coder) {
@@ -114,28 +71,11 @@ func NeverSent(cause error) bool {
 	return errors.As(cause, &opErr) && opErr.Op == "dial"
 }
 
-// StatusToExitCode maps a Google Play API HTTP status (or 0 for
-// transport failures) to the gplay exit-code taxonomy. It is the
-// operation-agnostic fallback used by *Error.ExitCode; operation-aware
-// overrides (e.g. bundles.upload 400/404 → 20) live on the receiver.
-// The full table is in docs/DESIGN.md §9; the cases that matter:
-//
-//	0           → 50 (transport: timeout, DNS, refused)
-//	401         → 10 (authentication: the API refused the bearer token)
-//	403         → 11 (authorization: SA not invited on app)
-//	409         → 60 (state conflict: stale Edit, ambiguous target)
-//	429         → 60 (rate-limited: same "transient state, sometimes retry" bucket)
-//	5xx         → 40 (upstream temporarily unhealthy, retry-safe)
-//	other 4xx   → 30 (API misuse: not found, bad request, conflict, gone)
 func StatusToExitCode(status int) int {
 	switch {
 	case status == 0:
 		return 50
 	case status == http.StatusUnauthorized:
-		// DESIGN §9 files "token refused" under 10 wherever the refusal comes
-		// from: the token endpoint (internal/auth/token) or, as here, the API
-		// rejecting the bearer it was handed. Re-running with the same
-		// credential cannot fix either.
 		return 10
 	case status == http.StatusForbidden:
 		return 11
@@ -148,20 +88,11 @@ func StatusToExitCode(status int) int {
 	}
 }
 
-// APIErrorMessage extracts the most useful human-readable message from
-// a Google API error envelope ({"error":{"message":"..."}}), falling
-// back to a generic placeholder when the body is empty or unparseable.
 func APIErrorMessage(body []byte, status int) string {
 	msg, _ := ParseErrorEnvelope(body, status)
 	return msg
 }
 
-// ParseErrorEnvelope extracts both the human-readable message AND the
-// structured `errors[].reason` values from a Google API error envelope.
-// Reasons (e.g. "editAlreadyExists", "rateLimitExceeded") let callers
-// branch on semantically distinct failure modes that share an HTTP
-// status. The message follows APIErrorMessage's fallback chain: envelope
-// → trimmed raw body → "HTTP <status>".
 func ParseErrorEnvelope(body []byte, status int) (message string, reasons []string) {
 	if len(body) == 0 {
 		return fmt.Sprintf("HTTP %d", status), nil
@@ -183,11 +114,6 @@ func ParseErrorEnvelope(body []byte, status int) (message string, reasons []stri
 		}
 	}
 	if message == "" {
-		// Fall through the chain: envelope (no message extracted) →
-		// trimmed raw body → "HTTP <status>". A whitespace-only body
-		// trims to "", which would leave the caller staring at a blank
-		// API error string with no signal at all; restoring the
-		// "HTTP <status>" floor keeps every code path informative.
 		message = strings.TrimSpace(string(body))
 		if message == "" {
 			message = fmt.Sprintf("HTTP %d", status)

@@ -43,8 +43,6 @@ const listBody = `{
   ]
 }`
 
-// TestList_noEdit_applicationScoped asserts the GET addresses the version code
-// on the package axis (no /edits/) and parses every artifact family.
 func TestList_noEdit_applicationScoped(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -89,13 +87,11 @@ func TestList_noEdit_applicationScoped(t *testing.T) {
 	if len(g.GeneratedRecoveryModules) != 1 || g.GeneratedRecoveryModules[0].RecoveryID != "99" {
 		t.Errorf("recovery modules = %+v", g.GeneratedRecoveryModules)
 	}
-	// ADR-0003: raw body is the verbatim response.
 	if !strings.Contains(string(raw), `"dl-split-cfg"`) {
 		t.Errorf("raw passthrough missing downloadId: %s", raw)
 	}
 }
 
-// TestList_403_exit11 asserts a forbidden response maps to the authz exit code.
 func TestList_403_exit11(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"caller does not have permission"}}`), nil
@@ -104,7 +100,6 @@ func TestList_403_exit11(t *testing.T) {
 	assertExit(t, err, 11)
 }
 
-// TestList_404_exit30 asserts an unknown version code maps to the not-found exit code.
 func TestList_404_exit30(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"not found"}}`), nil
@@ -113,9 +108,6 @@ func TestList_404_exit30(t *testing.T) {
 	assertExit(t, err, 30)
 }
 
-// TestDownload_altMedia_streamsBytes_noEdit asserts the download GET carries
-// alt=media, addresses the :download method (no /edits/), and streams the body
-// to the writer verbatim.
 func TestDownload_altMedia_streamsBytes_noEdit(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -148,7 +140,6 @@ func TestDownload_altMedia_streamsBytes_noEdit(t *testing.T) {
 	}
 }
 
-// TestDownload_403_exit11 / _404_exit30 cover the refusal/not-found paths.
 func TestDownload_403_exit11(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"forbidden"}}`), nil

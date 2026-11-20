@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `gplay metadata images` extends the Store front (per-locale) surface from
@@ -192,4 +194,12 @@ Two properties of `edits.images` break the text model:
   checks every downloaded file against the `sha256` `images.list`
   reports: a mismatch fails the pull before anything is written, so if
   the host's url grammar changes, pull fails instead of silently writing
-  previews again.
+  previews again. The original's url is built by splicing the size option
+  out of the url string the API returned, not by re-serialising a parsed
+  url, so every other byte survives as sent.
+- **An upload announces the type it sniffed.** `edits.images.upload`
+  declares `image/*` and answers `application/octet-stream` with a 400
+  (#560), so the media type is sniffed from the leading bytes. A type other
+  than PNG or JPEG is sent as sniffed rather than refused: the default
+  `apply` path has already decoded every file as PNG or JPEG, and under
+  `--skip-preflight` Play's 400 then names the type actually sent.

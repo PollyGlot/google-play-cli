@@ -13,14 +13,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// explicitWrite runs WithEdit in explicit mode with a closure failing like a
-// write against the pinned Edit would, over fake.
 func explicitWrite(fake *testkit.Fake, cause error) error {
 	return edits.WithEdit(context.Background(), &http.Client{Transport: fake}, "com.example.app",
 		edits.Options{ExplicitEditID: "edit-pinned"}, func(string) error { return cause })
 }
 
-// editsGet answers the edits.get probe on the pinned id with status.
 func editsGet(status int, body string) testkit.Responder {
 	return func(c testkit.Call) (int, string, bool) {
 		if c.Method == http.MethodGet && strings.HasSuffix(c.Path, "/edits/edit-pinned") {
@@ -30,9 +27,6 @@ func editsGet(status int, body string) testkit.Responder {
 	}
 }
 
-// TestWithEdit_explicitMode_vanishedEdit_namesThePin covers API-10: a write
-// failing because the pinned Edit is gone says which local pin redirected it
-// and how to clear it, while the exit and diagnostic codes stay the API's.
 func TestWithEdit_explicitMode_vanishedEdit_namesThePin(t *testing.T) {
 	notFound := &api.Error{Operation: "tracks.update", Package: "com.example.app", StatusCode: 404, Message: "Not found"}
 	expired := &api.Error{Operation: "tracks.update", Package: "com.example.app", StatusCode: 400, Message: "This Edit has expired", Reasons: []string{"editExpired"}}
@@ -72,9 +66,6 @@ func TestWithEdit_explicitMode_vanishedEdit_namesThePin(t *testing.T) {
 	}
 }
 
-// TestWithEdit_explicitMode_otherFailures_passThrough guards the other side:
-// a 404 on a resource inside a live Edit (a track not created yet) keeps its
-// own error and hint, and a non-404 is never probed.
 func TestWithEdit_explicitMode_otherFailures_passThrough(t *testing.T) {
 	cases := []struct {
 		name   string

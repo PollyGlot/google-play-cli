@@ -1,7 +1,3 @@
-// Package apks_test exercises the play-layer legacy-APK upload against a
-// fake transport. Upload wraps the Android Publisher edits.apks.upload
-// endpoint: a resumable POST-initiate + chunked PUT of the APK into an
-// already-open Edit, mirroring internal/play/bundles.
 package apks_test
 
 import (
@@ -19,33 +15,21 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// resumable speaks the resumable-upload protocol through a
-// testkit.RoundTripFunc (a Fake cannot set the Location and Range headers the
-// protocol needs): the POST initiate answers with a session URI in Location,
-// then the chunk PUT(s) carry the bytes and return the final resource body.
-// It records the method sequence plus the initiate path/query and the chunk
-// headers.
-//
-// initiateStatus (when >= 400) short-circuits at initiate: the error the
-// helper surfaces without ever opening the transfer. resumeAfter, when > 0,
-// makes the first N chunk PUTs answer 308 (Resume Incomplete) so the
-// resume path is exercised before the final chunk.
 type resumable struct {
-	initiateStatus int // default 200
-	putStatus      int // final chunk status, default 200
+	initiateStatus int
+	putStatus      int
 	body           string
-	resumeAfter    int // number of 308 responses before the final chunk
+	resumeAfter    int
 
 	methods    []string
 	initiPath  string
 	initiQuery string
-	initCType  string // X-Upload-Content-Type on the initiate
-	putCType   string // Content-Type on the chunk PUT
+	initCType  string
+	putCType   string
 	putBody    []byte
 	putHits    int
 }
 
-// client returns an http.Client whose every request lands on r.
 func (r *resumable) client() *http.Client {
 	return &http.Client{Transport: testkit.RoundTripFunc(r.serve)}
 }
@@ -72,13 +56,11 @@ func (r *resumable) serve(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 
-	// Chunk PUT.
 	r.putHits++
 	r.putCType = req.Header.Get("Content-Type")
 	b, _ := io.ReadAll(req.Body)
 	r.putBody = append(r.putBody, b...)
 	if r.putHits <= r.resumeAfter {
-		// Resume Incomplete: acknowledge the bytes received so far.
 		resp := testkit.Response(308, "")
 		resp.Header.Set("Range", "bytes=0-"+strconv.Itoa(len(r.putBody)-1))
 		return resp, nil
@@ -103,10 +85,6 @@ func writeFakeAPK(t *testing.T) string {
 	return p
 }
 
-// TestUpload_happyPath_resumableProtocol_returnsVersionCode asserts the
-// initiate hits /apks with uploadType=resumable and the octet-stream media
-// type in X-Upload-Content-Type, the chunk PUT carries the APK bytes, and
-// the parsed versionCode comes back.
 func TestUpload_happyPath_resumableProtocol_returnsVersionCode(t *testing.T) {
 	apk := writeFakeAPK(t)
 	transport := &resumable{body: `{"versionCode":142}`}
@@ -126,7 +104,6 @@ func TestUpload_happyPath_resumableProtocol_returnsVersionCode(t *testing.T) {
 	if transport.initiQuery != "uploadType=resumable" {
 		t.Errorf("query = %q, want uploadType=resumable", transport.initiQuery)
 	}
-	// Protocol: POST initiate then PUT chunk.
 	if len(transport.methods) != 2 || transport.methods[0] != http.MethodPost || transport.methods[1] != http.MethodPut {
 		t.Errorf("method sequence = %v, want [POST PUT]", transport.methods)
 	}
@@ -141,8 +118,6 @@ func TestUpload_happyPath_resumableProtocol_returnsVersionCode(t *testing.T) {
 	}
 }
 
-// TestUpload_resumeAfter308_completes asserts the helper resumes after an
-// intermediate 308 and still returns the final versionCode.
 func TestUpload_resumeAfter308_completes(t *testing.T) {
 	apk := writeFakeAPK(t)
 	transport := &resumable{body: `{"versionCode":9}`, resumeAfter: 1}
@@ -160,8 +135,6 @@ func TestUpload_resumeAfter308_completes(t *testing.T) {
 	}
 }
 
-// TestUpload_400_mapsToExit20 asserts a 400 at initiate (malformed APK /
-// AAB-required app) surfaces as client-side validation (exit 20).
 func TestUpload_400_mapsToExit20(t *testing.T) {
 	apk := writeFakeAPK(t)
 	transport := &resumable{initiateStatus: 400, body: `{"error":{"code":400,"message":"APK not allowed; app requires an App Bundle."}}`}
@@ -176,8 +149,6 @@ func TestUpload_400_mapsToExit20(t *testing.T) {
 	}
 }
 
-// TestUpload_404_mapsToExit20 mirrors the 400 case: a 404 is also treated
-// as malformed-artifact client-side validation (exit 20).
 func TestUpload_404_mapsToExit20(t *testing.T) {
 	apk := writeFakeAPK(t)
 	transport := &resumable{initiateStatus: 404, body: `{"error":{"code":404,"message":"Not found."}}`}
@@ -192,11 +163,8 @@ func TestUpload_404_mapsToExit20(t *testing.T) {
 	}
 }
 
-// TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP asserts a
-// non-regular path (a directory) is rejected as a client-side validation
-// error (exit 20) BEFORE any HTTP. Mirrors bundles.Upload's guard.
 func TestUpload_directoryPath_returnsLocalIOError_exit20_noHTTP(t *testing.T) {
-	dir := t.TempDir() // a directory, not a regular file
+	dir := t.TempDir()
 	transport := &resumable{}
 	hc := transport.client()
 
