@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
-// sharedNotes builds the monorepo layout the hatch exists for: a release-notes
-// directory whose `fr-FR.txt` is a symlink at a translation file shared with
-// another tree. It returns the notes directory.
 func sharedNotes(t *testing.T) string {
 	t.Helper()
 	shared := t.TempDir()
@@ -28,8 +25,6 @@ func sharedNotes(t *testing.T) string {
 	return dir
 }
 
-// Default: refused, and the message names the way back so a monorepo operator
-// is not left guessing.
 func TestLoadRefusalNamesTheHatch(t *testing.T) {
 	dir := sharedNotes(t)
 
@@ -42,8 +37,6 @@ func TestLoadRefusalNamesTheHatch(t *testing.T) {
 	}
 }
 
-// Under the opt-in the shared note is loaded again, with a NOTE on stderr
-// saying which file left the tree.
 func TestLoadFollowsSharedNoteUnderTheHatch(t *testing.T) {
 	dir := sharedNotes(t)
 	var stderr bytes.Buffer

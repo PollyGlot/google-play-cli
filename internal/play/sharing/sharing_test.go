@@ -16,10 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/sharing"
 )
 
-// roundTripperFunc adapts a function to http.RoundTripper so a test can route
-// the single upload request without a network. No /token exchange here: these
-// API-layer tests call the package directly with a bare *http.Client.
-
 func resp(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,
@@ -39,8 +35,6 @@ func writeFile(t *testing.T, name, content string) string {
 
 const artifactBody = `{"downloadUrl":"https://play.google.com/apps/test/abc123","certificateFingerprint":"AA:BB:CC","sha256":"deadbeef"}`
 
-// TestUploadAPK_happyPath asserts the request hits the apk artifact endpoint
-// with the media-upload shape and the parsed + raw artifact comes back.
 func TestUploadAPK_happyPath(t *testing.T) {
 	var gotURL, gotMethod, gotContentType string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -74,7 +68,6 @@ func TestUploadAPK_happyPath(t *testing.T) {
 	}
 }
 
-// TestUploadBundle_pathSegment asserts the bundle endpoint is used for an AAB.
 func TestUploadBundle_pathSegment(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -90,8 +83,6 @@ func TestUploadBundle_pathSegment(t *testing.T) {
 	}
 }
 
-// TestUpload_directory_exit20 asserts a non-regular path is a client-side
-// *LocalIOError (exit 20), never a network call.
 func TestUpload_directory_exit20(t *testing.T) {
 	called := false
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -116,8 +107,6 @@ func TestUpload_directory_exit20(t *testing.T) {
 	}
 }
 
-// TestUpload_apiError_mapsExit asserts an API 4xx surfaces as *api.Error (exit
-// 30 via StatusToExitCode).
 func TestUpload_apiError_mapsExit(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		return resp(400, `{"error":{"code":400,"message":"artifact too large"}}`), nil

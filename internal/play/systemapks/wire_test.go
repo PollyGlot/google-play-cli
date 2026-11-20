@@ -11,8 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire pins every request this package sends and how each answer maps to
-// a result or an error, byte for byte.
 func TestWire(t *testing.T) {
 	ctx := context.Background()
 	var got bytes.Buffer

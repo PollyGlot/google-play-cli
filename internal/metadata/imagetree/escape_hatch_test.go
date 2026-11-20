@@ -12,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// sharedAssets builds the layout the hatch exists for, the one the monorepo
-// report names: `<dir>/en-US/images` is a symlink at a shared asset directory
-// kept outside the metadata tree. It returns the tree root and that directory.
 func sharedAssets(t *testing.T) (dir, shared string) {
 	t.Helper()
 	shared = t.TempDir()
@@ -32,8 +29,6 @@ func sharedAssets(t *testing.T) (dir, shared string) {
 	return dir, shared
 }
 
-// Default: refused, with the variable that brings the layout back named in the
-// message, so a monorepo operator reads what to do and not only what broke.
 func TestReadRefusesSharedImagesAndNamesTheHatch(t *testing.T) {
 	dir, _ := sharedAssets(t)
 
@@ -44,8 +39,6 @@ func TestReadRefusesSharedImagesAndNamesTheHatch(t *testing.T) {
 	}
 }
 
-// Under the opt-in the shared assets are read again, and stderr names what
-// left the tree.
 func TestReadFollowsSharedImagesUnderTheHatch(t *testing.T) {
 	dir, _ := sharedAssets(t)
 	var notes bytes.Buffer
@@ -68,9 +61,6 @@ func TestReadFollowsSharedImagesUnderTheHatch(t *testing.T) {
 	}
 }
 
-// The write side builds its paths from the locale the API returned, so the
-// hatch must not reach it: `images pull` into the very same layout is still
-// refused, and nothing lands outside the tree.
 func TestWriteStaysContainedUnderTheHatch(t *testing.T) {
 	dir, shared := sharedAssets(t)
 	var notes bytes.Buffer
@@ -83,7 +73,6 @@ func TestWriteStaysContainedUnderTheHatch(t *testing.T) {
 	} else if !strings.Contains(err.Error(), pathguard.EnvAllowExternalSymlinks) {
 		t.Errorf("the refusal does not explain that the hatch does not cover an API-derived path: %v", err)
 	}
-	// The pre-existing shared icon must be untouched: a refusal writes nothing.
 	got, err := os.ReadFile(filepath.Join(shared, "icon.png"))
 	if err != nil {
 		t.Fatal(err)

@@ -1,7 +1,3 @@
-// Package orchestrator_test exercises the promote orchestration via a
-// RoundTripper-mocked Google Play Developer API. The tracer bullet here
-// is the canonical four-call sequence on a non-production destination:
-// edits.insert → tracks.get(source) → tracks.update(dest) → edits.commit.
 package orchestrator_test
 
 import (
@@ -20,18 +16,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// promoteAPI configures the androidpublisher endpoints involved in a
-// promote: edits.insert, tracks.get (source), tracks.update (dest),
-// edits.commit, and the cleanup edits.delete. Each endpoint has a default
-// happy-path response; tests override any specific handler to inject a
-// failure or to fail on a call that must not happen.
 type promoteAPI struct {
 	editID             string
 	sourceTrackGetResp string
 	destTrack          string
 	destTrackGetResp   string
-	trackUpdateRawResp string // body returned for PUT /tracks/<to>
-	defaultLanguage    string // body returned for GET /details (empty → en-US)
+	trackUpdateRawResp string
+	defaultLanguage    string
 
 	insertHandler  handler
 	getHandler     handler
@@ -41,7 +32,6 @@ type promoteAPI struct {
 	deleteHandler  handler
 }
 
-// newPromoteFake returns the Fake serving a and recording every call.
 func newPromoteFake(a promoteAPI) *testkit.Fake {
 	override := func(h handler, c testkit.Call) (int, string, bool) {
 		status, body := h(c)
@@ -131,7 +121,6 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 		}
 	}
 
-	// Track update payload carries versionCode 142, status=completed, no userFraction.
 	body := string(trackUpdateReq(rt))
 	if !strings.Contains(body, `"versionCodes":["142"]`) {
 		t.Errorf("tracks.update body = %s, want versionCodes=[\"142\"]", body)
@@ -143,7 +132,6 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 		t.Errorf("tracks.update body = %s, want no userFraction on a completed release", body)
 	}
 
-	// Result carries versionCode parsed from the source release.
 	if result.VersionCode != 142 {
 		t.Errorf("VersionCode = %d, want 142", result.VersionCode)
 	}
@@ -155,11 +143,6 @@ func TestPromote_internalToBeta_happyPath_copiesVersionCode(t *testing.T) {
 	}
 }
 
-// TestPromote_internalToProduction_safeDefault_sendsDraftStatus asserts
-// the ADR-0002 safe-default rule applied to the destination of a
-// promote: target production with Status=Unspecified produces a draft
-// release (no userFraction field). The source release's completed
-// status does NOT leak through.
 func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-prod",
@@ -172,7 +155,6 @@ func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T)
 		Package:   "com.example.app",
 		FromTrack: "internal",
 		ToTrack:   "production",
-		// Status: StatusUnspecified (default zero value) → safe-default applies.
 	})
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
@@ -193,11 +175,6 @@ func TestPromote_internalToProduction_safeDefault_sendsDraftStatus(t *testing.T)
 	}
 }
 
-// TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction
-// asserts that --staged 0.05 (Status=InProgress + UserFraction=0.05)
-// on a production target ships inProgress at 5%: overriding the
-// ADR-0002 safe-default for that destination. Production publish that
-// reaches real users requires Confirm=true (mirrors upload).
 func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-staged",
@@ -228,16 +205,9 @@ func TestPromote_toProduction_explicitStaged_sendsInProgressWithFraction(t *test
 	}
 }
 
-// TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error asserts
-// the AC4 rule from issue #45: when the source track carries multiple
-// coexisting releases (e.g. inProgress + halted) and the caller did
-// not pass --version-code or --release-name, Promote must refuse with
-// an *AmbiguousReleaseError (ExitCode=60) listing the candidate
-// versionCodes, and MUST NOT write to the destination.
 func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "edit-ambiguous",
-		// Two coexisting releases: halted at fraction 0.10 and inProgress at 0.50.
 		sourceTrackGetResp: `{"track":"production","releases":[` +
 			`{"name":"500","status":"halted","versionCodes":["500"],"userFraction":0.10},` +
 			`{"name":"501","status":"inProgress","versionCodes":["501"],"userFraction":0.50}` +
@@ -265,15 +235,11 @@ func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T
 	if ambig.ExitCode() != 60 {
 		t.Errorf("ExitCode() = %d, want 60", ambig.ExitCode())
 	}
-	// The error must list the candidate versionCodes so the operator
-	// can pick one. Both 500 and 501 must appear in the message.
 	msg := ambig.Error()
 	if !strings.Contains(msg, "500") || !strings.Contains(msg, "501") {
 		t.Errorf("AmbiguousReleaseError.Error() = %q, want both candidate versionCodes (500, 501)", msg)
 	}
 
-	// The error path must run BEFORE any tracks.update on the
-	// destination. (No PUT in calls.)
 	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "PUT ") {
 			t.Errorf("destination tracks.update should not be called on ambiguous source; calls = %v", apiCalls(rt))
@@ -281,9 +247,6 @@ func TestPromote_ambiguousSource_noDisambiguator_returnsExit60Error(t *testing.T
 	}
 }
 
-// TestPromote_ambiguousSource_versionCodeDisambiguates asserts that
-// --version-code picks the matching release out of multiple
-// coexisting ones, and that the non-matching ones are ignored.
 func TestPromote_ambiguousSource_versionCodeDisambiguates(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "edit-disambig",
@@ -316,9 +279,6 @@ func TestPromote_ambiguousSource_versionCodeDisambiguates(t *testing.T) {
 	}
 }
 
-// TestPromote_ambiguousSource_releaseNameDisambiguates asserts the
-// same flow via --release-name (an explicit Name match on the source
-// Release).
 func TestPromote_ambiguousSource_releaseNameDisambiguates(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "edit-disambig-name",
@@ -344,10 +304,6 @@ func TestPromote_ambiguousSource_releaseNameDisambiguates(t *testing.T) {
 	}
 }
 
-// TestPromote_versionCodeNotFound_returnsExit60Error asserts that when
-// --version-code is supplied but does not match any release on the
-// source track, Promote refuses with an error carrying ExitCode=60
-// (state conflict) rather than silently falling back to "latest".
 func TestPromote_versionCodeNotFound_returnsExit60Error(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-not-found",
@@ -363,7 +319,7 @@ func TestPromote_versionCodeNotFound_returnsExit60Error(t *testing.T) {
 		Package:     "com.example.app",
 		FromTrack:   "production",
 		ToTrack:     "beta",
-		VersionCode: 999, // not on the source
+		VersionCode: 999,
 	})
 	if err == nil {
 		t.Fatal("Promote(unknown --version-code): want error, got nil")
@@ -377,12 +333,6 @@ func TestPromote_versionCodeNotFound_returnsExit60Error(t *testing.T) {
 	}
 }
 
-// TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied
-// asserts that when the user passed --release-name and the filter
-// still matched multiple releases (Play allows duplicate names), the
-// AmbiguousReleaseError message tells them to TIGHTEN the filter
-// rather than the unhelpful default "pass --release-name to pick
-// one", which they already did.
 func TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "edit-ambig-after-filter",
@@ -410,19 +360,11 @@ func TestPromote_ambiguousAfterReleaseName_hintSaysFilterAlreadyApplied(t *testi
 		t.Errorf("FilterApplied = false, want true (caller passed --release-name)")
 	}
 	msg := ambig.Error()
-	// Hint should not repeat "pass --release-name" when the caller
-	// already did. "tighten" is the verb we expect for this case.
 	if !strings.Contains(msg, "tighten") && !strings.Contains(msg, "combine") {
 		t.Errorf("err = %q, want hint to mention tightening/combining the existing filter, not repeating it", msg)
 	}
 }
 
-// TestPromote_noMatchingRelease_listsBothCriteria asserts that when
-// both --version-code AND --release-name are supplied, the
-// NoMatchingReleaseError message names both, not just one. Without
-// this, an operator looking at the error sees only the version-code
-// constraint, misses that --release-name also constrained the match,
-// and burns time debugging the wrong filter.
 func TestPromote_noMatchingRelease_listsBothCriteria(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-both-filters",
@@ -453,15 +395,9 @@ func TestPromote_noMatchingRelease_listsBothCriteria(t *testing.T) {
 	}
 }
 
-// TestPromote_releaseNotesCarryOver_verbatim asserts that when neither
-// --release-notes nor --release-notes-dir is passed, the source
-// release's releaseNotes payload is forwarded verbatim to the
-// destination (the AC5 default behavior from issue #45). No call to
-// edits.details.get: the source already carries locale-keyed text.
 func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "edit-notes-carry",
-		// Source release carries 2 locales of notes.
 		sourceTrackGetResp: `{"track":"internal","releases":[{` +
 			`"name":"600","status":"completed","versionCodes":["600"],"userFraction":1.0,` +
 			`"releaseNotes":[` +
@@ -476,7 +412,6 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 		Package:   "com.example.app",
 		FromTrack: "internal",
 		ToTrack:   "beta",
-		// No --release-notes / --release-notes-dir → carry-over from source.
 	})
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
@@ -494,23 +429,17 @@ func TestPromote_releaseNotesCarryOver_verbatim(t *testing.T) {
 		}
 	}
 
-	// No edits.details.get round-trip: the source already gave us
-	// locale-keyed notes, no DefaultLanguage resolution needed.
 	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
 			t.Errorf("edits.details.get called despite verbatim carry-over: %v", apiCalls(rt))
 		}
 	}
 
-	// Result advertises the carried-over locales.
 	if len(result.Locales) != 2 {
 		t.Errorf("result.Locales = %v, want 2 entries (en-US, fr-FR)", result.Locales)
 	}
 }
 
-// TestPromote_releaseNotesCarryOver_noSourceNotes asserts the
-// degenerate case: source release has no releaseNotes, dest also
-// has none. No spurious empty array, no details.get call.
 func TestPromote_releaseNotesCarryOver_noSourceNotes(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-no-notes",
@@ -539,10 +468,6 @@ func TestPromote_releaseNotesCarryOver_noSourceNotes(t *testing.T) {
 	}
 }
 
-// TestPromote_releaseNotesFlag_overridesCarryOver asserts that
-// --release-notes "text" drops the source's notes and writes the new
-// text against the app's DefaultLanguage (requires an edits.details.get
-// round-trip). Mirrors upload's --release-notes flow.
 func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "edit-notes-override",
@@ -575,8 +500,6 @@ func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
 		t.Errorf("body = %s, want notes attached to the app DefaultLanguage (en-US)", body)
 	}
 
-	// details.get must be called to resolve DefaultLanguage for the
-	// single-text --release-notes path.
 	sawDetails := false
 	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "GET ") && strings.HasSuffix(c, "/details") {
@@ -592,13 +515,6 @@ func TestPromote_releaseNotesFlag_overridesCarryOver(t *testing.T) {
 	}
 }
 
-// TestPromote_releaseNotesDir_emptyOrTypod_refusesRatherThanDropSource
-// asserts that an override directory containing no .txt files refuses
-// the promote rather than silently dropping the source's notes. The
-// promote DEFAULT is verbatim carry-over; if the user passes a dir
-// that yields zero notes, they have asked to override with nothing,
-// which would erase the source's release notes on the destination.
-// Fail-loud beats silent data loss.
 func TestPromote_releaseNotesDir_emptyOrTypod_refusesRatherThanDropSource(t *testing.T) {
 	emptyDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(emptyDir, "README.md"), []byte("ignore me"), 0644); err != nil {
@@ -639,13 +555,6 @@ func TestPromote_releaseNotesDir_emptyOrTypod_refusesRatherThanDropSource(t *tes
 	}
 }
 
-// TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocales
-// asserts that an override dir with FEWER locales than the source
-// refuses rather than silently dropping the locales the override
-// does not cover. Without this guard, `--release-notes-dir ./fix`
-// containing only fr-FR.txt against a source with en-US + de-DE + fr-FR
-// would ship a release with only fr-FR: wiping the other two
-// locales on the destination.
 func TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocales(t *testing.T) {
 	partialDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(partialDir, "fr-FR.txt"), []byte("notes en français"), 0644); err != nil {
@@ -678,16 +587,11 @@ func TestPromote_releaseNotesDir_partialOverride_refusesRatherThanDropOtherLocal
 		t.Fatal("Promote(partial override + multi-locale source): want error, got nil")
 	}
 	msg := err.Error()
-	// Both dropped locales should appear in the error.
 	if !strings.Contains(msg, "en-US") || !strings.Contains(msg, "de-DE") {
 		t.Errorf("err = %q, want it to name dropped locales en-US and de-DE", msg)
 	}
 }
 
-// TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds asserts
-// the inverse: when the override dir DOES cover every source locale
-// (here, en-US is the only source locale and the dir has en-US.txt),
-// the promote succeeds: no spurious refusal.
 func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Fresh English notes"), 0644); err != nil {
@@ -719,11 +623,6 @@ func TestPromote_releaseNotesDir_coversAllSourceLocales_succeeds(t *testing.T) {
 	}
 }
 
-// TestPromote_productionComplete_withoutConfirm_returnsExit3 asserts
-// the ADR-0002 confirm guard inheritance: a production promote that
-// would reach real users (Completed) without Confirm=true must refuse
-// before any HTTP. Mirrors upload's same guard so users learn the rule
-// once.
 func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "should-not-open",
@@ -760,9 +659,6 @@ func TestPromote_productionComplete_withoutConfirm_returnsExit3(t *testing.T) {
 	}
 }
 
-// TestPromote_productionDraft_withoutConfirm_works asserts the inverse:
-// a draft promote to production (the safe-default path) does NOT need
-// --confirm, since draft does not affect real users.
 func TestPromote_productionDraft_withoutConfirm_works(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-prod-draft",
@@ -775,7 +671,6 @@ func TestPromote_productionDraft_withoutConfirm_works(t *testing.T) {
 		Package:   "com.example.app",
 		FromTrack: "beta",
 		ToTrack:   "production",
-		// Status unspecified → safe-default = draft → no confirm needed.
 	})
 	if err != nil {
 		t.Fatalf("Promote(production safe-default): %v", err)
@@ -785,11 +680,6 @@ func TestPromote_productionDraft_withoutConfirm_works(t *testing.T) {
 	}
 }
 
-// TestPromote_trackUpdateFail_triggersEditDelete asserts the
-// auto-discard safety net: when tracks.update on the destination
-// returns 5xx, the orphan Edit MUST be cleaned up via edits.delete
-// before the error propagates (inherited from edits.WithEdit). A
-// leaked Edit blocks the user's next publish for up to 24h.
 func TestPromote_trackUpdateFail_triggersEditDelete(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-fail",
@@ -821,13 +711,6 @@ func TestPromote_trackUpdateFail_triggersEditDelete(t *testing.T) {
 	}
 }
 
-// TestPromote_validateOpts_libraryCallers asserts that orchestrator.Promote
-// rejects malformed PromoteOpts before opening an Edit: symmetric with
-// Upload's validateOpts. The CLI layer ALSO catches these cases, but
-// the orchestrator is documented as a library entry point and must
-// enforce its own contract so library / future-MCP callers do not
-// burn an Edit (a 24h resource) on inputs the orchestrator could have
-// refused statically.
 func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 	cases := []struct {
 		name string
@@ -878,12 +761,6 @@ func TestPromote_validateOpts_libraryCallers(t *testing.T) {
 	}
 }
 
-// TestPromote_dryRun_makesNoHTTPCalls asserts that PromoteOpts.DryRun
-// completes successfully with zero HTTP calls and returns a preview
-// Result describing what would be sent. The coding guideline requires
-// every releases write op to support --dry-run; the orchestrator
-// honors it BEFORE the confirm guard so operators can preview a
-// production publish without committing to --confirm.
 func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID: "should-not-open",
@@ -917,9 +794,6 @@ func TestPromote_dryRun_makesNoHTTPCalls(t *testing.T) {
 	}
 }
 
-// TestPromote_dryRun_productionSafeDefault asserts dry-run also applies
-// the ADR-0002 safe-default: production target with no status flag
-// previews as draft, with no HTTP and without needing --confirm.
 func TestPromote_dryRun_productionSafeDefault(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	hc := &http.Client{Transport: rt}
@@ -938,11 +812,6 @@ func TestPromote_dryRun_productionSafeDefault(t *testing.T) {
 	}
 }
 
-// TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate
-// asserts dry-run runs BEFORE the confirm guard so a user can preview
-// a production publish (e.g. --complete) without having to satisfy
-// --confirm. The live path still requires --confirm for the same
-// inputs (covered by other tests).
 func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	hc := &http.Client{Transport: rt}
@@ -966,17 +835,12 @@ func TestPromote_dryRun_productionCompleteNoConfirm_previewsWithoutGate(t *testi
 	}
 }
 
-// TestPromote_dryRun_invalidOptsStillCaught asserts that orchestrator-
-// level validation (validatePromoteOpts) runs even in dry-run mode,
-// so a caller previewing with bad inputs still gets the right error
-// instead of a misleading "looks fine, would have shipped" preview.
 func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	hc := &http.Client{Transport: rt}
 
 	_, err := orchestrator.Promote(context.Background(), hc, orchestrator.PromoteOpts{
 		Package: "com.example.app",
-		// FromTrack missing
 		ToTrack: "beta",
 		DryRun:  true,
 	})
@@ -992,13 +856,6 @@ func TestPromote_dryRun_invalidOptsStillCaught(t *testing.T) {
 	}
 }
 
-// TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error asserts
-// that a source release with no versionCodes (a legitimate draft
-// placeholder on the Play API) does NOT panic on the
-// `source.VersionCodes[0]` index: instead the orchestrator returns a
-// typed error carrying ExitCode=60 (state conflict). Without this
-// guard, the index-out-of-range panic also unwinds past WithEdit's
-// auto-discard path and leaks the open Edit for ~24h.
 func TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-no-codes",
@@ -1026,8 +883,6 @@ func TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error(t *testing.T)
 		t.Errorf("ExitCode() = %d, want 60", coder.ExitCode())
 	}
 
-	// Auto-discard must have run (no panic = WithEdit handleFailure
-	// ran the cleanup branch).
 	sawDelete := false
 	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "DELETE ") && strings.Contains(c, "/edits/edit-no-codes") {
@@ -1040,11 +895,6 @@ func TestPromote_sourceReleaseEmptyVersionCodes_returnsExit60Error(t *testing.T)
 	}
 }
 
-// TestPromote_trackUpdateFail_keepOnFailure_doesNotDelete asserts the
-// --keep-edit-on-failure opt-out: a tracks.update failure must NOT
-// trigger edits.delete when KeepEditOnFailure=true, and the returned
-// error must be a *edits.DanglingEditError carrying the Edit ID so the
-// operator can recover.
 func TestPromote_trackUpdateFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-keep",

@@ -1,8 +1,3 @@
-// Package countryavailability_test exercises the low-level Get against a
-// simulated transport: a single edits.countryavailability.get inside an
-// Edit the caller has already opened (mirroring tracks.Get / testers.Get).
-// It asserts the exact upstream URL (countryAvailability/{track}), the
-// parsed fields, the verbatim raw body, and the *api.Error mapping.
 package countryavailability_test
 
 import (
@@ -17,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newCA answers GETs with a configurable status + body (code 0 means 200).
-// Any other method finds no responder, so the read-only Get fails loudly if
-// it ever writes.
 func newCA(code int, body string) (*testkit.Fake, *http.Client) {
 	f := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return code, body, c.Method == http.MethodGet
@@ -39,9 +31,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestGet_happyPath asserts Get issues a GET to the correct
-// countryAvailability/{track} URL, parses syncWithProduction /
-// restOfWorld / countries[], and returns the body verbatim.
 func TestGet_happyPath(t *testing.T) {
 	body := `{"syncWithProduction":false,"restOfWorld":true,"countries":[{"countryCode":"US"},{"countryCode":"GB"},{"countryCode":"FR"}]}`
 	f, hc := newCA(0, body)
@@ -78,7 +67,6 @@ func TestGet_happyPath(t *testing.T) {
 	}
 }
 
-// TestGet_403_mapsExit11 asserts a 403 surfaces as *api.Error (exit 11).
 func TestGet_403_mapsExit11(t *testing.T) {
 	_, hc := newCA(403, `{"error":{"code":403,"message":"insufficient permissions"}}`)
 
@@ -95,8 +83,6 @@ func TestGet_403_mapsExit11(t *testing.T) {
 	}
 }
 
-// TestGet_404_mapsExit30 asserts a 404 (unknown track or package) maps to
-// exit 30.
 func TestGet_404_mapsExit30(t *testing.T) {
 	_, hc := newCA(404, `{"error":{"code":404,"message":"not found"}}`)
 
@@ -106,18 +92,11 @@ func TestGet_404_mapsExit30(t *testing.T) {
 	}
 }
 
-// brokenBody errors on the first Read so io.ReadAll fails mid-stream: a
-// truncated 2xx response must surface as an I/O failure, not be silently
-// passed to json.Unmarshal as if the body were complete.
 type brokenBody struct{}
 
 func (brokenBody) Read(_ []byte) (int, error) { return 0, errors.New("simulated read error") }
 func (brokenBody) Close() error               { return nil }
 
-// TestGet_bodyReadFailure_surfacesAsAPIError asserts that a network read
-// failure on the success body is wrapped in *api.Error rather than
-// silently flowing into json.Unmarshal as if the body were complete, and
-// exits 50: the answer arrived, then the network failed.
 func TestGet_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
 	hc := &http.Client{Transport: testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Method != http.MethodGet {

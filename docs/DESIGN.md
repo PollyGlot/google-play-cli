@@ -318,12 +318,15 @@ offending file. The check is syntactic: `xy-ZZ` passes and is Play's to
 refuse, while `en_US`, `en-`, `klingon` and `e` do not. It ignores case (RFC
 5646 tags are case-insensitive), and the primary subtag is 2 or 3 letters
 although RFC 5646 reserves longer ones, which no Play locale uses and which
-would let `klingon` through. It uses no locale registry, which would reject a
+would let `klingon` through. Singleton extension and private-use subtags (RFC
+5646 §2.2.6-7) are refused for the same reason: no Play locale carries one,
+and accepting them would admit arbitrary one-letter subtags. It uses no locale registry, which would reject a
 locale Google added last week, and no `golang.org/x/text`, whose tables would
 weigh on a single static binary (ADR-0007). An unreadable directory is
 refused at the same point, and `default.txt` is exempt: it is a fallback
-marker, not a locale. A notes file over 1 MiB is refused (exit `2`) before it
-is read ([ADR-0063](./adr/0063-offline-validation-before-the-api.md)).
+marker, not a locale. A notes file over 1 MiB is refused before it is read:
+exit `2` on a live upload and on `promote`, exit `20` under `--dry-run`, which
+reports every local artifact problem as a client-side error ([ADR-0063](./adr/0063-offline-validation-before-the-api.md)).
 
 **`releases promote` carries the source's notes over verbatim** unless
 `--release-notes` or `--release-notes-dir` is passed. An override that lacks a
@@ -533,6 +536,11 @@ reports the error the serial walk would have hit first.
 
 - **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
   Google does not document concurrent writes to an Edit.
+- **A fan-out worker never resolves credentials or writes output through the
+  `RunContext`.** One cobra invocation owns one `RunContext`, whose lazy
+  credential resolution and output counters are unguarded: the HTTP client is
+  taken from it before the fan-out starts, and results are written after it
+  ends. Reading its context (`rc.Ctx`) from a worker is fine.
 - **`images apply` and `images validate` hold one image at a time**: the tree
   is scanned for paths, validation reads each file's size and header, the diff
   hashes each file as a stream, and an upload reads its image just before

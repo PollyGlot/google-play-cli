@@ -33,8 +33,6 @@ const orderBody = `{
   "buyerAddress": {"country": "US"}
 }`
 
-// TestGet_noEdit_applicationScoped asserts the GET addresses the order on the
-// package axis (no /edits/) and parses the summary fields.
 func TestGet_noEdit_applicationScoped(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -69,16 +67,11 @@ func TestGet_noEdit_applicationScoped(t *testing.T) {
 	if len(o.LineItems) != 1 || o.LineItems[0].ProductID != "com.example.coins" {
 		t.Errorf("line items = %+v", o.LineItems)
 	}
-	// ADR-0003: raw body is the verbatim response, including fields the typed
-	// Order struct does not model (buyerAddress).
 	if !strings.Contains(string(raw), `"buyerAddress"`) {
 		t.Errorf("raw passthrough dropped fields: %s", raw)
 	}
 }
 
-// TestGet_orderIdPathEscaped asserts an order ID is path-escaped (order IDs are
-// dot/dash, but escaping guards any stray reserved char without corrupting the
-// path segment).
 func TestGet_orderIdPathEscaped(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -96,8 +89,6 @@ func TestGet_orderIdPathEscaped(t *testing.T) {
 	}
 }
 
-// TestGet_403_exit11 asserts a forbidden response (missing
-// CAN_VIEW_FINANCIAL_DATA) maps to the authz exit code.
 func TestGet_403_exit11(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil
@@ -106,7 +97,6 @@ func TestGet_403_exit11(t *testing.T) {
 	assertExit(t, err, 11)
 }
 
-// TestGet_404_exit30 asserts an unknown order id maps to the not-found exit code.
 func TestGet_404_exit30(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(404, `{"error":{"message":"order not found"}}`), nil
@@ -123,9 +113,6 @@ const batchBody = `{
   "nextPageToken": "ignored-but-verbatim"
 }`
 
-// TestBatchGet_batchGetPath_repeatedOrderIds asserts the call hits the
-// :batchGet endpoint with one orderIds query parameter per ID, parses the
-// envelope, and passes unmodeled fields through verbatim.
 func TestBatchGet_batchGetPath_repeatedOrderIds(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -153,15 +140,11 @@ func TestBatchGet_batchGetPath_repeatedOrderIds(t *testing.T) {
 	if len(got.Orders) != 2 || got.Orders[0].OrderID != "GPA.0001" || got.Orders[1].State != "REFUNDED" {
 		t.Errorf("orders = %+v", got.Orders)
 	}
-	// ADR-0003: the raw body is verbatim, including fields the typed envelope
-	// does not model (nextPageToken).
 	if !strings.Contains(string(raw), "nextPageToken") {
 		t.Errorf("raw passthrough dropped fields: %s", raw)
 	}
 }
 
-// TestBatchGet_403_exit11 asserts a forbidden batch read maps to the authz exit
-// code, like the single read.
 func TestBatchGet_403_exit11(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil
@@ -170,8 +153,6 @@ func TestBatchGet_403_exit11(t *testing.T) {
 	assertExit(t, err, 11)
 }
 
-// TestRefund_postNoRevoke asserts the default refund is a POST to :refund with
-// no revoke query parameter (money back, entitlement kept).
 func TestRefund_postNoRevoke(t *testing.T) {
 	var gotURL, gotMethod string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -193,7 +174,6 @@ func TestRefund_postNoRevoke(t *testing.T) {
 	}
 }
 
-// TestRefund_revoke asserts --revoke maps to the revoke=true query parameter.
 func TestRefund_revoke(t *testing.T) {
 	var gotURL string
 	rt := testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -208,8 +188,6 @@ func TestRefund_revoke(t *testing.T) {
 	}
 }
 
-// TestRefund_403_exit11 asserts a forbidden refund maps to the authz exit code
-// (the command names CAN_MANAGE_ORDERS on top).
 func TestRefund_403_exit11(t *testing.T) {
 	rt := testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 		return resp(403, `{"error":{"message":"The caller does not have permission"}}`), nil

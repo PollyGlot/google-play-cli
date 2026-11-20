@@ -1,21 +1,3 @@
-// Package vitals talks to the Play Developer Reporting API's read-only metric
-// sets (crashes/ANR and the other post-launch quality signals, #49). It owns
-// the metric-set registry (gplay name → REST resource), the `:query` POST, the
-// timeline projection of a query response, and the offline validation of
-// user-supplied metrics/dimensions/periods against the embedded Schema index.
-//
-// Unlike internal/play/reviews this is a DIFFERENT Google service: a distinct
-// host and OAuth scope (token.ReportingScope), both resolved from the
-// registry and the Discovery snapshots, never hand-written. Everything
-// here is read-only: the API only reads metrics.
-//
-// Metrics, dimensions and aggregation periods are NEVER invented: the catalog
-// is read from the snapshot (ADR-0026). Google documents the supported metrics
-// and dimensions of each metric set in the `metrics`/`dimensions` property prose
-// of its `:query` request schema, and the aggregation periods as the
-// `aggregationPeriod` enum of the TimelineSpec schema: both carried verbatim in
-// the embedded Schema index, so validation needs no network and no hand-kept
-// list.
 package vitals
 
 import (
@@ -32,40 +14,19 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// MetricSet is one queryable vitals metric set: its gplay-facing Name (the
-// `vitals query <name>` argument, identical to the Discovery resource segment,
-// e.g. "crashrate") and the REST Resource segment its `:query` path hangs off
-// (e.g. "crashRateMetricSet"). The pair is validated against the embedded index
-// by an offline integrity test, so it cannot drift from the snapshot.
 type MetricSet struct {
 	Name     string
 	Resource string
 }
 
-// QueryMethodID is the native RPC id of the set's `:query` method, the key it
-// is found under in the Schema index AND in internal/apiregistry: since #513
-// this id is also what queryPage resolves the request URL and verb from, so
-// the metric-set registry and the API registry meet on a single string rather
-// than on two parallel spellings of the same path.
 func (s MetricSet) QueryMethodID() string {
 	return "playdeveloperreporting.vitals." + s.Name + ".query"
 }
 
-// GetMethodID is the native RPC id of the set's `.get` method (the metric-set
-// descriptor: resource name + freshnessInfo), the sibling of QueryMethodID
-// under the same resource. Deriving both from Name keeps the metric-set
-// registry the single mapping table (#545): registering a set makes both its
-// query and its descriptor reachable, and the offline integrity test anchors
-// both ids to the snapshot.
 func (s MetricSet) GetMethodID() string {
 	return "playdeveloperreporting.vitals." + s.Name + ".get"
 }
 
-// metricSets is the declared set of queryable metric sets: the read-only
-// signals the Play Developer Reporting API exposes (#49, memory sets #440). It
-// is explicit (like
-// discovery.Services) and gated against the embedded index by an integrity test
-// so a typo or a snapshot drift fails offline.
 var metricSets = []MetricSet{
 	{Name: "crashrate", Resource: "crashRateMetricSet"},
 	{Name: "anrrate", Resource: "anrRateMetricSet"},
@@ -78,15 +39,12 @@ var metricSets = []MetricSet{
 	{Name: "bitmapmemoryusage", Resource: "bitmapMemoryUsageMetricSet"},
 }
 
-// MetricSets returns the declared metric sets in registry order.
 func MetricSets() []MetricSet {
 	out := make([]MetricSet, len(metricSets))
 	copy(out, metricSets)
 	return out
 }
 
-// MetricSetByName resolves a gplay-facing metric-set name to its MetricSet,
-// reporting ok=false for an unknown name.
 func MetricSetByName(name string) (MetricSet, bool) {
 	for _, s := range metricSets {
 		if s.Name == name {
@@ -96,8 +54,6 @@ func MetricSetByName(name string) (MetricSet, bool) {
 	return MetricSet{}, false
 }
 
-// MetricSetNames returns the registry names, for an actionable "unknown metric
-// set" error.
 func MetricSetNames() []string {
 	names := make([]string, len(metricSets))
 	for i, s := range metricSets {
@@ -108,33 +64,17 @@ func MetricSetNames() []string {
 
 const opQuery = "playdeveloperreporting.vitals.query"
 
-// Query issues the metric set's `:query` POST for pkg, following the response's
-// nextPageToken to completion, and returns a rebuilt {rows:[...]} envelope
-// (rows verbatim: an ADR-0003 pass-through across the merged pages). The
-// metric-set `:query` caps at 1000 rows per page, so a high-cardinality slice
-// (e.g. by country over a wide window) would otherwise be silently truncated. A
-// non-2xx becomes an *api.Error carrying the status, so the shared classifier
-// maps 403 → exit 11, 404 → exit 30, etc.
 func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body []byte) (json.RawMessage, error) {
-	// Decode the caller's request into a field map so the continuation
-	// pageToken can be injected without reshaping the other fields (metrics,
-	// timelineSpec, …): they pass through verbatim.
 	req := map[string]json.RawMessage{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
 			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
 		}
 	}
-	// Resolved per call rather than at init: the set is a value the caller
-	// supplies (ErrorCountsMetricSet lives outside metricSets), so the id is
-	// only known here. Resolve memoises the index and the registry index, so
-	// this is two map lookups.
 	m, err := apiregistry.Resolve(set.QueryMethodID())
 	if err != nil {
 		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
 	}
-	// The `:query` POST carries its continuation token in the body, not the
-	// query string: the paginator only sees the token.
 	rows, _, err := api.Paginate(api.Pager{Op: opQuery, Target: pkg, What: "vitals :query"},
 		func(token string, _ int) ([]json.RawMessage, string, error) {
 			if token != "" {
@@ -165,12 +105,6 @@ func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body
 
 const opDescribe = "playdeveloperreporting.vitals.get"
 
-// Describe issues the metric set's `.get` (GET) for pkg and returns the
-// verbatim descriptor body: the resource name and its freshnessInfo, the
-// latest end time available per aggregation period (#545). It answers "up to
-// when is this data complete?", which the `:query` timeline cannot: an empty
-// window is ambiguous there (no data yet, or zero). Read-only, same scope as
-// Query; the verb and URL come from the registry like every other call.
 func Describe(ctx context.Context, hc *http.Client, set MetricSet, pkg string) (json.RawMessage, error) {
 	m, err := apiregistry.Resolve(set.GetMethodID())
 	if err != nil {
@@ -179,12 +113,6 @@ func Describe(ctx context.Context, hc *http.Client, set MetricSet, pkg string) (
 	return api.Do(ctx, hc, api.Call{Method: m, Op: opDescribe, Target: pkg, Params: map[string]string{"appsId": pkg}})
 }
 
-// Freshness is the render-ready view of one FreshnessInfo entry: the
-// aggregation period, the latest end time available for it (exclusive, as the
-// API documents it, so it can be reused verbatim as a TimelineSpec end_time),
-// and the timezone it is expressed in (the set's default: America/Los_Angeles
-// for DAILY, UTC for HOURLY). LatestEnd carries the same instant as its civil
-// fields (year, month, day, hour) for windowing; its location is not TimeZone.
 type Freshness struct {
 	Period        string
 	LatestEndTime string
@@ -192,9 +120,6 @@ type Freshness struct {
 	LatestEnd     time.Time
 }
 
-// ParseFreshness projects a `.get` descriptor body into its Freshness entries,
-// in API order. The verbatim body is still what `--output json` emits
-// (ADR-0003); this projection feeds only the table/markdown renderers.
 func ParseFreshness(body []byte) ([]Freshness, error) {
 	var resp struct {
 		FreshnessInfo struct {
@@ -224,15 +149,8 @@ func ParseFreshness(body []byte) ([]Freshness, error) {
 	return out, nil
 }
 
-// catalogEntry matches one `* `name“ bullet leader in a "Supported metrics" /
-// "Supported dimensions" prose list. Only the bullet-leading backtick token is
-// captured, so inline mentions of a name inside a description (e.g. "rolling
-// average of `crashRate`") are not mistaken for catalog entries.
 var catalogEntry = regexp.MustCompile("\\*\\s+`([A-Za-z][A-Za-z0-9]*)`")
 
-// parseCatalog extracts the backtick-quoted identifiers listed after marker in
-// a Discovery property description (e.g. "**Supported metrics:**"). Returns nil
-// when the marker is absent.
 func parseCatalog(desc, marker string) []string {
 	i := strings.Index(desc, marker)
 	if i < 0 {
@@ -245,10 +163,6 @@ func parseCatalog(desc, marker string) []string {
 	return out
 }
 
-// requestSchema returns the index Schema for a metric set's `:query` request
-// body, resolved through the method's Request ref. The bool is false when the
-// index lacks the method or schema (a corrupt index: guarded by the integrity
-// test).
 func requestSchema(idx schemaindex.Index, set MetricSet) (schemaindex.Schema, bool) {
 	m, ok := idx.Methods[set.QueryMethodID()]
 	if !ok || m.Request == "" {
@@ -258,8 +172,6 @@ func requestSchema(idx schemaindex.Index, set MetricSet) (schemaindex.Schema, bo
 	return s, ok
 }
 
-// SupportedMetrics returns the metric names a metric set accepts, read verbatim
-// from the `metrics` property prose of its query request schema in idx.
 func SupportedMetrics(idx schemaindex.Index, set MetricSet) []string {
 	s, ok := requestSchema(idx, set)
 	if !ok {
@@ -268,8 +180,6 @@ func SupportedMetrics(idx schemaindex.Index, set MetricSet) []string {
 	return parseCatalog(s.Properties["metrics"].Description, "Supported metrics:")
 }
 
-// SupportedDimensions returns the dimension names a metric set accepts, read
-// verbatim from the `dimensions` property prose of its query request schema.
 func SupportedDimensions(idx schemaindex.Index, set MetricSet) []string {
 	s, ok := requestSchema(idx, set)
 	if !ok {
@@ -287,12 +197,6 @@ func cohortProperty(idx schemaindex.Index, set MetricSet) (schemaindex.Property,
 	return p, ok
 }
 
-// SupportedCohorts returns the user cohorts a metric set accepts: the values
-// of the userCohort enum its description quotes. The enum is shared by every
-// set, but the prose differs: crashrate lists OS_PUBLIC, APP_TESTERS and
-// OS_BETA, where slowstartrate says "The only supported value is
-// `OS_PUBLIC`", so a cohort the set refuses is rejected offline rather than
-// by a server 400.
 func SupportedCohorts(idx schemaindex.Index, set MetricSet) []string {
 	p, ok := cohortProperty(idx, set)
 	if !ok {
@@ -307,10 +211,6 @@ func SupportedCohorts(idx schemaindex.Index, set MetricSet) []string {
 	return out
 }
 
-// CohortDimensions returns the dimension catalog a metric set takes under
-// cohort when its userCohort prose replaces the set's own ("Only the
-// following dimensions are supported:", OS_BETA today, which adds osBuild),
-// or nil when the cohort keeps SupportedDimensions.
 func CohortDimensions(idx schemaindex.Index, set MetricSet, cohort string) []string {
 	p, ok := cohortProperty(idx, set)
 	if !ok {
@@ -329,18 +229,8 @@ func CohortDimensions(idx schemaindex.Index, set MetricSet, cohort string) []str
 	return parseCatalog(paragraph, "Only the following dimensions are supported:")
 }
 
-// periodEntry matches one `* DAILY:` bullet leader of the "Supported
-// aggregation periods" prose. Unlike metrics and dimensions, Google writes the
-// period names bare (no backticks), in SCREAMING_SNAKE_CASE.
 var periodEntry = regexp.MustCompile(`\*\s+([A-Z][A-Z0-9_]*):`)
 
-// SupportedPeriods returns the aggregation periods a metric set accepts (a
-// subset of DAILY, HOURLY, FULL_RANGE), read verbatim from the "Supported
-// aggregation periods" prose of its request schema's `timelineSpec` property.
-// The set matters: the memory sets are DAILY-only where crashrate also accepts
-// HOURLY, so an unsupported --period is rejected offline instead of coming back
-// as a server 400 (#440). When the prose is missing, the TimelineSpec enum is
-// the fallback, so the validation never invents a period either way.
 func SupportedPeriods(idx schemaindex.Index, set MetricSet) []string {
 	reqSchema, ok := requestSchema(idx, set)
 	if !ok {
@@ -371,27 +261,18 @@ func SupportedPeriods(idx schemaindex.Index, set MetricSet) []string {
 	return out
 }
 
-// Row is one datapoint of a metric-set timeline: the period's start Date, the
-// dimension values that slice it (keyed by dimension name), and the metric
-// values (keyed by metric name). Maps keep the projection independent of column
-// order, which the command layer fixes from --metrics/--by.
 type Row struct {
 	Date       string
 	Dimensions map[string]string
 	Metrics    map[string]string
 }
 
-// Timeline is the parsed, render-ready view of a `:query` response.
 type Timeline struct {
 	Rows []Row
 }
 
-// Empty reports whether the query returned no datapoints: distinct from "zero
-// crashes", which is why the command layer warns about freshness on an empty
-// window.
 func (t Timeline) Empty() bool { return len(t.Rows) == 0 }
 
-// apiDateTime mirrors the google.type.DateTime fields the timeline reads.
 type apiDateTime struct {
 	Year    int `json:"year"`
 	Month   int `json:"month"`
@@ -400,10 +281,6 @@ type apiDateTime struct {
 	Minutes int `json:"minutes"`
 }
 
-// format renders the datapoint date, appending the HH:MM time when hourly (so
-// an HOURLY timeline's midnight bucket reads "… 00:00" consistently with every
-// other hour) or when a non-zero time is present. A zero Year is an unset
-// datapoint (e.g. an open-ended anomaly window) and renders empty.
 func (d apiDateTime) format(hourly bool) string {
 	if d.Year == 0 {
 		return ""
@@ -415,8 +292,6 @@ func (d apiDateTime) format(hourly bool) string {
 	return s
 }
 
-// civil returns the datetime's civil fields as a time.Time (UTC location), the
-// zero time when unset.
 func (d apiDateTime) civil() time.Time {
 	if d.Year == 0 {
 		return time.Time{}
@@ -449,9 +324,6 @@ type apiMetricValue struct {
 	} `json:"decimalValue"`
 }
 
-// ParseTimeline projects a `:query` response body into a Timeline. The verbatim
-// body is still what `--output json` emits (ADR-0003); this projection feeds
-// only the table/markdown renderers.
 func ParseTimeline(body []byte) (Timeline, error) {
 	var resp struct {
 		Rows []struct {

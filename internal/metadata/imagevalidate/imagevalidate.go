@@ -1,18 +1,3 @@
-// Package imagevalidate is the offline Store-image rule engine: the image
-// analog of internal/metadata/validate's char-limit check. The edits.images
-// API exposes no endpoint that returns its asset rules: dimensions, ratios,
-// byte sizes, and counts live only in Google's published docs and are
-// enforced only at upload/commit, so this package encodes them as a
-// VERSIONED, datestamped table in code (single source, citing the doc URL)
-// and checks them all OFFLINE: no credentials, no network. Dimensions and
-// format are read via the stdlib image.DecodeConfig (header only, no pixel
-// decode, no external dependency: ADR-0007), with the png/jpeg decoders
-// registered by blank import.
-//
-// The checks are deliberately strict ("respect the guidelines to the pixel"),
-// but Play stays the ultimate authority: `images apply` runs this as a
-// fail-fast pre-check that `--skip-preflight` bypasses, so a stale table can
-// never permanently block an upload Play would accept (ADR-0013 §4).
 package imagevalidate
 
 import (
@@ -20,8 +5,8 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	_ "image/jpeg" // register the JPEG decoder for image.DecodeConfig
-	_ "image/png"  // register the PNG decoder for image.DecodeConfig
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"os"
 	"sort"
@@ -30,29 +15,16 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// RulesVersion is the datestamp this rule table was last reconciled with
-// Google's published Store-asset specifications. Bump it whenever a limit
-// below is changed to match a doc update.
 const RulesVersion = "2026-06-01"
 
-// RulesDoc is the Google Play help page the limits below are transcribed
-// from (the "preview assets / graphic assets" specification).
 const RulesDoc = "https://support.google.com/googleplay/android-developer/answer/9866151"
 
-// Screenshot bounds shared by every gallery type. Google requires each
-// screenshot side within [320, 3840] px, with the longest side no more than
-// twice the shortest (a 2:1 aspect-ratio bound).
 const (
 	screenshotMinSide  = 320
 	screenshotMaxSide  = 3840
 	screenshotMaxRatio = 2.0
 )
 
-// rule is the per-type rule row. exactW/exactH of 0 means "no exact-dimension
-// rule" (ADR-0013 §4 fixes exact sizes only for icon, featureGraphic, and
-// tvBanner). screenshot toggles the side-range + ratio checks. maxCount is the
-// per-slot image cap (1 for singular slots, 8 for galleries). maxBytes is the
-// per-image byte cap.
 type rule struct {
 	exactW, exactH int
 	screenshot     bool
@@ -64,7 +36,6 @@ const (
 	mib = 1 << 20
 )
 
-// rules is the canonical, versioned rule table (see RulesVersion / RulesDoc).
 var rules = map[images.Type]rule{
 	images.Icon:                 {exactW: 512, exactH: 512, maxCount: 1, maxBytes: 1 * mib},
 	images.FeatureGraphic:       {exactW: 1024, exactH: 500, maxCount: 1, maxBytes: 15 * mib},
@@ -76,16 +47,8 @@ var rules = map[images.Type]rule{
 	images.WearScreenshots:      {screenshot: true, maxCount: 8, maxBytes: 8 * mib},
 }
 
-// MaxBytesFor returns the per-image byte cap for a type (0 if the type is
-// unknown). Exposed so callers and tests can reference the table's single
-// source rather than hard-coding a number.
 func MaxBytesFor(ty images.Type) int64 { return rules[ty].maxBytes }
 
-// Problem is one rule violation on one image (or, for the count rule, one
-// slot). Index is the 0-based position within the slot, or -1 for a
-// slot-level problem. Rule names the violated rule
-// ("dimensions"/"side"/"ratio"/"format"/"bytes"/"count"); Message states the
-// expected-vs-actual.
 type Problem struct {
 	Locale    string `json:"locale"`
 	ImageType string `json:"imageType"`
@@ -94,15 +57,6 @@ type Problem struct {
 	Message   string `json:"message"`
 }
 
-// Validate checks every image in tr against the versioned rule table, fully
-// offline. It returns one Problem per violation, in (locale, canonical type,
-// position) order, so a CI log shows the full picture in one run. An empty
-// tree (no images) yields no problems: required-slot minimums are Play's job
-// at commit, not this offline lint (ADR-0013 §4).
-//
-// It opens one file at a time and reads only its size and its header, so a
-// tree of any size costs a few KiB of memory. The error is an unreadable
-// file, never a rule violation.
 func Validate(st imagetree.Staged) ([]Problem, error) {
 	var problems []Problem
 	locales := make([]string, 0, len(st))
@@ -137,16 +91,10 @@ func Validate(st imagetree.Staged) ([]Problem, error) {
 	return problems, nil
 }
 
-// CheckImage runs the per-image rules of Validate on an image already in
-// memory. `images apply` runs it on the buffer it is about to upload, so the
-// bytes sent are the bytes validated, whatever the file became after the
-// pre-check read it. Index is the image's position in its slot.
 func CheckImage(loc string, ty images.Type, i int, data []byte) []Problem {
 	return checkContent(loc, ty, i, int64(len(data)), bytes.NewReader(data), rules[ty])
 }
 
-// checkImage runs every per-image rule for the image at path, returning its
-// violations.
 func checkImage(loc string, ty images.Type, i int, path string, r rule) ([]Problem, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -160,9 +108,6 @@ func checkImage(loc string, ty images.Type, i int, path string, r rule) ([]Probl
 	return checkContent(loc, ty, i, info.Size(), bufio.NewReader(f), r), nil
 }
 
-// checkContent applies rule r to an image of size bytes whose content starts
-// at src. A format failure short-circuits the dimension checks (we cannot
-// trust width/height from bytes we could not decode).
 func checkContent(loc string, ty images.Type, i int, size int64, src io.Reader, r rule) []Problem {
 	var out []Problem
 	mk := func(ruleName, msg string) {
@@ -179,8 +124,6 @@ func checkContent(loc string, ty images.Type, i int, size int64, src io.Reader, 
 		return out
 	}
 	if format != "png" && format != "jpeg" {
-		// Unreachable while only png/jpeg decoders are registered, but kept
-		// explicit so the format contract is enforced, not implied.
 		mk("format", fmt.Sprintf("format %q is not PNG or JPEG", format))
 		return out
 	}

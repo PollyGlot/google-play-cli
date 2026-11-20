@@ -1,24 +1,3 @@
-// Package orchestrator is the side-effecting glue behind `gplay metadata
-// apply`. It wires auth → the Edit lifecycle → the pure diff engine →
-// listings.patch / listings.update / listings.delete, applying the ADR-0011
-// safety model: --confirm gates every real write, the sync is additive
-// unless --prune is set, and all locales are written inside a single Edit
-// committed once (so the store is never left half-applied). It is the
-// metadata analogue of internal/releases/orchestrator.
-//
-// Two read paths and one write path:
-//
-//   - Apply(DryRun): opens a read-only Edit, fetches the live Listings,
-//     computes the diff, and discards: the online preview ADR-0011 §3
-//     mandates (apply reconciles, so a meaningful dry-run must read the
-//     other side). Nothing is committed.
-//   - Apply(Confirm): opens ONE write Edit, fetches, diffs, writes every
-//     changed locale (PATCH when the locale is live, PUT when it is new:
-//     PATCH cannot create a Listing, #561), deletes pruned ones, and
-//     commits once. On any per-locale failure the Edit auto-discards
-//     (edits.WithEdit), so 0 locales are published: atomicity for free.
-//     When the diff is a no-op the Edit is discarded rather than committed,
-//     conserving Google's daily publish quota (no empty commits).
 package orchestrator
 
 import (
@@ -39,74 +18,37 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/listings"
 )
 
-// Opts is the input contract for Apply.
 type Opts struct {
 	Package string
 
-	// DryRun computes and returns the diff against live Play without
-	// committing (a read-only Edit). It does NOT require Confirm.
 	DryRun bool
 
-	// Confirm authorizes a real publish. Required for any non-dry-run
-	// Apply (ADR-0011 §4); without it Apply returns an *exit.SafetyFlagError
-	// naming --confirm (exit 3). CI=true must NOT flow into this field: env
-	// governs output format, never mutation.
 	Confirm bool
 
-	// Prune deletes locales live on Play but absent on disk (disk becomes
-	// the source of truth). Opt-in (ADR-0011 §1); refuses to prune the
-	// app's defaultLanguage.
 	Prune bool
 
-	// AllowLocale whitelists locale codes outside the embedded registry
-	// (Google drift), mirroring `metadata validate --allow-locale`.
 	AllowLocale []string
 
-	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
-	// instead of opening/committing a per-apply Edit (docs/DESIGN.md §4): the
-	// listings are patched into the pinned Edit and left for the user to
-	// `gplay edits commit`. Empty is the implicit default.
 	ExplicitEditID string
 
-	// Commit carries the opt-in edits.commit parameters; the zero value keeps
-	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
 	Commit edits.CommitOptions
 }
 
-// Result is what Apply returns. Diff is always populated (the computed
-// reconciliation). Patched/Created/Pruned are populated only on a real,
-// change-bearing apply: Patched maps each written locale to the write
-// response body (listings.patch, or listings.update for a new locale: the
-// per-locale --output json pass-through, ADR-0011 §6), Created lists the
-// subset of those locales that did not exist online and were created, and
-// Pruned lists the locales whose Listing was deleted.
 type Result struct {
-	Package string
-	DryRun  bool
-	Diff    diff.Result
-	Patched map[string]json.RawMessage
-	Created []string
-	Pruned  []string
-	// Incomplete names each locale the apply creates (dry-run: would create)
-	// whose tree lacks a required field, sorted. The write still goes out:
-	// apply is additive and Discovery marks no Listing field required, so
-	// this is a warning for the command to print, never a refusal.
+	Package    string
+	DryRun     bool
+	Diff       diff.Result
+	Patched    map[string]json.RawMessage
+	Created    []string
+	Pruned     []string
 	Incomplete []IncompleteLocale
 }
 
-// IncompleteLocale is a locale created on Play without the fields `metadata
-// validate` requires (title, fullDescription), keys in canonical order.
 type IncompleteLocale struct {
 	Locale  string
 	Missing []string
 }
 
-// LocaleError tags a failed per-locale write or delete with its locale, so
-// the command can say which language failed instead of blaming the
-// package: a 404 there means "no Listing for this language", not "unknown
-// package" (#561). Error() stays the wrapped error's text and Unwrap keeps
-// the *api.Error reachable, so the exit code and the JSON error envelope
-// are unchanged.
 type LocaleError struct {
 	Locale string
 	Err    error
@@ -115,12 +57,6 @@ type LocaleError struct {
 func (e *LocaleError) Error() string { return e.Err.Error() }
 func (e *LocaleError) Unwrap() error { return e.Err }
 
-// confirmRequired builds the refusal for a real apply invoked without
-// --confirm. It is an *exit.SafetyFlagError, so it exits 3 ("safety flag
-// required", docs/DESIGN.md §9) and names the missing flag in the --output
-// json error envelope's requires[] (ADR-0017 / ADR-0023). It points the
-// operator at --dry-run, reusing gplay's existing --confirm meaning
-// (ADR-0002 / ADR-0011 §4).
 func confirmRequired(prune bool) error {
 	if prune {
 		return exit.SafetyFlag("confirm", "metadata apply --prune publishes to live production and deletes online locales; pass --confirm to proceed (preview first with --dry-run)")
@@ -128,12 +64,6 @@ func confirmRequired(prune bool) error {
 	return exit.SafetyFlag("confirm", "metadata apply publishes Listings live to all users immediately; pass --confirm to proceed (preview first with --dry-run)")
 }
 
-// ValidationError signals that the local tree fails an offline lint that
-// must block a publish (a char-limit overflow, an unknown locale, or a
-// required field cleared). It maps to exit 20. A required field that is
-// merely *missing* is NOT blocking here: apply is additive (ADR-0011 §1),
-// so an omitted field just leaves the online value untouched; that case is
-// filtered out before this error is built.
 type ValidationError struct{ Problems []validate.Problem }
 
 func (e *ValidationError) Error() string {
@@ -147,11 +77,6 @@ func (e *ValidationError) Error() string {
 
 func (e *ValidationError) ExitCode() int { return 20 }
 
-// PruneDefaultLanguageError signals that --prune would delete the app's
-// defaultLanguage Listing, which Play requires to exist. It maps to exit 2
-// (a guardrail refusal, like EmptyTreePrune: no safety flag resolves it, so
-// it is not the exit-3 case) and names the locale so the operator can add it
-// to the tree or drop --prune.
 type PruneDefaultLanguageError struct{ Locale string }
 
 func (e *PruneDefaultLanguageError) Error() string {
@@ -162,16 +87,6 @@ func (e *PruneDefaultLanguageError) Error() string {
 
 func (e *PruneDefaultLanguageError) ExitCode() int { return 2 }
 
-// EmptyTreePruneError signals --prune was requested against an empty local
-// tree. Pruning an empty tree classifies EVERY online locale as a delete
-// (only the defaultLanguage is otherwise spared), so it would wipe the
-// app's entire Store presence: almost never the intent, and the classic
-// symptom of a mis-pointed --dir (a typo'd path that still resolves to a
-// readable-but-empty directory, or a dir holding only a README / files the
-// codec does not recognize). It is refused before any network, in dry-run
-// too, and maps to exit 2 (a guardrail refusal, like PruneDefaultLanguage).
-// It stays 2 rather than 3: no safety flag resolves it: the fix is to point
-// --dir somewhere else or drop --prune, not to acknowledge anything.
 type EmptyTreePruneError struct{}
 
 func (e *EmptyTreePruneError) Error() string {
@@ -180,36 +95,17 @@ func (e *EmptyTreePruneError) Error() string {
 
 func (e *EmptyTreePruneError) ExitCode() int { return 2 }
 
-// errNoChanges is an internal sentinel: returned from the write Edit's
-// closure when the diff is a no-op so edits.WithEdit auto-discards instead
-// of committing an empty Edit (quota conservation). It never escapes Apply.
 var errNoChanges = errors.New("metadata: no changes to apply")
 
-// Apply reconciles the local tree against live Play per opts. See the
-// package doc for the dry-run vs. real-apply paths.
 func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) (*Result, error) {
-	// 1. Confirm gate (real writes only). Evaluated before any network so a
-	// missing --confirm fails instantly, never after opening an Edit.
 	if !opts.DryRun && !opts.Confirm {
 		return nil, confirmRequired(opts.Prune)
 	}
 
-	// 2. Offline lint, reusing the validate engine. Required-MISSING is
-	// dropped (additive apply leaves an omitted field's online value
-	// untouched); char-limit, unknown-locale, and required-EMPTY (clearing
-	// a required field) still block. Runs in both dry-run and real mode so
-	// an invalid tree never reaches the diff.
 	if blocking := blockingProblems(local, allowSet(opts.AllowLocale)); len(blocking) > 0 {
 		return nil, &ValidationError{Problems: blocking}
 	}
 
-	// 3. Empty-tree prune guard. With no locale on disk, --prune would
-	// classify every online locale as a delete (sparing only the
-	// defaultLanguage) and wipe the app's Store presence: almost always a
-	// mis-pointed --dir, never a real intent. Refuse before any network, in
-	// dry-run too, so the preview also says "no" rather than rendering a
-	// delete-everything plan. (Without --prune an empty tree is a legitimate
-	// no-op and is left to flow through.)
 	if opts.Prune && len(local) == 0 {
 		return nil, &EmptyTreePruneError{}
 	}
@@ -217,7 +113,6 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	result := &Result{Package: opts.Package, DryRun: opts.DryRun}
 
 	if opts.DryRun {
-		// Read-only: open, fetch+diff+guard, discard. Never commits.
 		if err := edits.WithReadOnlyEdit(ctx, hc, opts.Package, func(editID string) error {
 			d, online, err := plan(ctx, hc, opts, editID, local)
 			if err != nil {
@@ -232,13 +127,6 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 		return result, nil
 	}
 
-	// Real apply: ONE write Edit. Fetch+diff+guard inside it; patch/delete
-	// the changes; commit once. In IMPLICIT mode a no-op diff returns
-	// errNoChanges so the Edit auto-discards (no empty commit) and any
-	// per-locale failure also auto-discards → 0 locales published (atomic). In
-	// EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
-	// and never commits or discards: the staged changes stay in the open Edit
-	// for the user to `gplay edits commit`/`discard`.
 	patched := make(map[string]json.RawMessage)
 	var created, pruned []string
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
@@ -251,13 +139,6 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 			return errNoChanges
 		}
 		result.Incomplete = incompleteCreates(local, online, d)
-		// Write every changed locale (sorted for determinism), then delete
-		// every pruned locale, all inside this one Edit. The verb is chosen
-		// per locale, not per field: a field-level `create` on a locale that
-		// is already live (say a video added to en-US) must stay a PATCH, or
-		// PUT would blank every live field absent from the body. Only a
-		// locale absent from the listings.list read above goes through PUT,
-		// the one call that can create it (#561).
 		for _, loc := range changedLocales(d) {
 			body := writeBody(local, loc, d)
 			write, isNew := listings.Patch, false
@@ -292,11 +173,6 @@ func Apply(ctx context.Context, hc *http.Client, local listing.Tree, opts Opts) 
 	return result, nil
 }
 
-// plan fetches the live Listings inside the already-open editID, computes
-// the diff, and enforces the --prune defaultLanguage guard. Shared by the
-// dry-run and real-apply paths so the preview and the publish reconcile
-// identically. It also returns the online tree, whose keys tell the write
-// loop which locales already exist on Play.
 func plan(ctx context.Context, hc *http.Client, opts Opts, editID string, local listing.Tree) (diff.Result, listing.Tree, error) {
 	apiListings, _, err := listings.List(ctx, hc, opts.Package, editID)
 	if err != nil {
@@ -319,10 +195,6 @@ func plan(ctx context.Context, hc *http.Client, opts Opts, editID string, local 
 	return d, online, nil
 }
 
-// onlineTree projects the play-layer's []listings.Listing onto a
-// listing.Tree: one entry per online locale (so untouchedLocale/delete
-// detection is by key presence), with each non-empty field managed. An
-// empty online field is left unmanaged: there is no value to diff against.
 func onlineTree(apiListings []listings.Listing) listing.Tree {
 	tr := make(listing.Tree, len(apiListings))
 	for _, al := range apiListings {
@@ -339,15 +211,11 @@ func onlineTree(apiListings []listings.Listing) listing.Tree {
 		if al.Video != "" {
 			l.Set(listing.Video, al.Video)
 		}
-		// Key present even when every field is empty: the locale still
-		// exists online, which is what prune/untouched detection keys on.
 		tr[al.Language] = l
 	}
 	return tr
 }
 
-// blockingProblems runs the offline validator and drops required-missing
-// problems, which are legitimate under apply's additive model.
 func blockingProblems(local listing.Tree, allow map[string]bool) []validate.Problem {
 	var out []validate.Problem
 	for _, p := range validate.Validate(local, allow) {
@@ -359,10 +227,6 @@ func blockingProblems(local listing.Tree, allow map[string]bool) []validate.Prob
 	return out
 }
 
-// incompleteCreates lists the locales d creates (changed, absent from online)
-// that miss a required field: the required-missing problems blockingProblems
-// drops are harmless on a live locale, whose online value stays, but a new
-// Listing is created without them.
 func incompleteCreates(local, online listing.Tree, d diff.Result) []IncompleteLocale {
 	created := make(map[string]bool)
 	for _, loc := range changedLocales(d) {
@@ -384,7 +248,6 @@ func incompleteCreates(local, online listing.Tree, d diff.Result) []IncompleteLo
 	return out
 }
 
-// allowSet turns the --allow-locale slice into a set for validate.Validate.
 func allowSet(locales []string) map[string]bool {
 	if len(locales) == 0 {
 		return nil
@@ -396,8 +259,6 @@ func allowSet(locales []string) map[string]bool {
 	return m
 }
 
-// changedLocales returns the locales carrying at least one field change
-// (create/update/clear), sorted, so writes run in a deterministic order.
 func changedLocales(d diff.Result) []string {
 	seen := make(map[string]bool)
 	for _, c := range d.Changes {
@@ -405,7 +266,6 @@ func changedLocales(d diff.Result) []string {
 		case diff.OpCreate, diff.OpUpdate, diff.OpClear:
 			seen[c.Locale] = true
 		case diff.OpUnchanged, diff.OpUntouchedLocale, diff.OpDelete:
-			// No field write: a delete prunes the whole locale (deleteLocales).
 		}
 	}
 	out := make([]string, 0, len(seen))
@@ -416,7 +276,6 @@ func changedLocales(d diff.Result) []string {
 	return out
 }
 
-// deleteLocales returns the locales to prune (op delete), sorted.
 func deleteLocales(d diff.Result) []string {
 	var out []string
 	for _, c := range d.Changes {
@@ -428,13 +287,6 @@ func deleteLocales(d diff.Result) []string {
 	return out
 }
 
-// writeBody builds the listings.patch / listings.update body for one
-// locale: a JSON object carrying each changed field's target value (the
-// disk value for a create/update, "" for a clear) plus "language". On a
-// live locale PATCH merge semantics leave fields absent from the body
-// untouched online: the missing ≠ empty rule enforced on the wire (ADR-0011
-// §2). On a new locale every non-empty field on disk is a `create`, so the
-// same body is the complete Listing the PUT creates.
 func writeBody(local listing.Tree, loc string, d diff.Result) []byte {
 	m := map[string]string{"language": loc}
 	ll := local[loc]
@@ -451,10 +303,8 @@ func writeBody(local listing.Tree, loc string, d diff.Result) []byte {
 			v, _ := ll.Get(spec.Field)
 			m[c.Field] = v
 		case diff.OpUnchanged, diff.OpUntouchedLocale, diff.OpDelete:
-			// Absent from the body, so PATCH leaves the field as it is online.
 		}
 	}
-	// map[string]string of small, known keys: Marshal cannot fail.
 	body, _ := json.Marshal(m)
 	return body
 }
