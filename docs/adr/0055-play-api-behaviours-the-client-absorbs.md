@@ -145,6 +145,8 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 - **`basePlans.migratePrices` repeats the path identity in its body**
   (`packageName`, `productId`, `basePlanId`; the schema says they "must be
   equal to" the resource fields), so gplay echoes them.
+- **A patch that leaves `SubscriptionOffer.phases` out keeps the stored
+  phases**; the "one or two entries" limit binds only a list that is sent.
 
 ### Orders and voided purchases
 
@@ -220,6 +222,10 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   `versionCodes`), so a read can prove a production release absent but never
   stale. The `apps audit` check is named for what the API can prove
   (`CheckNoProductionRelease`), not "no recent production release".
+- **A halted release keeps its `countryTargeting`.** Discovery allows the
+  field "only for inProgress releases in the production track", yet a halted
+  release is a paused staged rollout that keeps its targeting, and
+  halt/resume must round-trip it, so gplay keeps it on a halted release.
 - **A rollout fraction renders at four decimal places, trimmed**: that covers
   Play's rollout granularity and sidesteps the float noise of a naive
   `f*100` (`0.1*100` is `10.000000000000002`).

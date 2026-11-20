@@ -157,3 +157,13 @@ Implementation note: Play App Signing's `name` parameter takes a package name
 or a numeric Play Console app ID. gplay tells them apart exactly, since a
 package name always contains a dot and is never all digits: an all-digit
 target is reported as `app`, anything else as `package`.
+
+## Implementation notes
+
+- **main counts stdout with a wrapper that forwards `Fd`**, so TTY detection
+  still sees the real terminal. It does not embed `*os.File`: an embedded
+  `WriteString` would let `io.WriteString` bypass the count.
+- **main's backstop reads the first `--output` in argv** (`--output json` or
+  `--output=json`) and stops at `--`, after which every token is positional.
+  The first occurrence wins because a repeated `--output` is itself rejected,
+  and the first is the value the parser had already accepted.

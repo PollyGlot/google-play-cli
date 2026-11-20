@@ -117,6 +117,10 @@ Two consequences for the code:
 
 ## Implementation notes
 
+- **The global directory on macOS and Windows is `~/.gplay` on purpose**, not
+  `os.UserConfigDir` (`~/Library/Application Support`, `%AppData%`): gplay
+  sits next to the other dotfile-style developer tools. Linux keeps the XDG
+  location.
 - **The `$HOME` barrier is the loader's one required input.** An empty home
   directory would silently disable it, so the loader refuses to run without
   one; the other inputs degrade safely (no global file reads as an empty

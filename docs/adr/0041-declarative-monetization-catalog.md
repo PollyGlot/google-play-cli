@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 [ADR-0026](./0026-maximal-admin-api-coverage.md) puts the whole Play
@@ -180,6 +182,27 @@ Three realities shape the design:
 - The `archived` subscription state is **not** reconciled: the current
   Discovery snapshot marks subscription archiving deprecated/output-only,
   so declared state is create/patch/delete only.
+
+## Implementation notes
+
+- **`pull` strips exactly two fields**: `packageName` (redundant with
+  `--package`) and `archived` (output-only in the current Discovery
+  snapshot), the noise that would churn review diffs without being declarable
+  state. It removes every stale `*.json` file and never touches a file of any
+  other extension. Files are written through `output.WriteJSON`, so listing
+  copy keeps its `<`, `>` and `&` ([ADR-0003](./0003-json-passthrough.md)).
+- **Plan views list the plan in the order `apply` runs it**: grow (creates,
+  patches, offer creates and patches), then state changes, then shrink (offer
+  deletes, base-plan deletes, product deletes). Nothing but this rule ties the
+  two; a change to one changes the other.
+- **The `--output json` plan is one flat list of changes**, so a CI gate is
+  one `jq` line. The middle level of an identity sits under its catalog's own
+  key (`basePlanId` for subscriptions, `purchaseOptionId` for one-time
+  products), only one of which is ever set. A migrating product create is
+  shown as its own `migrate` op in every view, so the one-way door is visible.
+- **A change carries a typed identity** (product, middle level, offer), never
+  a composite string split again later, and a patch's changed fields are both
+  the summary shown and the exact `updateMask` sent.
 
 ## Alternatives rejected
 

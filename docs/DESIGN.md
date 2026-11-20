@@ -134,6 +134,17 @@ rules (#597: `games … set|remove`, `appstore submit`,
 `appstore publish-status set`, `appstore apk|image|policy upload`), so the
 shrink-only allowlist that held them is empty.
 
+**Flag names: one concept, one name.** Every flag name maps to one concept in
+the vocabulary `TestLeafContract` checks. A new flag reuses the canonical name
+of its concept, or adds a new concept to that table in review, where a
+collision with an existing one is seen. A synonym of a canonical name, or a
+canonical name reused for another concept, fails; the shrink-only list that
+held such names until 2.0.0 settled them is empty.
+
+**A distinct resource is a noun, never a mode flag.** The update-event feed of
+the app store catalog is a time-ranged list of changes, so it is
+`appstore catalog events list`, not a flag on `appstore catalog view`.
+
 ---
 
 ## 1. Authentication
@@ -385,6 +396,10 @@ and its JSON carries `"dryRun": true`, the ADR-0017 `requires` array and the
 `releases` also hosts grouping nouns for non-track surfaces (ADR-0030;
 `generated` added in ADR-0034, `system-apks` in #296):
 
+- **`releases mappings upload`**: ProGuard/R8 deobfuscation files
+  (GLOSSARY.md "Mapping"). It sits under `releases`, not `vitals`, because a
+  Mapping is an upload into an Android Publisher Edit, not a read from the
+  Reporting service.
 - **`releases sharing upload`** — Internal App Sharing: a non-track media upload
   (no Edit) returning a private shareable link (GLOSSARY.md "Internal App
   Sharing").
@@ -570,6 +585,14 @@ reports the error the serial walk would have hit first.
   is no cap.
 - `--stars` (e.g. `1`, `1-2`, `1,3,5`) is a **client-side** filter — the API
   has no server-side rating filter.
+- `reviews reply --batch` reads TSV, one `<review-id>` TAB `<reply>` record
+  per line: a TAB, not a comma, because commas fill reply prose. Blank lines
+  and lines starting with `#` are skipped. A reply holding a TAB or a newline
+  is double-quoted, with `""` for a literal quote inside it; a quote anywhere
+  else in the prose is literal, so ordinary replies need no escaping. The
+  price of that leniency: a reply that opens with a quote and never closes it
+  swallows the rest of the stream into one record. A malformed line (not two
+  fields, an empty id or reply) is reported on its own and the batch goes on.
 - Long-history retrieval (CSV reports in the GCS bucket) ships as `reviews
   history --month` (ADR-0037).
 - The other monthly exports of the same bucket (installs, then ratings,
@@ -1124,9 +1147,11 @@ keep the last value silently, so `--to alpha --to production` promotes to
 production with nothing said about the dropped value: for an argv assembled from
 a prompt that is a silent mis-ship. `kernel.RejectRepeatedFlags` turns the second
 occurrence into a parse error (exit `2`) naming the flag and both values, before
-auth and before any HTTP. Genuinely repeatable flags are recognised by their
-value type, never by a flag-name list: `pflag.SliceValue` (what `StringSliceVar`
-/ `StringArrayVar` produce) plus pflag's map values, which accumulate the same
+auth and before any HTTP. Two identical values are refused too: the rule is
+about the argv, which is ambiguous input, not about the resolved value.
+Genuinely repeatable flags are recognised by their value type, never by a
+flag-name list: `pflag.SliceValue` (what `StringSliceVar` / `StringArrayVar`
+produce) plus pflag's map values, which accumulate the same
 way but publish no interface to say so and are matched on `Type()`. Declare a
 repeatable flag as a slice or map flag and it keeps working for free
 ([#446](https://github.com/PollyGlot/google-play-cli/issues/446)).

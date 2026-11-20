@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay grew one namespace at a time, and the verb for a given gesture was
@@ -129,6 +131,21 @@ resource — no nesting); all reference/diagnostic commands.
 - A latent follow-up surfaced and is parked, not decided here: `team users`
   has no `view`, and the Play API has no `users.get` (only `users.list`), so a
   `team users view <email>` would be a client-side list+filter — its own PRD.
+
+## Implementation notes
+
+- **`scripts/verb-gate.sh` fails any tracked file that spells a pre-rename
+  name**, outside the historical records it excludes (`docs/adr/`, the
+  changelog, migration guides, the removed-surface table and its test of
+  [ADR-0051](./0051-removed-surface-names-its-replacement.md)).
+- **A test that must name an old or multi-token command path passes it as
+  separate path elements**, joined at run time (a subtest name, a map key),
+  never as one contiguous phrase in source, so the gate stays green on test
+  files without an exclusion. A token invented for an unknown-command case is
+  never a pre-rename verb.
+- **The rename guard resolves each path through the real command tree**
+  without executing it: a canonical name must resolve, and a pre-rename name
+  must stay unconsumed (a hard rename leaves no alias).
 
 ## Considered options
 

@@ -134,3 +134,11 @@ asks for them.
   (`attestations: write`, then `packages: write`, #659, #674), so a test in
   `internal/workflowgate` compares the caller's grant with every called job's
   request.
+- **`version`, `commit` and `date` in `cmd/gplay` are set by GoReleaser's
+  `-ldflags`**, and the linker ignores an `-X` aimed at a name that no longer
+  exists, so renaming them silently drops the injected values.
+  `go install <module>@<tag>` skips those ldflags, so gplay falls back to
+  `debug.BuildInfo`: `Main.Version` for the version, the
+  `vcs.*` settings for commit and time. Injected values win when present, so
+  release and Homebrew builds are unaffected, and BuildInfo's `(devel)` (an
+  unversioned local build) is ignored as no version at all.

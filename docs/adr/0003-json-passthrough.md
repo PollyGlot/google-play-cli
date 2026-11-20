@@ -44,6 +44,13 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
   strings (proto3 JSON: `scoreMin`, a Cloud Storage object `size`, a Money
   `units`), so gplay types them as strings and round-trips them verbatim;
   an integer type would break decoding.
+- **Reading a body follows proto3 JSON too.** A JSON `null` maps to the
+  field's default, which is what an unset field is, so it counts as absent; an
+  unset integer may be written as `0` or left out, so only a non-zero value is
+  "set"; and any number may arrive as a string (`"0.8"` reads as 0.8). Code
+  that inspects a request or response body (the request-constraint table of
+  [ADR-0066](./0066-offline-test-harness.md)) applies these rules rather than
+  Go's.
 - **A field whose zero is meaningful is a pointer.** `omitempty` drops a zero
   `int` but keeps a non-nil pointer to 0, so an explicit `--point-value 0` or
   `--steps-to-unlock 0` reaches the wire while an unset field stays absent.

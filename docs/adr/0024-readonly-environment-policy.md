@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay's write-safety primitives — `--confirm` for destructive acts,
@@ -76,6 +78,17 @@ hence this ADR.
     re-enable specific writes under the policy.
   - Marking review text as untrusted / recommending readonly mode in the
     companion agent skills (tracked in that repo).
+
+## Implementation notes
+
+- **A command whose only server writes are throwaway Edits it always discards
+  is a read.** `apps audit` opens Edits to sweep an app's state and never
+  commits one, so it stays unmarked: a `GPLAY_READONLY` environment must still
+  be able to audit itself.
+- **The completeness guard walks the real command tree** rather than trusting
+  a hand-kept list: every runnable leaf must appear with its classification,
+  and an entry that resolves to no leaf fails too, so a rename cannot leave a
+  stale line covering nothing.
 
 ## Alternatives considered
 

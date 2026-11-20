@@ -33,6 +33,11 @@ guard on an existing one, gets its entry under the route it concerns.
   by hand reach the same stream, so the kernel wraps it again when it builds
   the run context. The redacting writer is idempotent (the two wrappings do
   not stack) and turns a nil writer into a discard.
+- **The root command's error writer is the redacting one.** The kernel reads
+  the writer back from cobra (`ErrOrStderr`), and several commands re-wire
+  stderr the same way before a sub-run, so the boot writer alone would leave
+  a path around the filter; setting it on the root hands it down the whole
+  tree, leaves added later included.
 
 ### stdout
 
@@ -63,6 +68,9 @@ guard on an existing one, gets its entry under the route it concerns.
   `NAME_MAX` (255 bytes on common filesystems): that is the length bound.
 - **The misshapen forms are diagnosed, never decoded.** Accepting base64 or a
   quoted blob would change the one detection rule DESIGN §1 documents.
+- **The test that no command echoes a credential value looks for any
+  16-byte window of the raw value**, besides PEM markers and a canary: that is
+  what catches a base64 blob, which no redaction pattern matches.
 
 ### Requests to hosts outside the API
 

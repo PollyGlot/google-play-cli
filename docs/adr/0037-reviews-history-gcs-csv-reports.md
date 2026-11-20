@@ -1,5 +1,13 @@
 # Reviews history beyond the 7-day window: GCS CSV reports (`reviews history`)
 
+## Status
+
+accepted
+
+amended (2026-11-20): implementation decisions moved from code comments
+
+## Context and decision
+
 Grilled from PRD [#94](https://github.com/PollyGlot/google-play-cli/issues/94)
 after its investigation spike (2026-07-08). `reviews list` is capped by the
 API: `reviews.list` only returns **the last 7 days**. The official channel for
@@ -69,3 +77,25 @@ The decisions:
   [ADR-0050](0050-bulk-reports-header-driven-reporting-bucket.md):
   `gplay reports` reads the statistics and financial exports, with
   header-driven columns, and shares this command's bucket plumbing.
+
+## Implementation notes
+
+- **The UTF-16 decode is hand-rolled**, not `golang.org/x/text`: the reports
+  are UTF-16LE with a BOM and the decode is a dozen lines, so a dependency
+  would not earn its place (the spirit of
+  [ADR-0007](0007-raw-http-not-google-go-sdk.md)). A BOM picks the byte order;
+  without one the decode assumes little-endian, the encoding Google's reports
+  use. A trailing odd byte is dropped. (The `gplay reports` decoder refuses
+  such a file instead, [ADR-0050](0050-bulk-reports-header-driven-reporting-bucket.md)
+  §5.)
+- **Every `--output json` field is a string**: most columns are optional, and
+  gplay transcodes the reviewer's data without reshaping it.
+- **Rows may be shorter than the header** (trailing empty columns), and are
+  kept; an unrecognised header is ignored rather than throwing the row
+  alignment off.
+- **A month range merges on the Review Link**, a review's stable identity:
+  rows sharing one collapse to the occurrence with the greatest Review Last
+  Update Millis, so a review edited and re-exported in a later month wins over
+  its earlier snapshot. A row with no link cannot be identified across files
+  and is kept as is. The result is sorted by submit time, stably, so rows with
+  equal submit times keep their first-seen order.

@@ -156,6 +156,36 @@ cannot freeze a flag silently. Moving an existing frozen flag to experimental
 rewrites a frozen golden line, which the gate still treats as a break: the
 label only loosens what is born under it.
 
+## Experimental surfaces and why
+
+Decision 5 lists what shipped `[experimental]` at 1.0; surfaces added since
+were labelled at birth. Each label records what is not yet proven, which is
+what graduation waits for. The registry test in `cmd/gplay` holds the
+leaf-by-leaf set; the surface golden and contract tests that enforce it are
+[ADR-0066](./0066-offline-test-harness.md).
+
+| Surface | Why it is not frozen |
+|---|---|
+| `schema` | Its `--output json` is a projection of the index that gplay invented, not a Google resource, and the shape most likely to change. |
+| `apps audit` | The report shape and the set of checks may still move. |
+| `releases sharing` | Barely exercised; the shape of what it returns for a link is the likeliest part to move. |
+| `releases expansion-files` | A legacy surface superseded by Play Asset Delivery, shipped for coverage rather than demand: freezing flags nobody has used buys nothing. |
+| `releases generated` | The download target (file or stdout) and the variant-selection flags may move once real device-targeted APK sets go through it. |
+| `releases system-apks` | Shipped for coverage, with no real preload pipeline driven through it; the `create` flags are the likeliest to move. |
+| `releases artifacts` | The merged-kind table and `--kind` are new, and their columns may still move. |
+| `device-tiers` | The config resource is immutable server-side: a wrong `create` shape has no in-place fix, only a new flag contract. |
+| `recovery` | An incident-response surface whose three domain verbs have never been driven through a real incident. |
+| `customapps` | One irreversible create against an organisation-scoped API with no read to verify the result: the surface least able to prove its shape. |
+| `signing` | Enterprise-only (a self-hosted Cloud KMS key); its flag shape has never met a real KMS key. |
+| `appstore` | A namespace for a persona gplay had never served, on an addressing axis (the app store package name) not yet exercised against a real enrolled app store. |
+| `games` | A second Google service on its own ID space, whose draft-only write model (no publish method) may need a different command shape once a real game config runs through it. |
+| `orders` | Money-moving, and the batch-versus-single shape of `view` is unproven against real support workflows. |
+| `subscriptions` | The most opinionated surface: a file schema, a reconciliation model and the v2-versus-legacy choice are all contract. It graduates once a real catalog has round-tripped through `pull` then `apply`. |
+| `iap` | The same exposure as `subscriptions`, plus the one-way `--migrate` promotion; the two graduate together. |
+| `reviews history` | It reads CSVs from a bucket whose layout Google owns and can change without an API version; the rest of `reviews` is frozen. |
+| `reports` | The columns come from CSV headers Google owns ([ADR-0050](./0050-bulk-reports-header-driven-reporting-bucket.md)). |
+| `vitals releases` | Its table columns may move while the release-keyed vitals filters settle. |
+
 ## Implementation notes
 
 - **`kernel.Experimental` runs after the group's children are added.** It

@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `gplay team` (PRD #147) is the first surface keyed by the **Developer
@@ -69,6 +71,16 @@ question is *where* — and (1) answers it: with the credential.
    A missing developer-id is a credential-configuration gap, like a
    missing Account — not a malformed invocation. The error names how to
    set it (`auth login --developer-id` / `GPLAY_DEVELOPER_ID`).
+
+## Implementation notes
+
+- **The two config layers are merged by the config loader**; the
+  addressing package applies `GPLAY_DEVELOPER_ID` and `--developer-id` on top.
+- **With no Account at all, the missing Account is reported, not the missing
+  developer-id.** "No developer-id for the active Account" would name the
+  wrong gap, and setting a developer-id would only lead to the no-Account
+  error one step later. The Account check runs only on that failure path, so
+  a resolved id never costs a keyring probe.
 
 ## Considered options
 
