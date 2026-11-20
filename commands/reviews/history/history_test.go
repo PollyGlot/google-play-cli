@@ -26,8 +26,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// --- test doubles ----------------------------------------------------------
-
 // utf16LE encodes s as UTF-16LE with a BOM: the byte shape of a real report.
 func utf16LE(s string) []byte {
 	var buf bytes.Buffer
@@ -123,8 +121,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	}
 	return coder.ExitCode()
 }
-
-// --- tests -----------------------------------------------------------------
 
 // TestRun_monthFetch_wirePathAndScope covers the primary acceptance criterion:
 // `--month 2026-06` fetches reviews/reviews_P_202606.csv from the derived
@@ -324,8 +320,6 @@ func TestPayload_JSON_emitsParsedRows(t *testing.T) {
 		t.Errorf("non-ASCII review text not passed through: %q", env.Reviews[0].ReviewText)
 	}
 }
-
-// --- range mode (--since/--until) -----------------------------------------------
 
 // monthRT serves a per-month CSV for the range tests: a month present in bodies
 // returns its report; a month absent returns 404: a gap Play never published.

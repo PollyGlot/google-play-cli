@@ -413,11 +413,9 @@ func TestPositionalArgErrors_areCliMisuse(t *testing.T) {
 		args    []string
 		wantMsg string // substring the one-line error must contain
 	}{
-		// --- missing positional argument ---
 		{"missing-arg-minimum", []string{"orders", "view"}, "missing <orderId>; usage: gplay orders view <orderId>"},
 		{"missing-arg-exact", []string{"appstore", "catalog", "view"}, "missing <play-package>; usage: gplay appstore catalog view <play-package>"},
 		{"missing-arg-nested-group", []string{"games", "achievements", "view"}, "missing <achievementId>"},
-		// --- surplus positional argument ---
 		{"surplus-arg-exact", []string{"tracks", "create", "qa-alpha", "surplus"}, "accepts 1 arg(s), received 2"},
 		{"surplus-arg-none-accepted", []string{"apps", "list", "surplus"}, `unexpected argument "surplus": gplay apps list takes no positional arguments`},
 		{"surplus-arg-nested-group", []string{"games", "achievements", "list", "surplus"}, `unexpected argument "surplus"`},

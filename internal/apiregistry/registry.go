@@ -65,7 +65,6 @@ func Entries() []Entry {
 // entries is the registry itself, ordered by service then by method id so a
 // diff on this file reads like a diff on paths.txt.
 var entries = []Entry{
-	// --- androidpublisher: Edit lifecycle -------------------------------
 	{
 		MethodID: "androidpublisher.edits.insert",
 		Commands: []string{"edits begin"},
@@ -91,7 +90,6 @@ var entries = []Entry{
 		Commands: []string{"edits validate"},
 	},
 
-	// --- androidpublisher: Edit-scoped resources ------------------------
 	{MethodID: "androidpublisher.edits.apks.addexternallyhosted", Commands: []string{"releases upload"}, Note: "--externally-hosted registers an APK served from the organisation's own host, Managed Play private apps only (#546)"},
 	{MethodID: "androidpublisher.edits.apks.list", Commands: []string{"releases artifacts list"}, Note: "the apk kind; read inside a read-only Edit or the pinned explicit one"},
 	{MethodID: "androidpublisher.edits.apks.upload", Commands: []string{"releases upload"}, Note: "an .apk payload rides releases upload (ADR-0036)"},
@@ -128,7 +126,6 @@ var entries = []Entry{
 		Note:     "the single write behind every release-state change (ADR-0002)",
 	},
 
-	// --- androidpublisher: application-scoped (Edit-free) ---------------
 	{MethodID: "androidpublisher.applications.dataSafety", Commands: []string{"compliance datasafety set"}},
 	{MethodID: "androidpublisher.applications.deviceTierConfigs.create", Commands: []string{"device-tiers create"}},
 	{MethodID: "androidpublisher.applications.deviceTierConfigs.get", Commands: []string{"device-tiers view"}},
@@ -152,7 +149,6 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.systemapks.variants.get", Commands: []string{"releases system-apks view"}},
 	{MethodID: "androidpublisher.systemapks.variants.list", Commands: []string{"releases system-apks list"}},
 
-	// --- androidpublisher: alternative app stores (DMA) -----------------
 	{MethodID: "androidpublisher.appstoreappsreview.createappstorehostedapp", Commands: []string{"appstore create"}},
 	{MethodID: "androidpublisher.appstoreappsreview.updateappstorehostedapp", Commands: []string{"appstore submit"}, Note: "--confirm-gated: sends the app to review (ADR-0043)"},
 	{MethodID: "androidpublisher.appstoreappsreview.updateappstorehostedapppublishstatus", Commands: []string{"appstore publish-status set"}},
@@ -162,7 +158,6 @@ var entries = []Entry{
 	{MethodID: "androidpublisher.appstorecatalog.recentappviews.get", Commands: []string{"appstore catalog view"}},
 	{MethodID: "androidpublisher.appstorecatalog.recentupdateevents.list", Commands: []string{"appstore catalog events list"}},
 
-	// --- androidpublisher: commerce -------------------------------------
 	{MethodID: "androidpublisher.orders.batchget", Commands: []string{"orders view"}, Note: "the multi-id form of orders view"},
 	{MethodID: "androidpublisher.orders.get", Commands: []string{"orders view"}},
 	{MethodID: "androidpublisher.orders.refund", Commands: []string{"orders refund"}, Note: "--confirm-gated, money-moving (ADR-0031)"},
@@ -202,7 +197,6 @@ var entries = []Entry{
 		Note:     "also carries base-plan config and per-territory prices: the sub-resource has no create/patch",
 	},
 
-	// --- androidpublisher: team -----------------------------------------
 	{MethodID: "androidpublisher.grants.create", Commands: []string{"team grants set"}},
 	{MethodID: "androidpublisher.grants.delete", Commands: []string{"team grants remove"}},
 	{MethodID: "androidpublisher.grants.patch", Commands: []string{"team grants set"}},
@@ -215,7 +209,6 @@ var entries = []Entry{
 	},
 	{MethodID: "androidpublisher.users.patch", Commands: []string{"team users set", "team users add"}},
 
-	// --- playdeveloperreporting -----------------------------------------
 	{MethodID: "playdeveloperreporting.anomalies.list", Commands: []string{"vitals anomalies"}},
 	{MethodID: "playdeveloperreporting.apps.fetchReleaseFilterOptions", Commands: []string{"vitals releases"}, Note: "also backs the --version-code completion of the vitals presets and `vitals errors counts`"},
 	{MethodID: "playdeveloperreporting.apps.search", Commands: []string{"apps accessible list"}, Note: "server-authoritative discovery, distinct from the local registry (ADR-0039)"},
@@ -245,10 +238,8 @@ var entries = []Entry{
 	{MethodID: "playdeveloperreporting.vitals.stuckbackgroundwakelockrate.get", Commands: []string{"vitals stuckbgwakelock --describe", "vitals query stuckbackgroundwakelockrate --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.stuckbackgroundwakelockrate.query", Commands: []string{"vitals stuckbgwakelock", "vitals query stuckbackgroundwakelockrate"}},
 
-	// --- playcustomapp ---------------------------------------------------
 	{MethodID: "playcustomapp.accounts.customApps.create", Commands: []string{"customapps create"}, Note: "account-scoped, not package-scoped (ADR-0032)"},
 
-	// --- gamesConfiguration ----------------------------------------------
 	{MethodID: "gamesConfiguration.achievementConfigurations.delete", Commands: []string{"games achievements remove"}},
 	{MethodID: "gamesConfiguration.achievementConfigurations.get", Commands: []string{"games achievements view"}},
 	{MethodID: "gamesConfiguration.achievementConfigurations.insert", Commands: []string{"games achievements create"}},

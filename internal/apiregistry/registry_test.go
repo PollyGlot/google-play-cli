@@ -95,8 +95,6 @@ func TestRegisteredMethodsAreNotDeprecated(t *testing.T) {
 	}
 }
 
-// --- helpers ---------------------------------------------------------------
-
 // methodIDsFromPaths reads the committed existence index. Each line is
 // `id⇥verb⇥path` (docs/discovery/README.md).
 func methodIDsFromPaths(t *testing.T) map[string]bool {

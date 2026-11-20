@@ -83,8 +83,6 @@ if [ -n "$out" ]; then cp "$src" "$out"; else cat "$src"; fi
 EOF
 chmod +x "$work/bin/curl"
 
-# -- Runner ------------------------------------------------------------------
-
 # run <name> <expected-exit> <expected-stderr-substring> <checksums-fixture> [env=val ...]
 run() {
   local name="$1" want_exit="$2" want_msg="$3" fixture="$4"; shift 4

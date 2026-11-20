@@ -77,8 +77,6 @@ func RequireConfirm(confirm bool, msg string) error {
 	return exit.SafetyFlag("confirm", "%s", msg)
 }
 
-// --- table machinery (ADR-0018) -------------------------------------------
-
 // AchievementRow is the synthesized one-line-per-achievement view. It is NOT
 // the API shape; the JSON view bypasses it for the raw pass-through (ADR-0003).
 type AchievementRow struct {
@@ -172,8 +170,6 @@ func ResolveLeaderboardColumns(spec string) ([]output.Column[LeaderboardRow], er
 
 // DefaultLeaderboardColumns is the default --columns help string.
 func DefaultLeaderboardColumns() string { return strings.Join(LeaderboardColumns.DefaultKeys(), ",") }
-
-// --- write-body construction ----------------------------------------------
 
 // defaultLocale is the BCP 47 locale a --name/--description with no --locale
 // lands under.
@@ -345,8 +341,6 @@ func readJSONSource(stdin io.Reader, path string) ([]byte, error) {
 	}
 	return raw, nil
 }
-
-// --- error classification --------------------------------------------------
 
 type notFoundError struct {
 	ref   string
