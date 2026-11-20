@@ -1,12 +1,3 @@
-// Package details_test also exercises the high-level details.GetDetails
-// entry point backing the `apps details` group: open a read-only Edit, do
-// ONLY edits.details.get, discard the Edit. Unlike Get (which backs
-// `apps view` and also hits listings.get), GetDetails touches a SINGLE
-// endpoint, so its raw payload is the details.get body verbatim: a
-// clean ADR-0003 pass-through with no gplay envelope. The transport
-// FAILS on any PUT/PATCH/:commit AND on listings.get: a read of the App
-// details resource must never mutate and must never reach a second
-// endpoint.
 package details_test
 
 import (
@@ -22,22 +13,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// getDetailsRT routes the apps-details read sequence: edits.insert,
-// edits.details.get, edits.delete. A configurable status code on
-// details.get exercises the error paths. Any other request: a PUT, a
-// :commit, or listings.get: fails the test: GetDetails is read-only and
-// single-endpoint by construction.
 type getDetailsRT struct {
 	t      *testing.T
 	editID string
-	body   string // body returned by /details (200 unless code set)
-	code   int    // 0 → 200
+	body   string
+	code   int
 
 	fake *testkit.Fake
 }
 
-// client returns the client whose transport is r's fake; a request no case
-// claims fails the round trip and still shows in calls().
 func (r *getDetailsRT) client() *http.Client {
 	r.fake = testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -53,7 +37,6 @@ func (r *getDetailsRT) client() *http.Client {
 	return &http.Client{Transport: r.fake}
 }
 
-// calls lists the requests served, as "METHOD path".
 func (r *getDetailsRT) calls() []string {
 	var out []string
 	for _, c := range r.fake.Calls() {
@@ -62,10 +45,6 @@ func (r *getDetailsRT) calls() []string {
 	return out
 }
 
-// TestGetDetails_happyPath asserts the single-endpoint read-only sequence:
-// insert → details.get → delete. The returned *AppDetails surfaces all
-// four fields, and the raw payload is the details.get body verbatim (a
-// clean ADR-0003 pass-through: no envelope, unlike Get).
 func TestGetDetails_happyPath(t *testing.T) {
 	body := `{"contactEmail":"hi@example.com","contactPhone":"+1 555 0100","contactWebsite":"https://x.example","defaultLanguage":"en-US"}`
 	rt := &getDetailsRT{t: t, editID: "edit-details", body: body}
@@ -105,16 +84,11 @@ func TestGetDetails_happyPath(t *testing.T) {
 		}
 	}
 
-	// The raw payload is the details.get body verbatim: no envelope.
 	if strings.TrimSpace(string(raw)) != strings.TrimSpace(body) {
 		t.Errorf("raw = %s\nwant details.get body verbatim = %s", raw, body)
 	}
 }
 
-// TestGetDetails_get403_mapsExit11_discardsEdit asserts a 403 on
-// details.get bubbles up as an *api.Error (ExitCode = 11) AND the opened
-// Edit is still discarded: a dangling Edit on a permission failure would
-// block the user's next publish for ~24h.
 func TestGetDetails_get403_mapsExit11_discardsEdit(t *testing.T) {
 	rt := &getDetailsRT{
 		t:      t,
@@ -146,8 +120,6 @@ func TestGetDetails_get403_mapsExit11_discardsEdit(t *testing.T) {
 	}
 }
 
-// TestGetDetails_get404_mapsExit30 asserts a 404 on details.get surfaces
-// as exit 30 (API 4xx other than auth/perms): e.g. an unknown package.
 func TestGetDetails_get404_mapsExit30(t *testing.T) {
 	rt := &getDetailsRT{
 		t:      t,
@@ -163,12 +135,7 @@ func TestGetDetails_get404_mapsExit30(t *testing.T) {
 	}
 }
 
-// TestPatch_bodyReadFailure_surfacesAsAPIError asserts that a read failure
-// on Patch's success body is wrapped in *api.Error ("read response body")
-// rather than silently flowing into json.Unmarshal as a decode error.
 func TestPatch_bodyReadFailure_surfacesAsAPIError(t *testing.T) {
-	// A 200 on the details PATCH whose body errors on every Read (reusing
-	// details_test.brokenBody), so the success-body read fails mid-stream.
 	hc := &http.Client{Transport: testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.Method != http.MethodPatch || !strings.HasSuffix(req.URL.Path, "/details") {
 			t.Errorf("unexpected request %s %s", req.Method, req.URL.Path)

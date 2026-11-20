@@ -20,9 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// execRT records every request (body included) and answers with resp. It
-// keeps the *http.Request itself, not a testkit.Call, because the tests assert
-// on GetBody: the executor's replay contract.
 type execRT struct {
 	reqs   []*http.Request
 	bodies []string
@@ -192,8 +189,6 @@ func TestDo_badParamsFailBeforeSending(t *testing.T) {
 	}
 }
 
-// TestDo_bodyOverLimitIsAnError is the #575 acceptance test: a 2xx past the
-// success cap fails naming the limit, and no byte of it is returned.
 func TestDo_bodyOverLimitIsAnError(t *testing.T) {
 	big := `{"x":"` + strings.Repeat("a", api.MaxAPISuccessBodyRead) + `"}`
 	rt := &execRT{resp: answer(200, big)}
@@ -218,8 +213,6 @@ func TestDo_bodyAtLimitIsAccepted(t *testing.T) {
 	}
 }
 
-// failingBody yields some bytes then a read error, like a connection reset or
-// a Client.Timeout firing mid-body.
 type failingBody struct{ sent bool }
 
 func (b *failingBody) Read(p []byte) (int, error) {
@@ -231,9 +224,6 @@ func (b *failingBody) Read(p []byte) (int, error) {
 }
 func (b *failingBody) Close() error { return nil }
 
-// TestDo_bodyReadFailureExits50 is the #575 acceptance test: a 2xx cut
-// mid-body is a network failure (exit 50, retryable), while a 2xx whose body
-// reads whole but is not JSON keeps the code it had before the executor.
 func TestDo_bodyReadFailureExits50(t *testing.T) {
 	rt := &execRT{resp: func() *http.Response {
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: &failingBody{}}

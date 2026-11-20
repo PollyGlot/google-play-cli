@@ -10,10 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire pins every request this package sends through its own request
-// code (the resumable uploads belong to internal/play/api) and how each answer
-// maps to a result or an error, byte for byte: testdata/wire.golden was
-// recorded before the move onto the executor (#586) and must not move with it.
 func TestWire(t *testing.T) {
 	ctx := context.Background()
 	const store, pkg = "com.example.store", "com.example.app"

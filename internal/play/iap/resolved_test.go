@@ -1,9 +1,3 @@
-// Migration proof for #518: iap now takes its verbs and URLs from
-// internal/apiregistry instead of local literals. The pre-existing iap_test.go
-// is untouched and still asserts the behaviour; what is added here is the part
-// it only checked by substring, the ABSOLUTE URL (host included) and the verb
-// of every call, so a change in the Discovery snapshot or in the resolver
-// cannot silently move a call to another endpoint.
 package iap_test
 
 import (
@@ -19,12 +13,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
 
-// pinRT records the absolute URL and verb of the first request and answers an
-// empty JSON object, which every call below tolerates.
-// pinned answers {} to every call and records what was sent.
 func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-// first is the first call f recorded, or the zero Call when none was sent.
 func first(f *testkit.Fake) testkit.Call {
 	if calls := f.Calls(); len(calls) > 0 {
 		return calls[0]
@@ -60,9 +50,6 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 			want: base + "/oneTimeProducts/-/purchaseOptions/-/offers?pageSize=20",
 		},
 		{
-			// The snapshot paths the v2 patch under LOWERCASE `onetimeproducts`
-			// while every read uses `oneTimeProducts`. That asymmetry is
-			// Google's, and this is the line that pins it.
 			name: "onetimeproducts.patch",
 			call: func(hc *http.Client) error {
 				_, err := iap.PatchOneTimeProduct(context.Background(), hc, "com.example.app", "coins", "2022/02", nil, true, json.RawMessage(`{}`), "")
@@ -122,8 +109,6 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 	}
 }
 
-// TestEmptyPackageFailsBeforeTheWire asserts a missing path parameter is
-// refused locally, as an *api.Error, rather than sent as a truncated URL.
 func TestEmptyPackageFailsBeforeTheWire(t *testing.T) {
 	rt := pinned()
 	_, err := iap.ListOneTimeProducts(context.Background(), &http.Client{Transport: rt}, "")

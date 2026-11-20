@@ -9,10 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRequests_wire pins what every entry point of the package sends, byte for
-// byte as a server reads it (testdata/requests.golden). The golden was
-// recorded before the package moved onto the api executor (#585), so an
-// unchanged file is the proof the migration kept every request identical.
 func TestRequests_wire(t *testing.T) {
 	w := testkit.NewWire(t, func(c testkit.Call) (int, string, bool) {
 		if c.Method == http.MethodDelete {

@@ -68,7 +68,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 - **An empty `defaultLanguage` on a 2xx is treated as an API failure.** Every
   app has one; accepting the empty value would send release notes keyed by an
-  empty language.
+  empty language. The guard sits where a second call depends on the value
+  (the listing read that follows); `apps details view`, which reads
+  `edits.details.get` alone, reports the body as the API sent it.
 
 ### App Signing
 

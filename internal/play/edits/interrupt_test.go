@@ -12,13 +12,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// deadlineProbe forwards to a testkit.Fake and remembers how much time the
-// cleanup DELETE was given: the Fake records calls, not their contexts.
 type deadlineProbe struct {
 	fake *testkit.Fake
 
 	mu     sync.Mutex
-	budget time.Duration // remaining deadline seen by the DELETE, 0 if none
+	budget time.Duration
 }
 
 func (p *deadlineProbe) client() *http.Client {
@@ -58,9 +56,6 @@ func deletes(f *testkit.Fake) int {
 	return n
 }
 
-// An interrupted command (its ctx canceled, as SIGINT/SIGTERM does in the
-// binary) still discards its implicit Edit, and does so under the short
-// interrupted bound that fits the CI kill margin, never the 10s one.
 func TestWithEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 	probe := newDeadlineProbe()
 	hc := probe.client()
@@ -68,7 +63,7 @@ func TestWithEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 	defer cancel()
 
 	err := edits.WithEdit(ctx, hc, "com.example.app", edits.Options{}, func(string) error {
-		cancel() // the signal lands mid-mutation
+		cancel()
 		return ctx.Err()
 	})
 	if !errors.Is(err, context.Canceled) {
@@ -87,8 +82,6 @@ func TestWithEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 	}
 }
 
-// Without an interruption the discard keeps its longer bound, which leaves
-// --retry room to replay a 5xx on the DELETE.
 func TestWithEdit_failure_discardsWithRegularBound(t *testing.T) {
 	probe := newDeadlineProbe()
 	hc := probe.client()
@@ -107,7 +100,6 @@ func TestWithEdit_failure_discardsWithRegularBound(t *testing.T) {
 	}
 }
 
-// The read-only path (tracks list, releases list, ...) gets the same treatment.
 func TestWithReadOnlyEdit_canceledCtx_discardsWithinInterruptBound(t *testing.T) {
 	probe := newDeadlineProbe()
 	hc := probe.client()

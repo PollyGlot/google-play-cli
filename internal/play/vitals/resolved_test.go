@@ -1,13 +1,3 @@
-// Migration proof for #519: vitals now takes verb and URL from
-// internal/apiregistry. The other vitals tests assert paths and query params;
-// none of them pinned the HOST, which matters here because Play Developer
-// Reporting is a separate Google service (playdeveloperreporting.googleapis.com
-// with a /v1beta1 base, not androidpublisher/v3).
-//
-// This file also closes the loop the metric-set registry left open: since the
-// query URL is now resolved from MetricSet.QueryMethodID(), the same string
-// integrity_test.go anchors to the Discovery index, the two registries can no
-// longer disagree about where a `:query` goes.
 package vitals_test
 
 import (
@@ -21,7 +11,6 @@ import (
 
 const reportingRoot = "https://playdeveloperreporting.googleapis.com/v1beta1/apps/com.example.app"
 
-// lastCall returns the most recent request the Fake recorded.
 func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
 	t.Helper()
 	calls := fake.Calls()
@@ -31,10 +20,6 @@ func lastCall(t *testing.T, fake *testkit.Fake) testkit.Call {
 	return calls[len(calls)-1]
 }
 
-// TestQueryAbsoluteURLPerMetricSet pins the resolved `:query` endpoint of every
-// declared metric set plus the errors.counts set, which lives outside
-// metricSets and is therefore the case a package-level resolution would have
-// missed.
 func TestQueryAbsoluteURLPerMetricSet(t *testing.T) {
 	sets := append(vitals.MetricSets(), vitals.ErrorCountSet())
 	for _, set := range sets {
@@ -55,7 +40,6 @@ func TestQueryAbsoluteURLPerMetricSet(t *testing.T) {
 	}
 }
 
-// TestListAndSearchAbsoluteURLs pins the three paginated GET reads.
 func TestListAndSearchAbsoluteURLs(t *testing.T) {
 	cases := []struct {
 		name string

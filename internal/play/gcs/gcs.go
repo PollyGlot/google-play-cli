@@ -1,17 +1,3 @@
-// Package gcs is gplay's minimal, resource-agnostic client for the Google
-// Cloud Storage JSON API. It exists because the developer's monthly Play
-// reports (reviews history, #94 / ADR-0037) live as plain GCS objects in the
-// reporting bucket: a third Google service reached the same way as the second
-// (raw HTTP, ADR-0007; a distinct read-only OAuth scope, ADR-0027). Only the
-// two operations gplay needs are implemented: list the objects under a prefix
-// and fetch one object's bytes. The bulk reports (`gplay reports`, ADR-0050)
-// read the same bucket through the same two calls. Both are reads: no mutating surface exists
-// here (read-only by scope construction, token.StorageReadOnlyScope).
-//
-// The *http.Client is injected by the caller (kernel.AuthedClient), so tests
-// mock the wire with a RoundTripper exactly as the androidpublisher calls do.
-// Upstream failures surface as *api.Error so the shared Coder mapping applies
-// (403 → exit 11, 404 → exit 30).
 package gcs
 
 import (
@@ -26,50 +12,29 @@ import (
 )
 
 const (
-	// StorageBase is the GCS JSON API base for bucket object operations:
-	// {StorageBase}/{bucket}/o lists, {StorageBase}/{bucket}/o/{object} reads.
 	StorageBase = "https://storage.googleapis.com/storage/v1/b"
 
 	opObjectsList = "storage.objects.list"
 	opObjectsGet  = "storage.objects.get"
 
-	// maxListBodyRead / MaxObjectRead bound the in-memory copy of a list page
-	// and a fetched object. Monthly review CSVs are well under 64 MB even for
-	// high-volume apps; the cap stops a hostile or misconfigured bucket from
-	// exhausting RAM. A caller that knows its objects better picks its own cap
-	// with FetchObjectLimit.
 	maxListBodyRead = 4 * 1024 * 1024
 	MaxObjectRead   = 64 * 1024 * 1024
 )
 
-// ErrTooLarge is the cause of the *api.Error a read over its cap returns, so
-// a caller can tell "too large" from the upstream's own failures with
-// errors.Is. It changes neither the message nor the exit code.
 var ErrTooLarge = errors.New("object over the read cap")
 
-// Object is the sliver of a GCS object resource gplay reads: its name (the
-// full key under the bucket, e.g. "reviews/reviews_com.x_202606.csv"), and the
-// size and last update the listing reports. Size is a decimal string, as the
-// JSON API sends a uint64; Updated is RFC 3339. Both stay verbatim.
 type Object struct {
 	Name    string `json:"name"`
 	Size    string `json:"size,omitempty"`
 	Updated string `json:"updated,omitempty"`
 }
 
-// ListObjects returns every object in bucket whose name starts with prefix,
-// following the JSON API's pageToken pagination until exhausted. It is a read
-// (storage.objects.list). A non-2xx becomes an *api.Error carrying the status
-// (403 → exit 11, 404 → exit 30); the bucket stands in for the api.Error's
-// Package field so the message names what was addressed.
 func ListObjects(ctx context.Context, hc *http.Client, bucket, prefix string) ([]Object, error) {
 	out, _, err := api.Paginate(api.Pager{Op: opObjectsList, Resource: bucketResource(bucket), What: "storage.objects.list"},
 		func(token string, _ int) ([]Object, string, error) { return listPage(ctx, hc, bucket, prefix, token) })
 	return out, err
 }
 
-// listPage fetches one storage.objects.list page. pageToken is the prior
-// page's nextPageToken ("" for the first call).
 func listPage(ctx context.Context, hc *http.Client, bucket, prefix, pageToken string) ([]Object, string, error) {
 	q := url.Values{}
 	if prefix != "" {
@@ -102,27 +67,15 @@ func listPage(ctx context.Context, hc *http.Client, bucket, prefix, pageToken st
 	return page.Items, page.NextPageToken, nil
 }
 
-// FetchObject returns the raw bytes of object in bucket via the JSON API's
-// media download (?alt=media). It is a read (storage.objects.get). The object
-// name is a single, un-split path segment: GCS keys legitimately contain
-// slashes ("reviews/..."), so the whole name is percent-encoded into one path
-// component rather than joined raw.
 func FetchObject(ctx context.Context, hc *http.Client, bucket, object string) ([]byte, error) {
 	return FetchObjectLimit(ctx, hc, bucket, object, MaxObjectRead)
 }
 
-// FetchObjectLimit is FetchObject with a caller-chosen cap on the bytes read:
-// an object larger than maxBytes fails with an *api.Error whose cause is
-// ErrTooLarge instead of being truncated (the message is FetchObject's, so a
-// caller that wants the cap named names it).
 func FetchObjectLimit(ctx context.Context, hc *http.Client, bucket, object string, maxBytes int64) ([]byte, error) {
 	u := StorageBase + "/" + url.PathEscape(bucket) + "/o/" + url.PathEscape(object) + "?alt=media"
 	return doGet(ctx, hc, opObjectsGet, bucket, u, maxBytes)
 }
 
-// doGet performs a GET and returns the 2xx body, or an *api.Error carrying the
-// status on a non-2xx (parsed through the shared Google error envelope) or a
-// transport failure (status 0 → exit 50).
 func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -144,12 +97,8 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 			Reasons:    reasons,
 		}
 	}
-	// Read one byte past the cap so an oversized body is detected and reported
-	// explicitly, rather than silently truncated into a confusing parse error.
 	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxRead+1))
 	if readErr != nil {
-		// Status 0, not the 2xx already received: a body cut mid-read (a reset,
-		// a stalled download) is a network failure, exit 50, retry-safe.
 		return nil, &api.Error{
 			Operation: op,
 			Resource:  bucketResource(bucket),
@@ -169,8 +118,6 @@ func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead i
 	return raw, nil
 }
 
-// bucketResource is the error target of a storage call: the bucket, which the
-// JSON error envelope reports as such rather than as a package (#599).
 func bucketResource(bucket string) api.Resource {
 	return api.Resource{Kind: api.KindBucket, ID: bucket}
 }

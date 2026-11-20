@@ -1,11 +1,3 @@
-// Migration proof for #519: games now takes verb and URL from
-// internal/apiregistry. The pre-existing games_test.go asserts the path
-// fragments and the paging params; what it never checked is the HOST, which
-// matters more here than anywhere else because gamesConfiguration is a
-// separate Google service (gamesconfiguration.googleapis.com, not
-// androidpublisher). This file pins the absolute URL and verb of all ten
-// methods, so a resolver or snapshot change cannot quietly move the calls to
-// another host.
 package games_test
 
 import (
@@ -18,8 +10,6 @@ import (
 
 const gamesRoot = "https://gamesconfiguration.googleapis.com/games/v1configuration"
 
-// TestAbsoluteURLsUnchanged drives every exported call against a recorder and
-// compares the whole URL, host included, with the pre-migration shape.
 func TestAbsoluteURLsUnchanged(t *testing.T) {
 	cases := []struct {
 		name     string

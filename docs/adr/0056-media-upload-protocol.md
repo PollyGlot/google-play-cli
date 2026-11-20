@@ -45,6 +45,8 @@ The rules both paths follow lived in code comments; the comment purge (the
 3. **Resume**: after a transient failure (a transport error or a `5xx`), a PUT
    with `Content-Range: bytes */{total}` and an empty body asks which byte the
    server last committed, and the upload continues from there.
+4. **A zero-length upload** has no byte range to name, so its single PUT
+   carries `Content-Range: bytes */0`.
 
 ### Resumable: what the client believes
 
@@ -88,7 +90,8 @@ The rules both paths follow lived in code comments; the comment purge (the
 - **Only a regular file is uploaded.** A directory, fifo or device passes
   `Open` and `Stat` but cannot be streamed and reports a wrong size, so it is
   refused up front as a client-side error (exit 20), never surfacing as a
-  transport failure (exit 50).
+  transport failure (exit 50). A symlink to a regular file is accepted: the
+  open follows it, so the size checked is the target's.
 
 ## Consequences
 

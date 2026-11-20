@@ -11,9 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestWire pins every request this package sends and how each answer maps to
-// a result or an error, byte for byte: testdata/wire.golden was recorded
-// before the move onto the executor (#586) and must not move with it.
 func TestWire(t *testing.T) {
 	ctx := context.Background()
 	const pkg = "com.example.app"
@@ -76,8 +73,6 @@ func TestWire(t *testing.T) {
 	var b strings.Builder
 	b.WriteString(testkit.Exchanges(sends, testkit.AnswerOK, testkit.AnswerDenied, testkit.AnswerMalformed))
 
-	// The two listings follow nextPageToken to the end and refuse a token the
-	// server already sent; each run needs its own page sequence.
 	for _, l := range []struct {
 		name, key, item string
 		fn              func(*http.Client) (any, error)

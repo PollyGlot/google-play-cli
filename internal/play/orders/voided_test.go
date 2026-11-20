@@ -46,9 +46,6 @@ func query(t *testing.T, c testkit.Call) url.Values {
 	return q
 }
 
-// TestListVoided_queryShape asserts the GET hits the application-scoped
-// voidedpurchases endpoint (no Edit) and carries the window, type and
-// partial-refund parameters as the API names them.
 func TestListVoided_queryShape(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
@@ -66,7 +63,6 @@ func TestListVoided_queryShape(t *testing.T) {
 		t.Errorf("path %q is not the voidedpurchases.list endpoint", c.Path)
 	}
 	q := query(t, c)
-	// 2026-09-06T12:00:00Z in epoch millis, computed independently.
 	if got := q.Get("startTime"); got != "1788696000000" {
 		t.Errorf("startTime = %q, want 1788696000000", got)
 	}
@@ -81,8 +77,6 @@ func TestListVoided_queryShape(t *testing.T) {
 	}
 }
 
-// TestListVoided_inappOnly asserts in-app-only sends type=0 and omits the
-// partial-refund flag when it is off.
 func TestListVoided_inappOnly(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	listVoided(t, fake, orders.VoidedListOptions{Start: time.Now().Add(-time.Hour)})
@@ -95,10 +89,6 @@ func TestListVoided_inappOnly(t *testing.T) {
 	}
 }
 
-// TestListVoided_followsTokenPagination asserts the walk carries
-// tokenPagination.nextPageToken back as the `token` parameter, and that the
-// merged envelope keeps every item byte-for-byte (unmodeled fields included)
-// under the API's voidedPurchases key.
 func TestListVoided_followsTokenPagination(t *testing.T) {
 	fake := testkit.NewFake(testkit.Sequence(voidedPage1, voidedPage2))
 	got, truncated := listVoided(t, fake, orders.VoidedListOptions{Start: time.Now().Add(-time.Hour)})
@@ -132,8 +122,6 @@ func TestListVoided_followsTokenPagination(t *testing.T) {
 	}
 }
 
-// TestListVoided_limitCapsAndReportsTruncation asserts a limit stops the walk
-// and reports that items were hidden.
 func TestListVoided_limitCapsAndReportsTruncation(t *testing.T) {
 	fake := testkit.NewFake(testkit.Sequence(voidedPage1, voidedPage2))
 	got, truncated := listVoided(t, fake, orders.VoidedListOptions{Start: time.Now().Add(-time.Hour), Limit: 2})
@@ -148,8 +136,6 @@ func TestListVoided_limitCapsAndReportsTruncation(t *testing.T) {
 	}
 }
 
-// TestListVoided_emptyIsEmptyArray asserts an empty window renders as an empty
-// array, never null, so a jq consumer reads the same shape every time.
 func TestListVoided_emptyIsEmptyArray(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	got, _ := listVoided(t, fake, orders.VoidedListOptions{Start: time.Now().Add(-time.Hour)})
@@ -158,8 +144,6 @@ func TestListVoided_emptyIsEmptyArray(t *testing.T) {
 	}
 }
 
-// TestListVoided_403_exit11 asserts a missing financial-data permission maps
-// to the authz exit code.
 func TestListVoided_403_exit11(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusForbidden, `{"error":{"message":"The caller does not have permission"}}`))
 	_, _, err := orders.ListVoided(context.Background(), &http.Client{Transport: fake}, "com.example.app", orders.VoidedListOptions{Start: time.Now()})
