@@ -13,16 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 )
 
-// AmbiguousReleaseError signals that a track has multiple coexisting
-// releases where the operation needs exactly one (promote's source, or a
-// rollout-family target). Mapped to exit code 60 (state conflict /
-// ambiguous release target). The error lists the candidate versionCodes +
-// names so the operator can pick.
-//
-// FilterApplied carries whether the caller already supplied
-// --version-code or --release-name; the hint adapts so the operator
-// is told to TIGHTEN the existing filter rather than to pass one
-// they already passed.
 type AmbiguousReleaseError struct {
 	Track         string
 	Candidates    []tracks.Release
@@ -60,11 +50,6 @@ func (e *AmbiguousReleaseError) Error() string {
 
 func (e *AmbiguousReleaseError) ExitCode() int { return 60 }
 
-// NoMatchingReleaseError signals that a --version-code or
-// --release-name filter was supplied but did not match any release on
-// the source track. Distinct from AmbiguousReleaseError so the
-// operator's hint can be targeted ("nothing on the track matches"
-// vs "pick one of these candidates"). Same exit code (60).
 type NoMatchingReleaseError struct {
 	Track       string
 	VersionCode int
@@ -106,11 +91,6 @@ func (e *NoMatchingReleaseError) Error() string {
 
 func (e *NoMatchingReleaseError) ExitCode() int { return 60 }
 
-// EmptyVersionCodesError signals that the picked source release has
-// no versionCodes: legal on Google Play (e.g. a draft "name-only"
-// placeholder created without an attached AAB) but there is nothing
-// to promote. Mapped to exit 60 (state conflict): the source track
-// state is unsuitable, not a CLI misuse.
 type EmptyVersionCodesError struct {
 	Track       string
 	ReleaseName string
@@ -126,27 +106,15 @@ func (e *EmptyVersionCodesError) Error() string {
 
 func (e *EmptyVersionCodesError) ExitCode() int { return 60 }
 
-// PromoteOpts is the input contract for Promote. Mirrors Opts where
-// the semantics overlap (State / ReleaseNotes / Confirm / DryRun /
-// KeepEditOnFailure) so callers of both flows can share flag-parsing
-// helpers.
 type PromoteOpts struct {
 	Package   string
 	FromTrack string
 	ToTrack   string
 
-	// State is the destination release's status and fraction; the zero
-	// value applies the ADR-0002 safe default for ToTrack.
 	State ReleaseState
 
-	// UpdatePriority, when non-nil, overrides the inAppUpdatePriority the
-	// source release carries; nil carries the source's value over (#664).
 	UpdatePriority *int
 
-	// VersionCode / ReleaseName disambiguate the source release when
-	// multiple coexist on FromTrack (e.g. inProgress + halted). Exactly
-	// one is needed in that case; if neither is provided and the source
-	// is ambiguous, Promote returns *AmbiguousReleaseError (exit 60).
 	VersionCode int
 	ReleaseName string
 
@@ -154,26 +122,17 @@ type PromoteOpts struct {
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
-	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
-	// instead of opening/committing a per-promote Edit (docs/DESIGN.md §4).
-	// Empty is the implicit default.
 	ExplicitEditID string
 
-	// Commit carries the opt-in edits.commit parameters; the zero value keeps
-	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
 	Commit edits.CommitOptions
 
 	Confirm bool
 
-	// DryRun previews the payload without any HTTP. It runs before the
-	// confirm guard, so a production publish previews without --confirm.
 	DryRun bool
 
-	// Plan reads both tracks into Result.Promotion without writing.
 	Plan bool
 }
 
-// PromotePlan is what a promote would do, read from the live tracks.
 type PromotePlan struct {
 	From         string           `json:"from"`
 	To           string           `json:"to"`
@@ -183,7 +142,6 @@ type PromotePlan struct {
 	Replaced     []tracks.Release `json:"replaced"`
 }
 
-// DestinationReadError wraps a failed read of promote's destination track.
 type DestinationReadError struct {
 	Err error
 }
@@ -191,40 +149,14 @@ type DestinationReadError struct {
 func (e *DestinationReadError) Error() string { return e.Err.Error() }
 func (e *DestinationReadError) Unwrap() error { return e.Err }
 
-// Promote performs the promote flow inside a single Edit:
-// edits.insert → tracks.get(FromTrack) → pick the source release →
-// tracks.get(ToTrack) → tracks.update(ToTrack) → edits.commit. The
-// carried-over versionCode is what the destination release advertises; no
-// AAB is re-uploaded. The update carries the promoted release alone, so it
-// replaces every release on ToTrack; Result.ReplacedVersionCodes names them.
-//
-// Safe-default rule from ADR-0002 applies to the destination: target
-// production with the zero State produces a draft release; every
-// other target defaults to completed. Explicit --draft / --complete
-// / --staged override the default.
-//
-// When the source track carries multiple coexisting releases, the
-// caller must pass VersionCode or ReleaseName; otherwise Promote
-// refuses with *AmbiguousReleaseError (exit 60).
 func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, error) {
-	// Orchestrator-level input validation. Runs before any HTTP so
-	// library / future-MCP callers do not burn an Edit slot (a 24h
-	// resource) on inputs the orchestrator can reject statically. The
-	// CLI layer in commands/releases/promote/promote.go ALSO catches
-	// these; both layers enforce the contract independently.
 	if err := validatePromoteOpts(opts); err != nil {
 		return nil, err
 	}
-	// Same offline note check as Upload, ahead of the dry-run branch so a
-	// preview cannot pass an override Play would refuse (#786).
 	if err := notes.Precheck(opts.ReleaseNotes, opts.ReleaseNotesDir); err != nil {
 		return nil, err
 	}
 
-	// Dry-run is evaluated BEFORE the --confirm guard so users can
-	// preview a production publish (e.g. --to production --complete)
-	// without having to satisfy the confirm guardrail. The preview
-	// path performs no HTTP and has no side effects.
 	if opts.DryRun {
 		return dryRunPromoteResult(opts), nil
 	}
@@ -232,10 +164,6 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 		return planPromote(ctx, hc, opts)
 	}
 
-	// Inherits ADR-0002's confirm guard: a production target that would
-	// reach real users (Completed or InProgress) requires Confirm=true.
-	// Runs before any HTTP so a missing --confirm short-circuits without
-	// opening an Edit.
 	if requiresConfirm(opts.ToTrack, opts.State) && !opts.Confirm {
 		return nil, confirmRequired(opts.State.resolve(opts.ToTrack).Status())
 	}
@@ -254,11 +182,6 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 		}
 
 		release := buildPromoteRelease(source, opts)
-		// Release-notes resolution:
-		//   neither flag → carry over source notes verbatim (AC5 default)
-		//   --release-notes / --release-notes-dir → drop source, load
-		//     the override via notes.Load (with details.get only when
-		//     the DefaultLanguage is actually needed)
 		if opts.ReleaseNotes == "" && opts.ReleaseNotesDir == "" {
 			release.ReleaseNotes = source.ReleaseNotes
 			for _, n := range source.ReleaseNotes {
@@ -279,13 +202,6 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 			if err != nil {
 				return err
 			}
-			// Refuse if the override would drop any locale the source
-			// release already carried. The promote default (no flags)
-			// is verbatim carry-over, so any --release-notes(-dir)
-			// override that is MISSING locales the source had would
-			// silently delete those locales on the destination. Notes
-			// loss is invisible after the fact and very expensive to
-			// recover, so we fail-loud rather than silent-drop.
 			if dropped := droppedSourceLocales(source.ReleaseNotes, loaded); len(dropped) > 0 {
 				return &InvalidOptsError{
 					Message: "release-notes override would drop locales the source release carries: " +
@@ -380,12 +296,6 @@ func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Resul
 	}, nil
 }
 
-// validatePromoteOpts enforces the orchestrator-level preconditions
-// every PromoteOpts caller (CLI, future MCP server, library user) must
-// satisfy. Mirrors validateOpts on the upload side. Centralizing the
-// checks here keeps exit semantics stable: every misuse maps to
-// *InvalidOptsError (exit 2), never to a deeper-layer surprise like a
-// 404 or a panic.
 func validatePromoteOpts(opts PromoteOpts) error {
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
@@ -404,43 +314,29 @@ func validatePromoteOpts(opts PromoteOpts) error {
 			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
 		}
 	}
-	// Same pre-Edit locale gate as the upload path: a malformed `<locale>.txt`
-	// name is knowable offline, so it must not cost an edits.insert (#452).
 	if err := notes.ValidateDirLocales(opts.ReleaseNotesDir); err != nil {
 		return err
 	}
 	return nil
 }
 
-// dryRunPromoteResult previews what Promote would send for the given
-// opts, without any HTTP. Status and UserFraction come from the resolved
-// ReleaseState, as on the wire.
 func dryRunPromoteResult(opts PromoteOpts) *Result {
 	state := opts.State.resolve(opts.ToTrack)
 	return &Result{
-		Track:        opts.ToTrack,
-		VersionCode:  opts.VersionCode,
-		Requires:     safetyFlags(requiresConfirm(opts.ToTrack, opts.State)),
-		Status:       state.Status(),
-		UserFraction: state.UserFraction(),
-		// Only an explicit override is knowable offline: the source's own
-		// priority would come from tracks.get, which a dry-run never issues.
+		Track:               opts.ToTrack,
+		VersionCode:         opts.VersionCode,
+		Requires:            safetyFlags(requiresConfirm(opts.ToTrack, opts.State)),
+		Status:              state.Status(),
+		UserFraction:        state.UserFraction(),
 		InAppUpdatePriority: opts.UpdatePriority,
 		ReleaseName:         "(dry-run)",
 	}
 }
 
-// pickSourceRelease selects which release on the source track to
-// promote. With a single release it is unambiguous. With more than one
-// the caller must disambiguate via VersionCode or ReleaseName, or
-// receive *AmbiguousReleaseError (exit 60). Empty list → InvalidOpts
-// (exit 2) since the user explicitly named a track with nothing on it.
 func pickSourceRelease(releases []tracks.Release, opts PromoteOpts) (*tracks.Release, error) {
 	if len(releases) == 0 {
 		return nil, &InvalidOptsError{Message: "source track " + opts.FromTrack + " has no releases to promote"}
 	}
-	// Filter by --version-code or --release-name when provided. If
-	// neither is set, every release is a candidate.
 	candidates := releases
 	if opts.VersionCode != 0 || opts.ReleaseName != "" {
 		filtered := make([]tracks.Release, 0, 1)
@@ -473,10 +369,6 @@ func pickSourceRelease(releases []tracks.Release, opts PromoteOpts) (*tracks.Rel
 	}
 }
 
-// droppedSourceLocales reports the locales the source release carried
-// that the loaded override does NOT cover. Used to refuse partial
-// overrides that would silently delete source locales on the
-// destination. Comparison is case-sensitive to match the API.
 func droppedSourceLocales(sourceNotes []tracks.LocalizedText, loaded []notes.LocaleNote) []string {
 	if len(sourceNotes) == 0 {
 		return nil
@@ -494,10 +386,6 @@ func droppedSourceLocales(sourceNotes []tracks.LocalizedText, loaded []notes.Loc
 	return dropped
 }
 
-// containsVersionCode reports whether the source release's
-// VersionCodes (API-typed as []string) includes the int the caller
-// passed via --version-code. The API normalizes to a single code per
-// release in practice, but we handle the multi-code shape defensively.
 func containsVersionCode(codes []string, want int) bool {
 	for _, c := range codes {
 		got, err := strconv.Atoi(c)
@@ -511,14 +399,6 @@ func containsVersionCode(codes []string, want int) bool {
 	return false
 }
 
-// buildPromoteRelease translates a source release + PromoteOpts into
-// the tracks.Release payload sent on the destination track. Carries
-// over the source's versionCode and name; status and fraction come from the
-// resolved ReleaseState, as in buildRelease. countryTargeting carries over
-// only to a staged rollout on production: Play rejects it on a draft or
-// completed release (#779) and on any other track. The source's inAppUpdatePriority carries over unless
-// opts.UpdatePriority overrides it: before #664 the typed rebuild silently
-// dropped a priority set in the Play Console.
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {
 	state := opts.State.resolve(opts.ToTrack)
 	priority := source.InAppUpdatePriority

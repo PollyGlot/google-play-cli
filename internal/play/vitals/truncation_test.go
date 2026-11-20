@@ -8,15 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// TestSearchErrorIssues_truncationSignal pins the signal behind the stderr
-// warning of PRD #446 / #451: `truncated` is true only when --limit stopped the
-// loop while the server STILL had a nextPageToken to give.
-//
-// The three cases are the whole decision table:
-//   - limit hit mid-stream, token remaining → truncated (the list is a prefix)
-//   - limit hit exactly on the last page, no token → NOT truncated (the cap and
-//     the truth coincide; warning there would be a lie)
-//   - no limit at all → NOT truncated (gplay exhausts the token by default)
 func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -35,10 +26,6 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 			want:  true,
 		},
 		{
-			// A server that hands back MORE than the cap in one page, with no
-			// token left: the slice below drops rows we were already holding,
-			// so this is a truncation even though nothing remains upstream.
-			// Keying the signal on the token alone missed exactly this.
 			name: "single-page-overshoots-the-limit",
 			pages: []string{
 				`{"errorIssues":[{"type":"CRASH"},{"type":"CRASH"},{"type":"ANR"},{"type":"ANR"},{"type":"NON_FATAL"}]}`,
@@ -47,8 +34,6 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 			want:  true,
 		},
 		{
-			// Same overshoot, one page deep into a stream: the drop happens on
-			// the second page and there is still a token behind it.
 			name: "later-page-overshoots-the-limit",
 			pages: []string{
 				`{"errorIssues":[{"type":"CRASH"}],"nextPageToken":"P2"}`,
@@ -87,8 +72,6 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 			if truncated != tc.want {
 				t.Errorf("truncated = %v, want %v", truncated, tc.want)
 			}
-			// The signal rides beside the payload, never inside it: the
-			// envelope carries the items and nothing else (ADR-0003).
 			if tc.limit > 0 {
 				if got := countRows(t, raw, "errorIssues"); got > tc.limit {
 					t.Errorf("items = %d, want at most the --limit %d", got, tc.limit)
@@ -98,8 +81,6 @@ func TestSearchErrorIssues_truncationSignal(t *testing.T) {
 	}
 }
 
-// TestListAnomalies_truncationSignal repeats the mid-stream case on the other
-// paginated Reporting surface, so the signal is not an errors-only accident.
 func TestListAnomalies_truncationSignal(t *testing.T) {
 	rt := seqFake(
 		`{"anomalies":[{"metricSet":"apps/x/crashRateMetricSet"}],"nextPageToken":"P2"}`,

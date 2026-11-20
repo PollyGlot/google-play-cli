@@ -22,18 +22,10 @@ import (
 
 const denied = `{"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}`
 
-// deniedClient answers every API call with a 403, so each module under test
-// fails on its real error path and the envelope is built from the *api.Error
-// the module itself constructs, not from a hand-written one.
 func deniedClient() *http.Client {
 	return &http.Client{Transport: testkit.NewFake(testkit.Any(http.StatusForbidden, denied))}
 }
 
-// TestWriteErrorEnvelope_resourceOnEveryAxis pins #599 end to end: a failure
-// off the package axis reports its target under `resource` with its own kind,
-// and `package` is absent, where 1.x put the developer account, the games
-// application or the bucket there. The three goldens are the before/after
-// examples of the 2.0 migration guide.
 func TestWriteErrorEnvelope_resourceOnEveryAxis(t *testing.T) {
 	artifact := filepath.Join(t.TempDir(), "app.apk")
 	if err := os.WriteFile(artifact, []byte("PK\x03\x04"), 0o600); err != nil {
@@ -41,7 +33,7 @@ func TestWriteErrorEnvelope_resourceOnEveryAxis(t *testing.T) {
 	}
 	cases := []struct {
 		name   string
-		golden string // empty: assert the fields only
+		golden string
 		call   func(ctx context.Context, hc *http.Client) error
 		kind   api.ResourceKind
 		id     string

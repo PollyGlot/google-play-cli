@@ -13,8 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
-// latencyAt reads latencyTolerance from the query or from the JSON body at
-// path (object keys and array indexes); nil when it is absent.
 type latencyAt func(q url.Values, body any) any
 
 func fromQuery(q url.Values, _ any) any {
@@ -42,9 +40,6 @@ func fromBody(path ...string) latencyAt {
 	}
 }
 
-// TestWrites_carryTheLatencyToleranceOnlyWhenSet drives every write iap apply
-// emits and reads latencyTolerance where Discovery puts it: the query of the
-// patch and the delete, the body of the batch entries and the state verbs.
 func TestWrites_carryTheLatencyToleranceOnlyWhenSet(t *testing.T) {
 	ctx, pkg := context.Background(), "com.example.app"
 	writes := []struct {

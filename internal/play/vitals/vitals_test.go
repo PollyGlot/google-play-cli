@@ -23,8 +23,6 @@ func jsonResp(status int, body string) *http.Response {
 	}
 }
 
-// TestMetricSetByName resolves the gplay-facing metric-set name to its REST
-// resource segment, and rejects an unknown set.
 func TestMetricSetByName(t *testing.T) {
 	set, ok := vitals.MetricSetByName("crashrate")
 	if !ok {
@@ -41,8 +39,6 @@ func TestMetricSetByName(t *testing.T) {
 	}
 }
 
-// TestQuery_issuesPOST asserts Query POSTs the body to the metric set's
-// :query path under the reporting base and returns the verbatim 2xx body.
 func TestQuery_issuesPOST(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
 	var gotURL, gotMethod, gotBody, gotCT string
@@ -77,8 +73,6 @@ func TestQuery_issuesPOST(t *testing.T) {
 	}
 }
 
-// TestQuery_nonOKBecomesAPIError maps a 403 to an *api.Error so the shared
-// classifier surfaces it as exit 11.
 func TestQuery_nonOKBecomesAPIError(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
 	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -94,9 +88,6 @@ func TestQuery_nonOKBecomesAPIError(t *testing.T) {
 	}
 }
 
-// TestSupportedMetricsAndDimensions reads the catalog straight from the
-// embedded index (never invented): the crashrate request schema documents
-// `crashRate` (metric) and `versionCode` (dimension) in its property prose.
 func TestSupportedMetricsAndDimensions(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
@@ -120,15 +111,11 @@ func TestSupportedMetricsAndDimensions(t *testing.T) {
 	if !contains(periods, "DAILY") || !contains(periods, "HOURLY") {
 		t.Errorf("supported periods %v missing DAILY/HOURLY", periods)
 	}
-	// The UNSPECIFIED sentinel is never a user-selectable value.
 	if contains(periods, "AGGREGATION_PERIOD_UNSPECIFIED") {
 		t.Errorf("periods %v leaked the UNSPECIFIED sentinel", periods)
 	}
 }
 
-// TestSupportedPeriods_memorySetsAreDailyOnly reads the per-set aggregation
-// periods from the snapshot: the memory sets document DAILY alone, so HOURLY
-// must not be offered for them (#440).
 func TestSupportedPeriods_memorySetsAreDailyOnly(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
@@ -146,8 +133,6 @@ func TestSupportedPeriods_memorySetsAreDailyOnly(t *testing.T) {
 	}
 }
 
-// TestSupportedMetrics_memorySets proves the memory sets expose their
-// percentile catalog, read verbatim from the embedded index (#440).
 func TestSupportedMetrics_memorySets(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
@@ -172,8 +157,6 @@ func TestSupportedMetrics_memorySets(t *testing.T) {
 	}
 }
 
-// TestParseTimeline turns a query response into dated rows with dimension and
-// metric columns keyed by name.
 func TestParseTimeline(t *testing.T) {
 	body := []byte(`{"rows":[
 	  {"startTime":{"year":2026,"month":6,"day":1},
@@ -205,9 +188,6 @@ func TestParseTimeline(t *testing.T) {
 	}
 }
 
-// TestParseTimeline_hourlyMidnightCarriesTime asserts the 00:00 bucket of an
-// HOURLY timeline renders with the time suffix, consistent with every other
-// hour (the row's aggregationPeriod drives it).
 func TestParseTimeline_hourlyMidnightCarriesTime(t *testing.T) {
 	body := []byte(`{"rows":[
 	  {"startTime":{"year":2026,"month":6,"day":1,"hours":0},"aggregationPeriod":"HOURLY","metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]},
@@ -225,8 +205,6 @@ func TestParseTimeline_hourlyMidnightCarriesTime(t *testing.T) {
 	}
 }
 
-// TestQuery_emptyBodyTolerated asserts an empty 2xx page body does not surface
-// as a decode error: it yields an empty {rows:[]} envelope.
 func TestQuery_emptyBodyTolerated(t *testing.T) {
 	set, _ := vitals.MetricSetByName("crashrate")
 	hc := &http.Client{Transport: testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) {

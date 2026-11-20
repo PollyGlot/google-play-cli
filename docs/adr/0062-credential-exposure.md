@@ -98,7 +98,8 @@ guard on an existing one, gets its entry under the route it concerns.
   lines, and error wrapping often folds one onto a single line, so `.` crosses
   newlines.
 - **A JWT is matched by shape**: three base64url segments separated by dots,
-  the first two starting with `ey` because they are JSON objects. A length
+  the first starting with `ey` because it is a JSON object (only the first is
+  anchored, which errs toward masking). A length
   floor keeps dotted identifiers (a package name, a version) out.
 - **Google's access and refresh tokens have their own rule** (the `ya29.`
   family and the refresh-token prefixes): they have no dots, so the JWT rule

@@ -9,12 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/compliance/datasafety"
 )
 
-// FuzzDataSafetyValidate fuzzes the offline check `compliance data-safety
-// validate` and `set` run on a user-supplied CSV. Whatever the bytes, Validate
-// returns exactly one of a Report or a non-empty list of Problems, each with a
-// message, and never panics. On success the Payload `set` would POST is the
-// input minus at most one leading UTF-8 BOM (nothing else is rewritten), it is
-// valid UTF-8, and the tally matches the header it reports.
 func FuzzDataSafetyValidate(f *testing.F) {
 	header := strings.Join(datasafety.ReferenceHeader(), ",")
 	for _, seed := range []string{

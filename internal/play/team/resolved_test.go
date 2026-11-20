@@ -1,9 +1,3 @@
-// Migration proof for #519. team was the one package of batch 3 with no test
-// at all, so its seven URLs were unpinned before the migration and would have
-// been unpinned after it. This file closes that: it drives every exported call
-// against a recorder and asserts the absolute URL (host included), the verb
-// and the query suffix that carries the declarative updateMask, which is what
-// makes the requests provably byte-identical to the hand-built ones.
 package team_test
 
 import (
@@ -20,9 +14,6 @@ import (
 
 const devRoot = "https://androidpublisher.googleapis.com/androidpublisher/v3/developers/1234567890"
 
-// recorder captures the last request's absolute URL and verb, answering with
-// an empty JSON object (enough for every call here: ListUsers reads `users`
-// and `nextPageToken`, the writes pass the body through verbatim).
 func recorder(gotURL, gotVerb *string) *http.Client {
 	return &http.Client{Transport: testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		*gotURL = r.URL.String()
@@ -71,8 +62,6 @@ func TestAbsoluteURLsUnchanged(t *testing.T) {
 				_, err := team.SetUserPermissions(context.Background(), hc, dev, email, nil)
 				return err
 			},
-			// url.PathEscape leaves @ alone (it is a legal path sub-delim), so the
-			// email appears literally, exactly as the hand-built URL had it.
 			wantURL:  devRoot + "/users/dev@example.com?updateMask=developerAccountPermissions",
 			wantVerb: http.MethodPatch,
 		},
@@ -131,9 +120,6 @@ func TestAbsoluteURLsUnchanged(t *testing.T) {
 	}
 }
 
-// TestEmptyPathParameterFailsBeforeTheWire asserts a missing path parameter is
-// refused locally rather than sent as a truncated URL that would 404 far from
-// its cause.
 func TestEmptyPathParameterFailsBeforeTheWire(t *testing.T) {
 	var gotURL, gotVerb string
 	hc := recorder(&gotURL, &gotVerb)

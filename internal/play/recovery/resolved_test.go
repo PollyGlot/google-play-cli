@@ -1,8 +1,3 @@
-// Migration proof for #518: recovery (and its lifecycle half) now takes its
-// verbs and URLs from internal/apiregistry instead of local literals. The
-// pre-existing tests are untouched; what is added here is the ABSOLUTE URL
-// (host included) and the verb of each call, the three colon verbs
-// (`:deploy`, `:cancel`, `:addTargeting`) included.
 package recovery_test
 
 import (
@@ -18,10 +13,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// pinned answers {} to every call and records what was sent.
 func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-// first is the first call f recorded, or the zero Call when none was sent.
 func first(f *testkit.Fake) testkit.Call {
 	if calls := f.Calls(); len(calls) > 0 {
 		return calls[0]
@@ -93,9 +86,6 @@ func TestResolvedURLsUnchanged(t *testing.T) {
 	}
 }
 
-// TestEmptyRecoveryIDFailsBeforeTheWire asserts a missing path parameter is
-// refused locally rather than sent as a truncated URL: cancel is irreversible,
-// so a malformed request must not reach the wire.
 func TestEmptyRecoveryIDFailsBeforeTheWire(t *testing.T) {
 	rt := pinned()
 	_, err := recovery.Cancel(context.Background(), &http.Client{Transport: rt}, "com.example.app", "")

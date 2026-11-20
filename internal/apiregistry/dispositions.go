@@ -5,59 +5,30 @@ import (
 	"strings"
 )
 
-// Redundant is one API method gplay deliberately does not call because a
-// *called* method already serves the same resource in another shape: `update`
-// next to a called `patch`, `get`/`batchGet` next to a called `list`, a batch
-// state verb next to the unary verbs the declarative apply drives. ADR-0047.
-//
-// The declaration is honest only while CanonicalID is registered: lintDispositions
-// (and the offline test around it) fails the moment the canonical loses its
-// command, and the method becomes a gap again instead of hiding behind a stale
-// disposition.
 type Redundant struct {
 	MethodID    string
 	CanonicalID string
 	Reason      string
 }
 
-// Parked is one API method whose decision is deferred to a `type:parking`
-// issue: it stays uncovered in docs/COVERAGE.md, but the row links the issue
-// so a 🔴 mark is never an unexplained hole. ADR-0047.
 type Parked struct {
 	MethodID string
 	Issue    int
 	Reason   string
 }
 
-// Redundancies returns the redundant list. A function, like Entries, so no
-// caller can mutate the shared backing array.
 func Redundancies() []Redundant {
 	out := make([]Redundant, len(redundancies))
 	copy(out, redundancies)
 	return out
 }
 
-// Parkings returns the parked list, same contract as Redundancies.
 func Parkings() []Parked {
 	out := make([]Parked, len(parkings))
 	copy(out, parkings)
 	return out
 }
 
-// LintDispositions checks the four hand-written lists against each other and
-// against the method universe (`known`, the ids of docs/discovery/paths.txt):
-//
-//   - a method carries at most one disposition (registered, excluded,
-//     redundant or parked);
-//   - every disposition names a method paths.txt knows;
-//   - a redundant entry's canonical is a *registered* method: the invariant
-//     that keeps "redundant" from becoming "unshipped";
-//   - a parked entry names an issue (> 0);
-//   - every entry says why.
-//
-// It returns every violation rather than the first so one run names them all.
-// Both the registry tests and the coverage renderer call it, so a violation
-// fails offline in two places before it can be committed.
 func LintDispositions(known map[string]bool) []error {
 	return lintDispositions(known, entries, exclusions, redundancies, parkings)
 }
@@ -75,8 +46,6 @@ func lintDispositions(known map[string]bool, entries []Entry, exclusions []Exclu
 		excluded[x.MethodID] = true
 	}
 
-	// disposition records the first list that claimed an id so a second claim
-	// can name both.
 	disposition := map[string]string{}
 	for id := range registered {
 		disposition[id] = "registered"
@@ -141,10 +110,6 @@ func lintDispositions(known map[string]bool, entries []Entry, exclusions []Exclu
 	return errs
 }
 
-// redundancies is ordered by method id, like entries and exclusions, so a
-// diff reads like a diff on paths.txt. Each pair must be agreeable in one
-// glance: the canonical is the method a shipped command calls on the *same*
-// resource; the reason names the shape difference.
 var redundancies = []Redundant{
 	{
 		MethodID:    "androidpublisher.applications.tracks.releases.list",
@@ -303,7 +268,4 @@ var redundancies = []Redundant{
 	},
 }
 
-// parkings is ordered by method id too. Every entry points at an open
-// `type:parking` issue: the decision lives there, this list only makes the
-// coverage row point at it.
 var parkings = []Parked{}

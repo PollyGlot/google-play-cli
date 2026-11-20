@@ -1,18 +1,5 @@
 package output_test
 
-// Gate for COH-15 (#588): the fix is one line in WriteJSON, and it holds only
-// while no other encoder writes gplay's JSON. It scans every shipped Go file:
-//
-//   - under commands/ and cmd/, any json.NewEncoder fails: a command's JSON
-//     goes through output.WriteJSON, which owns the indent and the escaping;
-//   - under commands/ and cmd/, any json.Marshal or json.MarshalIndent fails
-//     too (#622): both escape, even inside a json.RawMessage, and WriteJSON
-//     cannot undo an escape baked into the bytes, so a command marshals
-//     through output.Marshal (a request body included: one rule, no triage);
-//   - elsewhere, a function that builds a json.NewEncoder must also call
-//     SetEscapeHTML(false) (the Discovery and schema-index writers do), so the
-//     \u0026 form cannot come back through a file gplay writes either.
-
 import (
 	"go/ast"
 	"go/parser"
@@ -60,8 +47,6 @@ func TestNoJSONEncoderBypassesWriteJSON(t *testing.T) {
 	}
 }
 
-// scanEncoders counts the json.NewEncoder and json.Marshal/MarshalIndent calls
-// in body and reports whether it also calls SetEscapeHTML(false).
 func scanEncoders(body *ast.BlockStmt) (encoders, marshals int, unescaped bool) {
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)

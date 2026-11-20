@@ -17,10 +17,6 @@ import (
 
 const commitPkg = "com.example.app"
 
-// editLifecycle answers edits.insert with edit-1 and edits.delete with 204, and
-// serves edits.commit with commitStatus. A commitStatus of -1 leaves the commit
-// unclaimed, which the Fake turns into a transport error: the "request left,
-// no answer came back" case.
 func editLifecycle(commitStatus int, commitBody string) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -49,10 +45,6 @@ func commitCall(t *testing.T, f *testkit.Fake) testkit.Call {
 	return testkit.Call{}
 }
 
-// TestCommit_queryParameters pins the wire contract of the opt-ins (#598): the
-// zero value sends no query at all (the request gplay has always sent, so
-// Google's default holds), and each opt-in maps to Discovery's parameter name
-// and enum value, on both the implicit and the explicit commit path.
 func TestCommit_queryParameters(t *testing.T) {
 	cases := []struct {
 		name string
@@ -113,9 +105,6 @@ func TestParseChangesInReview(t *testing.T) {
 	}
 }
 
-// TestCommit_outcomeUnknown: a commit that may have landed keeps its exit code
-// but is classified COMMIT_OUTCOME_UNKNOWN, retryable false, with a message
-// naming how to check (#598).
 func TestCommit_outcomeUnknown(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -147,7 +136,6 @@ func TestCommit_outcomeUnknown(t *testing.T) {
 			if !strings.Contains(err.Error(), "gplay releases list") {
 				t.Errorf("message %q does not say how to check the outcome", err.Error())
 			}
-			// The implicit Edit is still discarded: harmless if the commit landed.
 			last := f.Calls()[len(f.Calls())-1]
 			if last.Method != http.MethodDelete {
 				t.Errorf("last call = %s %s, want the edits.delete cleanup", last.Method, last.Path)
@@ -168,9 +156,6 @@ func TestCommitExplicit_outcomeUnknownPointsAtStatusLive(t *testing.T) {
 	}
 }
 
-// TestCommit_definiteFailuresStayPlain: a commit Google answered with a 4xx, or
-// one that provably never left the machine, has a known outcome (not applied),
-// so it keeps its ordinary code and retryability.
 func TestCommit_definiteFailuresStayPlain(t *testing.T) {
 	t.Run("400", func(t *testing.T) {
 		f := editLifecycle(http.StatusBadRequest, `{"error":{"code":400,"message":"bad"}}`)
@@ -211,8 +196,6 @@ func assertPlain(t *testing.T, err error, wantExit int, wantCode exit.Code) {
 	}
 }
 
-// failingRT fails every round trip with err, before any response exists: the
-// shape a DNS, dial or token-exchange failure takes inside http.Client.
 func failingRT(err error) http.RoundTripper {
 	return testkit.RoundTripFunc(func(*http.Request) (*http.Response, error) { return nil, err })
 }

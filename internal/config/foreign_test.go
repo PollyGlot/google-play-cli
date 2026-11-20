@@ -13,9 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/config"
 )
 
-// ownersFS is the real filesystem, except that Stat reports the given uid as
-// the owner of the listed paths: a test cannot chown to another user, and the
-// loader reads ownership only through FS.Stat.
 type ownersFS struct {
 	config.OSFS
 	owners map[string]int
@@ -39,9 +36,6 @@ type ownedInfo struct {
 
 func (o ownedInfo) Sys() any { return &syscall.Stat_t{Uid: uint32(o.uid)} }
 
-// TestLoad_foreignProjectDir_isNotAdopted covers a .gplay/ another user
-// planted in a directory both users can write to: it must not pick the
-// package, the Account or the developer id of commands run below it.
 func TestLoad_foreignProjectDir_isNotAdopted(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeGlobal(t, `{"accounts":[{"name":"ci","active":true,"developerId":"111"},{"name":"other"}]}`)
@@ -71,10 +65,6 @@ func TestLoad_foreignProjectDir_isNotAdopted(t *testing.T) {
 	}
 }
 
-// TestLoad_projectDirOwnedLikeTheWorkingDir_isAdopted covers the documented
-// container run: gplay runs as its own uid on a mounted checkout, so the
-// .gplay/ is not the current user's but shares the owner of the tree gplay
-// works in.
 func TestLoad_projectDirOwnedLikeTheWorkingDir_isAdopted(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.app"}`)
@@ -90,9 +80,6 @@ func TestLoad_projectDirOwnedLikeTheWorkingDir_isAdopted(t *testing.T) {
 	}
 }
 
-// TestLoad_worldWritableProjectDir_isNotAdopted covers a .gplay/ any user can
-// drop files into, such as `.gplay -> .` planted in a world-writable shared
-// directory: its owner is no guarantee of who wrote its config.
 func TestLoad_worldWritableProjectDir_isNotAdopted(t *testing.T) {
 	f := newLoadFixture(t)
 	f.writeShared(t, `{"package":"com.example.planted"}`)

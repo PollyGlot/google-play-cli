@@ -1,8 +1,3 @@
-// Migration proof for #518: accessibleapps now takes its verb and URL from
-// internal/apiregistry instead of local literals. accessibleapps_test.go is
-// untouched; what is added here is the ABSOLUTE URL, which matters more here
-// than elsewhere because this is the only migrated method served by the Play
-// Developer Reporting host rather than androidpublisher.
 package accessibleapps_test
 
 import (
@@ -15,10 +10,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/accessibleapps"
 )
 
-// pinned answers {} to every call and records what was sent.
 func pinned() *testkit.Fake { return testkit.NewFake(testkit.Any(http.StatusOK, `{}`)) }
 
-// first is the first call f recorded, or the zero Call when none was sent.
 func first(f *testkit.Fake) testkit.Call {
 	if calls := f.Calls(); len(calls) > 0 {
 		return calls[0]

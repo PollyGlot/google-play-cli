@@ -15,8 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/vitals"
 )
 
-// seqFake serves a fixed sequence of page bodies in order, then {} once they
-// run out.
 func seqFake(pages ...string) *testkit.Fake {
 	var (
 		mu sync.Mutex
@@ -34,8 +32,6 @@ func seqFake(pages ...string) *testkit.Fake {
 	})
 }
 
-// pageTokens returns the pageToken each request carried (query param for GET,
-// body field for POST).
 func pageTokens(fake *testkit.Fake) []string {
 	var seen []string
 	for _, c := range fake.Calls() {
@@ -75,7 +71,6 @@ func TestQuery_followsNextPageToken(t *testing.T) {
 	if got := countRows(t, raw, "rows"); got != 2 {
 		t.Errorf("merged rows = %d, want 2 (both pages)", got)
 	}
-	// Page 2 must have carried the continuation token from page 1.
 	if seen := pageTokens(rt); len(seen) != 2 || seen[0] != "" || seen[1] != "P2" {
 		t.Errorf("pageTokens seen = %v, want [\"\" \"P2\"]", seen)
 	}
@@ -94,7 +89,6 @@ func TestSearchErrorIssues_paginatesToLimit(t *testing.T) {
 	if got := countRows(t, raw, "errorIssues"); got != 3 {
 		t.Errorf("issues = %d, want 3 (capped by --limit across pages)", got)
 	}
-	// It should have stopped after the 2nd page (2+2 >= 3), not fetched page 3.
 	if n := len(rt.Calls()); n != 2 {
 		t.Errorf("fetched %d pages, want 2 (stop once limit reached)", n)
 	}
@@ -115,7 +109,6 @@ func TestListAnomalies_followsTokenToExhaustion(t *testing.T) {
 }
 
 func TestQuery_tokenLoopDetected(t *testing.T) {
-	// A server that repeats the same nextPageToken must fail loudly, not loop.
 	rt := seqFake(
 		`{"rows":[{"startTime":{"year":2026,"month":6,"day":1}}],"nextPageToken":"SAME"}`,
 		`{"rows":[{"startTime":{"year":2026,"month":6,"day":2}}],"nextPageToken":"SAME"}`,

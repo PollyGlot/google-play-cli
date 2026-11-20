@@ -11,9 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// Story 6: the package name flows into `.gplay/edit-<package>.json`. It comes
-// from --package or from .gplay/config.json, and nothing upstream forbids a
-// separator, so a crafted one would write outside .gplay/.
 func TestWriteRefusesTraversingPackage(t *testing.T) {
 	repo := t.TempDir()
 	gplayDir := filepath.Join(repo, ".gplay")
@@ -34,7 +31,6 @@ func TestWriteRefusesTraversingPackage(t *testing.T) {
 		}
 	}
 
-	// Nothing was written anywhere: the .gplay dir is still empty.
 	entries, err := os.ReadDir(gplayDir)
 	if err != nil {
 		t.Fatal(err)
@@ -57,8 +53,6 @@ func TestLookupAndClearRefuseTraversingPackage(t *testing.T) {
 	}
 }
 
-// A real Android package name must keep round-tripping, including through a
-// symlinked repo (story 7): containment is a guard, not a new restriction.
 func TestRoundTripThroughSymlinkedGplayDir(t *testing.T) {
 	real := t.TempDir()
 	gplayDir := filepath.Join(real, ".gplay")
@@ -87,8 +81,6 @@ func TestRoundTripThroughSymlinkedGplayDir(t *testing.T) {
 	}
 }
 
-// Write must still create .gplay/ on first use: containment cannot depend on
-// the directory already existing.
 func TestWriteCreatesMissingGplayDir(t *testing.T) {
 	gplayDir := filepath.Join(t.TempDir(), ".gplay")
 	if err := editpin.Write(config.OSFS{}, gplayDir, "com.example.app", "edit-1"); err != nil {
@@ -99,11 +91,6 @@ func TestWriteCreatesMissingGplayDir(t *testing.T) {
 	}
 }
 
-// The atomic write stages through `<pin>.tmp`, and that sibling is a path the
-// repo can pre-place: the `edit-*.json` glob `gplay init` gitignores does NOT
-// cover the `.tmp` suffix, so a symlink named `edit-<pkg>.json.tmp` is
-// committable. Without a guard on the staging path, WriteFile follows it and
-// overwrites whatever it points at, with the operator's own rights.
 func TestWriteRefusesSymlinkedTmpPath(t *testing.T) {
 	repo := t.TempDir()
 	gplayDir := filepath.Join(repo, ".gplay")
@@ -141,9 +128,6 @@ func TestWriteRefusesSymlinkedTmpPath(t *testing.T) {
 	}
 }
 
-// A .tmp symlink pointing back INSIDE the .gplay dir passes containment (its
-// target is in the root) yet still writes to a file Write did not name. The
-// leaf-symlink refusal is what covers it.
 func TestWriteRefusesTmpSymlinkPointingInsideTheRoot(t *testing.T) {
 	gplayDir := filepath.Join(t.TempDir(), ".gplay")
 	if err := os.MkdirAll(gplayDir, 0o755); err != nil {

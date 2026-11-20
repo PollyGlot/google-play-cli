@@ -22,8 +22,6 @@ const (
 
 const variantBody = `{"variantId":3,"deviceSpec":{"screenDensity":480,"supportedAbis":["arm64-v8a","armeabi-v7a"],"supportedLocales":["en-US"]},"options":{"uncompressedNativeLibraries":true}}`
 
-// TestEveryCallAddressesTheVariantsResource pins verb and absolute URL of the
-// four calls: application-scoped, never under /edits/.
 func TestEveryCallAddressesTheVariantsResource(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
@@ -66,9 +64,6 @@ func TestEveryCallAddressesTheVariantsResource(t *testing.T) {
 	}
 }
 
-// TestCreate_sendsSpecAndParsesVariant asserts the body carries the device
-// spec in the caller's ABI order, omits the server-assigned variantId, and the
-// created variant comes back parsed and verbatim.
 func TestCreate_sendsSpecAndParsesVariant(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, variantBody))
 	req := systemapks.Variant{

@@ -1,14 +1,3 @@
-// diagnostic.go: the machine-readable diagnostic-code layer that sits on top of
-// the exit-code taxonomy (docs/DESIGN.md §9). An exit code says which bucket a
-// failure fell into; a diagnostic code says which failure it was, so an agent
-// can branch on EDIT_ALREADY_EXISTS instead of regexing the human message for
-// the word "already". See ADR-0044.
-//
-// Classification is TOTAL: every non-nil error yields a code, derived from the
-// exit code it already carries plus, on an upstream failure, the API status and
-// the verbatim Google `error.errors[].reason` values. There is therefore no
-// "unclassified error path" to police per error type: adding a new typed error
-// anywhere in the tree inherits a code from its ExitCode by construction.
 package exit
 
 import (
@@ -19,111 +8,40 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// Code is a stable, SCREAMING_SNAKE diagnostic identifier. Codes are part of
-// the frozen Public contract (ADR-0010/0042) and APPEND-ONLY: a new failure
-// mode earns a new code, an existing one is never renamed or repurposed, so a
-// consumer's dispatch table keeps working across upgrades.
 type Code string
 
-// The frozen code vocabulary. Local failures (the first block) mirror the
-// exit-code taxonomy one-for-one; upstream failures (the second) refine the
-// coarse HTTP buckets with the discriminants agents actually branch on.
 const (
-	// CodeGenericError is the fallback when an error carries no exit code of
-	// its own (exit 1). It is a code, not a hole: a consumer still gets a
-	// stable token to log and alert on.
-	CodeGenericError Code = "GENERIC_ERROR"
-	// CodeUsageError is CLI misuse: unknown flag, bad value, wrong arity.
-	CodeUsageError Code = "USAGE_ERROR"
-	// CodeSafetyFlagRequired is the deterministically resolvable refusal: the
-	// envelope's `requires` names the flag to re-run with (ADR-0017).
+	CodeGenericError       Code = "GENERIC_ERROR"
+	CodeUsageError         Code = "USAGE_ERROR"
 	CodeSafetyFlagRequired Code = "SAFETY_FLAG_REQUIRED"
-	// CodePolicyReadonly is a refusal by environment policy (GPLAY_READONLY);
-	// unlike SAFETY_FLAG_REQUIRED it is NOT resolvable by adding a flag.
-	CodePolicyReadonly Code = "POLICY_READONLY"
-	// CodeAuthFailed is an authentication failure: no Account, invalid service
-	// account, token refused, missing scope.
-	CodeAuthFailed Code = "AUTH_FAILED"
-	// CodeValidationFailed is a client-side rejection before or instead of the
-	// API call: malformed artifact, unknown locale, invalid catalog file.
-	CodeValidationFailed Code = "VALIDATION_FAILED"
+	CodePolicyReadonly     Code = "POLICY_READONLY"
+	CodeAuthFailed         Code = "AUTH_FAILED"
+	CodeValidationFailed   Code = "VALIDATION_FAILED"
 
-	// CodePermissionDenied is an upstream 403: the Account is authenticated but
-	// not invited on the app or the Developer account.
-	CodePermissionDenied Code = "PERMISSION_DENIED"
-	// CodeInvalidArgument is an upstream 400 the client sent badly.
-	CodeInvalidArgument Code = "INVALID_ARGUMENT"
-	// CodeNotFound is an upstream 404: the package, track or Edit is not there.
-	CodeNotFound Code = "NOT_FOUND"
-	// CodeBasePlanNotDraft is the refused base plan delete in `subscriptions
-	// apply`: the API would not delete a base plan that is not DRAFT (an
-	// INACTIVE one, which Discovery documents both as deletable and not), so
-	// the file keeps it with state: INACTIVE, the one file that converges
-	// (#778).
-	// Without its own code a 400 would fall into INVALID_ARGUMENT and an
-	// agent could not tell "malformed request" from "keep it as INACTIVE",
-	// which is precisely the case the hint exists for.
-	CodeBasePlanNotDraft Code = "BASE_PLAN_NOT_DRAFT"
-	// CodeOfferNotDraft is the refused subscription offer delete in
-	// `subscriptions apply`: offers.delete documents DRAFT as the only
-	// deletable state, so the file keeps an offer Play will not delete with
-	// state: INACTIVE, the one file that converges (#790). Same reason as
-	// BASE_PLAN_NOT_DRAFT for its own code: a 400 alone reads as a malformed
-	// request.
-	CodeOfferNotDraft Code = "OFFER_NOT_DRAFT"
-	// CodeAPIError is the residual upstream 4xx bucket.
-	CodeAPIError Code = "API_ERROR"
-	// CodeUpstreamUnavailable is an upstream 5xx: Google is unhealthy, retry.
-	CodeUpstreamUnavailable Code = "UPSTREAM_UNAVAILABLE"
-	// CodeNetworkError is a transport failure with no HTTP response at all:
-	// timeout, DNS, connection refused.
-	CodeNetworkError Code = "NETWORK_ERROR"
-	// CodeCommitOutcomeUnknown is an Edit commit that failed after the request
-	// left (timeout, reset, 5xx): it may have been applied. The exit code stays
-	// the network or upstream one (50 or 40), but unlike NETWORK_ERROR and
-	// UPSTREAM_UNAVAILABLE it is not retryable: a blind re-run of a publish that
-	// did land fails on the already-used version code (#598).
+	CodePermissionDenied     Code = "PERMISSION_DENIED"
+	CodeInvalidArgument      Code = "INVALID_ARGUMENT"
+	CodeNotFound             Code = "NOT_FOUND"
+	CodeBasePlanNotDraft     Code = "BASE_PLAN_NOT_DRAFT"
+	CodeOfferNotDraft        Code = "OFFER_NOT_DRAFT"
+	CodeAPIError             Code = "API_ERROR"
+	CodeUpstreamUnavailable  Code = "UPSTREAM_UNAVAILABLE"
+	CodeNetworkError         Code = "NETWORK_ERROR"
 	CodeCommitOutcomeUnknown Code = "COMMIT_OUTCOME_UNKNOWN"
-	// CodeStateConflict is the residual 409 bucket: the remote state is not
-	// what the call assumed (ambiguous target, concurrent change).
-	CodeStateConflict Code = "STATE_CONFLICT"
-	// CodeEditAlreadyExists is the `editAlreadyExists` reason: another Edit is
-	// already open on the package, so this one cannot begin.
-	CodeEditAlreadyExists Code = "EDIT_ALREADY_EXISTS"
-	// CodeEditExpired is the `editExpired` reason: the pinned Edit aged out and
-	// must be re-begun before the mutation is replayed.
-	CodeEditExpired Code = "EDIT_EXPIRED"
-	// CodeRateLimitExceeded is a 429 or a quota/rate reason: back off and retry.
-	CodeRateLimitExceeded Code = "RATE_LIMIT_EXCEEDED"
+	CodeStateConflict        Code = "STATE_CONFLICT"
+	CodeEditAlreadyExists    Code = "EDIT_ALREADY_EXISTS"
+	CodeEditExpired          Code = "EDIT_EXPIRED"
+	CodeRateLimitExceeded    Code = "RATE_LIMIT_EXCEEDED"
 
-	// CodeFindingsPresent is exit 70: a read-only check command ran to
-	// completion and its report carries findings. Not a failure; fix what the
-	// report on stdout names (docs/DESIGN.md §9).
 	CodeFindingsPresent Code = "FINDINGS_PRESENT"
 )
 
-// CodeDoc is one row of the diagnostic-code catalog, surfaced by
-// `gplay help exit-codes` and `gplay schema --codes`.
 type CodeDoc struct {
-	Code Code `json:"code"`
-	// ExitCode is the exit code this failure CANONICALLY exits with. Several
-	// codes share one exit code on purpose: that is the whole point of the
-	// layer (409 conflict vs editAlreadyExists both exit 60). It is
-	// documentation, not a promise of equality: a handful of wrapped errors
-	// keep a narrower exit code than the bucket (a 400+editAlreadyExists exits
-	// 30, not 60), and the envelope's own exitCode field is always the
-	// authoritative one for that failure.
-	ExitCode int `json:"exitCode"`
-	// Retryable reports whether replaying the same command unchanged can
-	// plausibly succeed. It is a property of the code, so retry logic needs no
-	// cause-specific table.
+	Code      Code   `json:"code"`
+	ExitCode  int    `json:"exitCode"`
 	Retryable bool   `json:"retryable"`
 	Meaning   string `json:"meaning"`
 }
 
-// codeCatalog is the single source of truth for the vocabulary: the classifier
-// reads Retryable from it, the CLI prints it, and the completeness test walks
-// it. Ordered by exit code, then by specificity within a bucket.
 var codeCatalog = []CodeDoc{
 	{CodeGenericError, 1, false, "Unclassified failure (no typed exit code); consult the message"},
 	{CodeUsageError, 2, false, "CLI misuse: unknown flag, bad value, wrong number of positional args"},
@@ -147,16 +65,12 @@ var codeCatalog = []CodeDoc{
 	{CodeFindingsPresent, 70, false, "A read-only check command completed and reported findings; not a failure"},
 }
 
-// CodeCatalog returns the documented diagnostic-code vocabulary in catalog
-// order. It is the introspection surface behind `gplay help exit-codes` and
-// `gplay schema --codes`, so a skill author never reads source to stay in sync.
 func CodeCatalog() []CodeDoc {
 	out := make([]CodeDoc, len(codeCatalog))
 	copy(out, codeCatalog)
 	return out
 }
 
-// LookupCode returns the catalog row for c.
 func LookupCode(c Code) (CodeDoc, bool) {
 	for _, d := range codeCatalog {
 		if d.Code == c {
@@ -166,31 +80,21 @@ func LookupCode(c Code) (CodeDoc, bool) {
 	return CodeDoc{}, false
 }
 
-// Diagnoser is the opt-in refinement contract, the diagnostic-code sibling of
-// Coder: an error that knows a more precise code than its exit code implies
-// declares it next to its own definition, and no dispatcher in this package
-// grows a case for it.
 type Diagnoser interface {
 	DiagnosticCode() Code
 }
 
-// Diagnostic is the classified view of a failure: everything a machine
-// consumer needs to branch, in one struct. It is what internal/output
-// serializes into the JSON error envelope (ADR-0023).
 type Diagnostic struct {
 	Code      Code
 	ExitCode  int
 	Retryable bool
-	Operation string       // API operation, e.g. "edits.commit"; empty on a local failure
-	Resource  api.Resource // what the call addressed, on any axis; zero when unknown
-	Package   string       // Resource.ID when it is a package, empty otherwise (#599)
-	Reasons   []string     // verbatim upstream error.errors[].reason values
-	Message   string       // the same human string stderr carries
+	Operation string
+	Resource  api.Resource
+	Package   string
+	Reasons   []string
+	Message   string
 }
 
-// Classify is the one classifier: it maps any error to its Diagnostic. A nil
-// error yields the zero value (no code, exit 0). It never returns an empty
-// Code for a non-nil error.
 func Classify(err error) Diagnostic {
 	if err == nil {
 		return Diagnostic{}
@@ -204,8 +108,6 @@ func Classify(err error) Diagnostic {
 	if errors.As(err, &apiErr) {
 		d.Operation = apiErr.Operation
 		d.Resource = apiErr.Target()
-		// package is derived from the target, never copied from a module's
-		// field: the envelope's `package` promises an Android package name.
 		if d.Resource.Kind == api.KindPackage {
 			d.Package = d.Resource.ID
 		}
@@ -214,13 +116,6 @@ func Classify(err error) Diagnostic {
 	return d
 }
 
-// classifyCode resolves the code in three passes, most specific first: an
-// explicit Diagnoser, then the upstream API refinement, then the exit-code
-// table. Local typed errors (UsageError, SafetyFlagError, PolicyError, the
-// ~40 per-command validation errors) deliberately get NO branch here: they
-// already declare an exit code, and the table maps it, so a new one is
-// classified the day it is written rather than the day someone remembers
-// to extend a dispatcher.
 func classifyCode(err error, exitCode int) Code {
 	var refined Diagnoser
 	if errors.As(err, &refined) {
@@ -235,11 +130,6 @@ func classifyCode(err error, exitCode int) Code {
 	return codeForExit(exitCode)
 }
 
-// reasonCodes maps the Google `error.errors[].reason` values gplay promotes to
-// a dedicated code. Keys are lowercased for a case-insensitive lookup. The map
-// is deliberately small: a reason earns a code when a consumer would act
-// differently on it, otherwise the status bucket is enough and the raw reason
-// still travels verbatim in the envelope's `reasons`.
 var reasonCodes = map[string]Code{
 	"editalreadyexists":     CodeEditAlreadyExists,
 	"editexpired":           CodeEditExpired,
@@ -248,19 +138,12 @@ var reasonCodes = map[string]Code{
 	"quotaexceeded":         CodeRateLimitExceeded,
 }
 
-// classifyAPI refines an upstream failure: a known reason wins (it is Google's
-// own discriminant), then the HTTP statuses whose meaning the coarse exit
-// bucket loses, then the exit-code table.
 func classifyAPI(e *api.Error, exitCode int) Code {
 	for _, r := range e.Reasons {
 		if c, ok := reasonCodes[strings.ToLower(strings.TrimSpace(r))]; ok {
 			return c
 		}
 	}
-	// The 400/404 refinements are guarded on exit 30 because the artifact
-	// uploads remap those same statuses to exit 20 ("malformed artifact",
-	// api.Error.ExitCode): there, VALIDATION_FAILED is the truthful code and
-	// NOT_FOUND would actively mislead.
 	switch e.StatusCode {
 	case http.StatusTooManyRequests:
 		return CodeRateLimitExceeded
@@ -276,9 +159,6 @@ func classifyAPI(e *api.Error, exitCode int) Code {
 	return codeForExit(exitCode)
 }
 
-// codeForExit is the total fallback from the exit-code taxonomy to a code. Any
-// exit code without a row (which the catalog test forbids) degrades to
-// GENERIC_ERROR rather than to an empty string: a consumer always gets a token.
 func codeForExit(exitCode int) Code {
 	switch exitCode {
 	case 2:

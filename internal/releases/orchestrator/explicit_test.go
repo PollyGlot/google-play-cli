@@ -10,11 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestUpload_explicitEdit_reusesPinNoInsertNoCommit is the #48 reuse contract:
-// when Opts.ExplicitEditID is set (a `gplay edits begin` pin), the upload
-// mutates that already-open Edit and opens/commits/discards NONE of its own.
-// The insert/commit/delete handlers fail the test if reached, and the writes
-// must target the pinned Edit ID.
 func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newPlay(playAPI{
@@ -49,7 +44,6 @@ func TestUpload_explicitEdit_reusesPinNoInsertNoCommit(t *testing.T) {
 		t.Errorf("versionCode = %d, want 7", result.VersionCode)
 	}
 
-	// Zero edits.insert calls (the explicit AC), and the writes target the pin.
 	var sawBundle, sawTrack bool
 	for _, c := range apiCalls(rt) {
 		if strings.HasPrefix(c, "POST ") && strings.HasSuffix(c, "/edits") {

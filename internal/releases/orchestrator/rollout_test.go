@@ -1,13 +1,3 @@
-// Package orchestrator_test exercises the rollout state-machine verbs
-// (Rollout / Halt / Resume / Complete) through the same RoundTripper-mocked
-// Google Play Developer API used by the upload and promote suites. Each
-// verb mutates the status / userFraction of the latest release on a track
-// inside one Edit: edits.insert → tracks.get → tracks.update → edits.commit.
-//
-// These tests deliberately do NOT reuse promote's pickSourceRelease: the
-// rollout family carries its own picker (pickTargetRelease) with its own
-// not-found semantics (exit 30, vs promote's exit 60), so the suites stay
-// independent.
 package orchestrator_test
 
 import (
@@ -24,14 +14,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// stateAPI reuses promoteAPI's routing (insert → tracks.get → tracks.update →
-// commit, plus cleanup delete) since the state-machine call sequence is
-// identical to a promote that targets a single track. sourceTrackGetResp
-// stands in for "the track's current state" returned by tracks.get.
 type stateAPI = promoteAPI
 
-// wantStateSequence is the canonical four-call sequence every state verb
-// issues against a single track.
 func wantStateSequence(pkg, editID, track string) []string {
 	base := "/androidpublisher/v3/applications/" + pkg + "/edits"
 	return []string{
@@ -54,8 +38,6 @@ func assertSequence(t *testing.T, got, want []string) {
 	}
 }
 
-// TestRollout_setsInProgressAtTargetFraction is AC1: rollout --staged 0.05
-// ramps the latest release to userFraction 0.05 and status inProgress.
 func TestRollout_setsInProgressAtTargetFraction(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-rollout",
@@ -94,8 +76,6 @@ func TestRollout_setsInProgressAtTargetFraction(t *testing.T) {
 	}
 }
 
-// TestHalt_setsHaltedPreservesFraction is AC2: halt freezes the rollout:
-// status becomes halted, userFraction is preserved as-is.
 func TestHalt_setsHaltedPreservesFraction(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-halt",
@@ -126,8 +106,6 @@ func TestHalt_setsHaltedPreservesFraction(t *testing.T) {
 	}
 }
 
-// TestResume_setsInProgressPreservesFraction is AC3: resume flips a halted
-// release back to inProgress without touching the (preserved) fraction.
 func TestResume_setsInProgressPreservesFraction(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-resume",
@@ -157,8 +135,6 @@ func TestResume_setsInProgressPreservesFraction(t *testing.T) {
 	}
 }
 
-// TestComplete_rampsToFullRollout is AC4: complete sets status completed
-// and removes the userFraction.
 func TestComplete_rampsToFullRollout(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-complete",
@@ -188,10 +164,6 @@ func TestComplete_rampsToFullRollout(t *testing.T) {
 	}
 }
 
-// TestState_preservesReleaseNotes guards against silent data loss: a state
-// transition PUTs the whole release back, so the current release's
-// releaseNotes (and versionCodes) MUST be carried over verbatim: dropping
-// them would wipe the track's notes on the next commit.
 func TestState_preservesReleaseNotes(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-notes",
@@ -227,9 +199,6 @@ func TestState_preservesReleaseNotes(t *testing.T) {
 	}
 }
 
-// TestState_ambiguousTrack_returnsExit60 is AC5: two coexisting releases
-// (inProgress + halted) with no disambiguator must refuse with exit 60
-// and must NOT write to the track.
 func TestState_ambiguousTrack_returnsExit60(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-ambiguous",
@@ -269,8 +238,6 @@ func TestState_ambiguousTrack_returnsExit60(t *testing.T) {
 	}
 }
 
-// TestState_versionCodeDisambiguates asserts --version-code selects the
-// matching release out of multiple coexisting ones AND mutates only it.
 func TestState_versionCodeDisambiguates(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-disambig",
@@ -297,18 +264,11 @@ func TestState_versionCodeDisambiguates(t *testing.T) {
 	if !strings.Contains(body, `"versionCodes":["501"]`) {
 		t.Errorf("body = %s, want the picked release 501", body)
 	}
-	// 501 was the only inProgress release; halting it must leave no
-	// inProgress in the body (it was mutated, not some other release).
 	if strings.Contains(body, `"inProgress"`) {
 		t.Errorf("body = %s, want release 501 flipped away from inProgress", body)
 	}
 }
 
-// TestState_coexistingReleases_preservedOnUpdate is the regression guard for
-// the data-loss bug: tracks.update REPLACES the whole releases array, so
-// acting on one release of a multi-release track must re-send the others
-// unchanged. Without this, halting/completing one release silently deletes
-// the coexisting one.
 func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-coexist",
@@ -331,13 +291,9 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 	}
 
 	body := string(trackUpdateReq(rt))
-	// The untouched release 500 must survive verbatim.
 	if !strings.Contains(body, `"versionCodes":["500"]`) {
 		t.Errorf("body = %s, coexisting release 500 was dropped (data loss)", body)
 	}
-	// Decode per release rather than substring-match the whole body: 501
-	// holding on to its original 0.5 would be exactly as invalid as a 1.0,
-	// and a Contains check for one value would not notice the other.
 	var updated struct {
 		Releases []map[string]json.RawMessage `json:"releases"`
 	}
@@ -353,7 +309,6 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 		byName[name] = rel
 	}
 
-	// 501 ramped to completed, and its fraction removed with it.
 	rel, ok := byName["501"]
 	if !ok {
 		t.Fatalf("body = %s, want release 501 in tracks.update", body)
@@ -365,7 +320,6 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 		t.Errorf("release 501 kept userFraction %s, want the key removed", raw)
 	}
 
-	// 500 was halted at 0.1 and must stay exactly that.
 	rel, ok = byName["500"]
 	if !ok {
 		t.Fatalf("body = %s, coexisting release 500 was dropped (data loss)", body)
@@ -378,10 +332,6 @@ func TestState_coexistingReleases_preservedOnUpdate(t *testing.T) {
 	}
 }
 
-// TestState_preservesUnmodeledFields asserts that fields gplay does not model
-// on the Release struct (here inAppUpdatePriority, and a nested
-// countryTargeting) survive a transition: the raw-JSON patch must not strip
-// them, since tracks.update would otherwise wipe configuration set elsewhere.
 func TestState_preservesUnmodeledFields(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-unmodeled",
@@ -419,8 +369,6 @@ func TestState_preservesUnmodeledFields(t *testing.T) {
 	}
 }
 
-// TestState_releaseNameDisambiguates asserts --release-name picks by the
-// release's Name field.
 func TestState_releaseNameDisambiguates(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-disambig-name",
@@ -446,10 +394,6 @@ func TestState_releaseNameDisambiguates(t *testing.T) {
 	}
 }
 
-// TestState_noReleasesOnTrack_returnsExit30 asserts that an existing track
-// with zero releases surfaces as "release not found" (exit 30), distinct
-// from the ambiguous case (60). Promote treats this as exit 2; the rollout
-// family follows issue #46's exit-30 contract instead: hence its own picker.
 func TestState_noReleasesOnTrack_returnsExit30(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-empty",
@@ -477,8 +421,6 @@ func TestState_noReleasesOnTrack_returnsExit30(t *testing.T) {
 	}
 }
 
-// TestState_versionCodeNotFound_returnsExit30 asserts that a --version-code
-// matching nothing on the track is "release not found" (exit 30).
 func TestState_versionCodeNotFound_returnsExit30(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-nomatch",
@@ -508,8 +450,6 @@ func TestState_versionCodeNotFound_returnsExit30(t *testing.T) {
 	}
 }
 
-// TestState_trackGet404_returnsExit30 asserts a 404 from tracks.get (the
-// track itself does not exist) surfaces as exit 30 via api.Error.
 func TestState_trackGet404_returnsExit30(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "edit-404",
@@ -535,9 +475,6 @@ func TestState_trackGet404_returnsExit30(t *testing.T) {
 	}
 }
 
-// TestRollout_fractionOutOfRange_returnsExit2 asserts the CLI-misuse guard
-// from AC6: --staged 0, 1, > 1, or otherwise outside (0, 1) is rejected before any
-// HTTP with exit 2 and a range hint.
 func TestRollout_fractionOutOfRange_returnsExit2(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -581,9 +518,6 @@ func TestRollout_fractionOutOfRange_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestState_missingTrack_returnsExit2 asserts the orchestrator rejects an
-// empty Track before any HTTP: symmetric with promote's validateOpts so
-// library / future-MCP callers do not burn an Edit on bad input.
 func TestState_missingTrack_returnsExit2(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "should-not-open",
@@ -609,8 +543,6 @@ func TestState_missingTrack_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestState_trackUpdateFail_triggersEditDelete is AC7: a 5xx on
-// tracks.update must auto-discard the orphan Edit, same as upload/promote.
 func TestState_trackUpdateFail_triggersEditDelete(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-state-fail",
@@ -642,9 +574,6 @@ func TestState_trackUpdateFail_triggersEditDelete(t *testing.T) {
 	}
 }
 
-// TestState_trackUpdateFail_keepOnFailure_doesNotDelete asserts the
-// --keep-edit-on-failure opt-out: the orphan Edit is left open and the
-// error is wrapped in *edits.DanglingEditError carrying the Edit ID.
 func TestState_trackUpdateFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID:             "edit-state-keep",
@@ -676,8 +605,6 @@ func TestState_trackUpdateFail_keepOnFailure_doesNotDelete(t *testing.T) {
 	}
 }
 
-// TestRollout_dryRun_makesNoHTTPCalls asserts --dry-run previews the
-// planned transition with zero HTTP calls (no Edit opened).
 func TestRollout_dryRun_makesNoHTTPCalls(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		editID: "should-not-open",
@@ -714,8 +641,6 @@ func TestRollout_dryRun_makesNoHTTPCalls(t *testing.T) {
 	}
 }
 
-// TestComplete_dryRun_previewsCompleted asserts dry-run also previews the
-// terminal transitions (complete → completed, no fraction) without HTTP.
 func TestComplete_dryRun_previewsCompleted(t *testing.T) {
 	rt := newPromoteFake(stateAPI{})
 	hc := &http.Client{Transport: rt}
@@ -736,8 +661,6 @@ func TestComplete_dryRun_previewsCompleted(t *testing.T) {
 	}
 }
 
-// TestRollout_dryRun_invalidFractionStillCaught asserts validation runs
-// even in dry-run mode, so a bad preview is not silently "OK".
 func TestRollout_dryRun_invalidFractionStillCaught(t *testing.T) {
 	rt := newPromoteFake(stateAPI{})
 	hc := &http.Client{Transport: rt}
@@ -760,15 +683,10 @@ func TestRollout_dryRun_invalidFractionStillCaught(t *testing.T) {
 	}
 }
 
-// TestState_confirmGate verifies the ADR-0002 production confirm guard for
-// the rollout family: rollout / resume / complete on production reach real
-// users and need Confirm=true; halt does not (it reduces exposure); and
-// non-production tracks never need it.
 func TestState_confirmGate(t *testing.T) {
 	const onProd = `{"track":"production","releases":[{"name":"800","status":"inProgress","versionCodes":["800"],"userFraction":0.2}]}`
 	const onBeta = `{"track":"beta","releases":[{"name":"800","status":"inProgress","versionCodes":["800"],"userFraction":0.2}]}`
 
-	// complete on production without --confirm → refused before any HTTP.
 	t.Run("complete production without confirm refuses", func(t *testing.T) {
 		rt := newPromoteFake(stateAPI{
 			editID: "should-not-open",
@@ -799,7 +717,6 @@ func TestState_confirmGate(t *testing.T) {
 		}
 	})
 
-	// halt on production without --confirm → allowed (reduces exposure).
 	t.Run("halt production without confirm proceeds", func(t *testing.T) {
 		rt := newPromoteFake(stateAPI{editID: "edit-halt-noconfirm", sourceTrackGetResp: onProd, trackUpdateRawResp: `{}`})
 		hc := &http.Client{Transport: rt}
@@ -810,7 +727,6 @@ func TestState_confirmGate(t *testing.T) {
 		}
 	})
 
-	// complete on a non-production track without --confirm → allowed.
 	t.Run("complete beta without confirm proceeds", func(t *testing.T) {
 		rt := newPromoteFake(stateAPI{editID: "edit-complete-beta", sourceTrackGetResp: onBeta, trackUpdateRawResp: `{}`})
 		hc := &http.Client{Transport: rt}
@@ -821,7 +737,6 @@ func TestState_confirmGate(t *testing.T) {
 		}
 	})
 
-	// rollout on production WITH --confirm → allowed.
 	t.Run("rollout production with confirm proceeds", func(t *testing.T) {
 		rt := newPromoteFake(stateAPI{editID: "edit-rollout-confirm", sourceTrackGetResp: onProd, trackUpdateRawResp: `{}`})
 		hc := &http.Client{Transport: rt}

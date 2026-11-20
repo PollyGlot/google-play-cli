@@ -1,45 +1,18 @@
 package apiregistry
 
-// Exclusion is one API method gplay will never wrap, with the one-line reason
-// why. "By nature" is a narrow claim under ADR-0026: every Play *admin* method
-// a service account can call is in scope, so an exclusion has exactly two
-// legitimate grounds (ADR-0049):
-//
-//   - runtime: the method is called server-to-server by an app backend
-//     reacting to a user event: a purchase token minted on a device, a token
-//     delivered by a Real-time Developer Notification, or a transaction the
-//     backend must report as it happens;
-//   - user auth: no service account can call the method at all, because Google
-//     only accepts a user-delegated OAuth token for it, and gplay
-//     authenticates with service accounts alone (docs/DESIGN.md §1). The Play
-//     Games Services Management API (gamesManagement) is the case.
-//
-// An admin method a service account CAN call is never excluded. A method that
-// is merely unshipped, redundant or parked is NOT excluded either: it is
-// uncovered (or carries its own disposition), and docs/COVERAGE.md says so.
 type Exclusion struct {
 	MethodID string
 	Reason   string
 }
 
-// Exclusions returns the list. Like Entries it is a function so no caller can
-// mutate the shared backing array.
 func Exclusions() []Exclusion {
 	out := make([]Exclusion, len(exclusions))
 	copy(out, exclusions)
 	return out
 }
 
-// userAuthOnly is the reason shared by every gamesManagement method: one
-// sentence for the whole API, since its auth model, not each method's purpose,
-// is what puts it out of reach.
 const userAuthOnly = "user auth: callable only by a tester player or a Play Console user account (user-delegated OAuth scope https://www.googleapis.com/auth/games), never by a service account"
 
-// exclusions is ordered by method id, like entries, so a diff reads like a diff
-// on paths.txt.
-//
-// The Play Integrity API is excluded by nature too, but it is its own API with
-// no snapshot under docs/discovery/, so it has no method id to list here.
 var exclusions = []Exclusion{
 	{
 		MethodID: "androidpublisher.externaltransactions.createexternaltransaction",

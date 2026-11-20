@@ -1,10 +1,3 @@
-// offers.go: the level-3 surface of the Monetization catalog (slice #369):
-// subscription offers (monetization.subscriptions.basePlans.offers) and the
-// lifecycle state ops of base plans and offers. Offers are a real sub-resource
-// with their own CRUD: unlike base plans, whose config rides the parent
-// subscription patch, so the catalog embeds them in the files while apply
-// reconciles them through these endpoints (ADR-0041 §5). The one base-plan
-// endpoint of its own besides the state ops is basePlans.delete (slice #542).
 package subscriptions
 
 import (
@@ -20,7 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
 
-// op* tag *api.Error with the REST reference method id.
 const (
 	opOffersList         = "monetization.subscriptions.basePlans.offers.list"
 	opOffersCreate       = "monetization.subscriptions.basePlans.offers.create"
@@ -33,13 +25,6 @@ const (
 	opBasePlanDelete     = "monetization.subscriptions.basePlans.delete"
 )
 
-// m* are the registry entries this package calls. Resolving them at init turns
-// an unregistered or vanished method into a startup panic CI catches (the
-// registry tests resolve every entry), never a runtime surprise for a user;
-// verb and URL template then come from the Discovery snapshot instead of
-// literals maintained here (#513). The custom verbs (`:activate`,
-// `:deactivate`, `:migratePrices`) are part of the snapshot's flatPath, so they
-// ride the template too rather than being concatenated here.
 var (
 	mOffersList         = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.list")
 	mOffersCreate       = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.offers.create")
@@ -53,8 +38,6 @@ var (
 	mMigratePrices      = apiregistry.MustResolve("androidpublisher.monetization.subscriptions.basePlans.migratePrices")
 )
 
-// OfferItem is one live offer: its full composite identity plus the verbatim
-// resource bytes.
 type OfferItem struct {
 	ProductID  string
 	BasePlanID string
@@ -62,16 +45,11 @@ type OfferItem struct {
 	Raw        json.RawMessage
 }
 
-// offersPage mirrors the ListSubscriptionOffersResponse envelope.
 type offersPage struct {
 	SubscriptionOffers []json.RawMessage `json:"subscriptionOffers"`
 	NextPageToken      string            `json:"nextPageToken"`
 }
 
-// ListAllOffers reads every offer of the app in one wildcard walk
-// (productId='-', basePlanId='-'), following nextPageToken to completion:
-// one paginated call instead of one per base plan, and no silent truncation
-// (a missing page would read as offer deletes in a Reconciliation plan).
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opOffersList, Target: pkg, What: "offers.list"},
 		func(token string, _ int) ([]OfferItem, string, error) {
@@ -80,8 +58,6 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 			if token != "" {
 				q.Set("pageToken", token)
 			}
-			// The wildcard walk rides the same template as a scoped list: `-` is
-			// a legal path segment, so escaping leaves it untouched.
 			var pg offersPage
 			if _, err := api.DoJSON(ctx, hc, api.Call{
 				Method: mOffersList, Op: opOffersList, Target: pkg,
@@ -110,8 +86,6 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 	return items, err
 }
 
-// CreateOffer creates an offer under its base plan from the catalog fragment,
-// sent verbatim. offerId and regionsVersion.version ride as query parameters.
 func CreateOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID, regionsVersion string, body json.RawMessage) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("offerId", offerID)
@@ -124,8 +98,6 @@ func CreateOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 	})
 }
 
-// PatchOffer updates an offer from the catalog fragment, sent verbatim, with
-// the updateMask scoped to exactly the changed managed fields (ADR-0041 §5).
 func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID, regionsVersion string, updateMask []string, body json.RawMessage, lt latency.Tolerance) (json.RawMessage, error) {
 	q := url.Values{}
 	q.Set("updateMask", strings.Join(updateMask, ","))
@@ -139,9 +111,6 @@ func PatchOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID
 	})
 }
 
-// DeleteOffer deletes an offer. Reaching here means the plan carried a delete
-// and the operator passed --confirm; the API refuses to delete an active offer,
-// so the gate covers intent while the server covers damage (ADR-0041 §3).
 func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string) error {
 	_, err := api.Do(ctx, hc, api.Call{
 		Method: mOffersDelete, Op: opOffersDelete, Target: pkg,
@@ -150,9 +119,6 @@ func DeleteOffer(ctx context.Context, hc *http.Client, pkg, productID, basePlanI
 	return err
 }
 
-// SetBasePlanState activates (true) or deactivates (false) a base plan: the
-// reconciliation arm of the declarative state: field in the catalog files. The
-// identity rides the path, so the body carries the latency tolerance alone.
 func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, activate bool, lt latency.Tolerance) (json.RawMessage, error) {
 	m, op := mBasePlanDeactivate, opBasePlanDeactivate
 	if activate {
@@ -161,12 +127,6 @@ func SetBasePlanState(ctx context.Context, hc *http.Client, pkg, productID, base
 	return postState(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID), lt)
 }
 
-// DeleteBasePlan deletes a base plan (slice #542): the shrink arm of the
-// base-plan diff, since the parent subscription patch never removes a plan
-// its body omits. The API never deletes an ACTIVE base plan, and Discovery
-// contradicts itself on an INACTIVE one (the method says DRAFT only,
-// BasePlan.state says DRAFT or INACTIVE): the caller surfaces a refusal with
-// the keep-as-INACTIVE hint rather than retrying.
 func DeleteBasePlan(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string) error {
 	_, err := api.Do(ctx, hc, api.Call{
 		Method: mBasePlanDelete, Op: opBasePlanDelete, Target: pkg,
@@ -175,7 +135,6 @@ func DeleteBasePlan(ctx context.Context, hc *http.Client, pkg, productID, basePl
 	return err
 }
 
-// SetOfferState activates (true) or deactivates (false) an offer.
 func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePlanID, offerID string, activate bool, lt latency.Tolerance) (json.RawMessage, error) {
 	m, op := mOffersDeactivate, opOffersDeactivate
 	if activate {
@@ -184,26 +143,18 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, basePla
 	return postState(ctx, hc, m, op, pkg, offerScope(pkg, productID, basePlanID, offerID), lt)
 }
 
-// opMigratePrices tags *api.Error for the subscriber price migration.
 const opMigratePrices = "monetization.subscriptions.basePlans.migratePrices"
 
-// RegionsVersion mirrors the RegionsVersion schema.
 type RegionsVersion struct {
 	Version string `json:"version"`
 }
 
-// RegionalPriceMigration mirrors RegionalPriceMigrationConfig: one region
-// whose legacy price cohorts older than the cutoff migrate to the current
-// price.
 type RegionalPriceMigration struct {
 	RegionCode                    string `json:"regionCode"`
 	OldestAllowedPriceVersionTime string `json:"oldestAllowedPriceVersionTime"`
 	PriceIncreaseType             string `json:"priceIncreaseType,omitempty"`
 }
 
-// MigrateBasePlanPricesRequest mirrors the request schema. The path identity
-// (packageName/productId/basePlanId) is echoed in the body as the schema
-// requires ("must be equal to" the resource fields).
 type MigrateBasePlanPricesRequest struct {
 	PackageName             string                   `json:"packageName"`
 	ProductID               string                   `json:"productId"`
@@ -212,13 +163,6 @@ type MigrateBasePlanPricesRequest struct {
 	RegionsVersion          RegionsVersion           `json:"regionsVersion"`
 }
 
-// MigrateBasePlanPrices migrates EXISTING subscribers of one base plan to the
-// current price (basePlans.migratePrices): the sole imperative escape hatch
-// of the Monetization catalog (ADR-0041 §4): apply never reprices a live
-// purchaser, this call is how an operator deliberately does. One base plan per
-// call: the batch sibling is deliberately not wrapped (no bulk money-moving,
-// the ADR-0031 stance). The command gates it behind --confirm before reaching
-// here.
 func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID, basePlanID string, request MigrateBasePlanPricesRequest) (json.RawMessage, error) {
 	return api.Do(ctx, hc, api.Call{
 		Method: mMigratePrices, Op: opMigratePrices, Target: pkg,
@@ -227,9 +171,6 @@ func MigrateBasePlanPrices(ctx context.Context, hc *http.Client, pkg, productID,
 	})
 }
 
-// offerScope builds the path parameters shared by every base-plan and offer
-// template: the offer id is optional because the base-plan verbs stop one level
-// higher, and the resolver rejects a key its template does not declare.
 func offerScope(pkg, productID, basePlanID string, offerID ...string) map[string]string {
 	p := map[string]string{"packageName": pkg, "productId": productID, "basePlanId": basePlanID}
 	if len(offerID) == 1 {

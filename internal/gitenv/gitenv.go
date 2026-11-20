@@ -1,27 +1,7 @@
-// Package gitenv strips the inherited environment variables that would point a
-// git child process at another repository than the directory gplay hands it,
-// and gplay's own GPLAY_ variables, credentials included. It is shared by
-// every place gplay runs git: `install-skills` (clone into a disposable
-// directory) and the config loader's tracked-file check (#603).
 package gitenv
 
 import "strings"
 
-// locationVars are the inherited variables that move git's idea of *which*
-// repository it is operating on. Setting the command's Dir is not enough: with
-// GIT_DIR (or GIT_WORK_TREE) in the environment, `git init`, `remote add
-// origin` and `checkout --detach` all land on the caller's repository instead
-// of the intended directory, silently rewriting their HEAD, refs and remotes,
-// and `ls-files` answers for the wrong index. That environment is ordinary,
-// not exotic: git sets GIT_DIR for every hook it runs, so gplay run from a
-// pre-commit hook or a git alias would hit it.
-//
-// The environment's *config injection* channel (GIT_CONFIG_COUNT and its
-// numbered key/value pairs, GIT_CONFIG_PARAMETERS) goes for the same reason at
-// one remove: it is `-c` by another name, so an inherited pair could re-enable
-// what a caller's own `-c` disables (core.fsmonitor, hooks). The config
-// *files* are left alone on purpose, so a corporate proxy or CA bundle keeps
-// working.
 var locationVars = map[string]bool{
 	"GIT_DIR":                          true,
 	"GIT_WORK_TREE":                    true,
@@ -37,19 +17,8 @@ var locationVars = map[string]bool{
 	"GIT_CONFIG_PARAMETERS":            true,
 }
 
-// droppedPrefixes cover the numbered GIT_CONFIG_KEY_<n> / GIT_CONFIG_VALUE_<n>
-// pairs, which are the environment form of `-c`, and every GPLAY_ variable.
-// The latter carry gplay's credentials (GPLAY_SERVICE_ACCOUNT may hold the
-// inline key JSON, GPLAY_ACCOUNT and GPLAY_DEVELOPER_ID name what it unlocks)
-// and git reads none of them, so a git child, its credential helpers and hooks
-// get no copy (#795). The whole prefix goes, not a list: a credential variable
-// added later is covered without anyone remembering this file.
 var droppedPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_", "GPLAY_"}
 
-// Safe returns env without the variables that would redirect git away from
-// the directory it is run in, and without gplay's own variables. Everything
-// else is passed through: PATH, HOME, proxy and TLS settings, and the user's
-// own git configuration all still apply.
 func Safe(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, kv := range env {

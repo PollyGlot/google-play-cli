@@ -12,10 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// initiateQuery uploads a small file through UploadWith and returns the query
-// of the resumable initiate request. The Fake refuses the initiate (400), so
-// the upload stops there: the initiate is the request that carries the
-// method's query parameters, which is all these tests pin.
 func initiateQuery(t *testing.T, o bundles.Options) url.Values {
 	t.Helper()
 	aab := filepath.Join(t.TempDir(), "app.aab")
@@ -39,9 +35,6 @@ func initiateQuery(t *testing.T, o bundles.Options) url.Values {
 	return q
 }
 
-// TestUploadWith_deviceTierConfig_sentOnInitiate asserts the device tier
-// config reaches edits.bundles.upload as deviceTierConfigId (the Discovery
-// parameter name), next to the resumable upload type (#603).
 func TestUploadWith_deviceTierConfig_sentOnInitiate(t *testing.T) {
 	q := initiateQuery(t, bundles.Options{DeviceTierConfigID: "LATEST"})
 	if got := q.Get("deviceTierConfigId"); got != "LATEST" {
@@ -52,8 +45,6 @@ func TestUploadWith_deviceTierConfig_sentOnInitiate(t *testing.T) {
 	}
 }
 
-// TestUploadWith_zeroOptions_noDeviceTierConfig asserts the plain upload is
-// unchanged: no deviceTierConfigId unless one was asked for.
 func TestUploadWith_zeroOptions_noDeviceTierConfig(t *testing.T) {
 	q := initiateQuery(t, bundles.Options{})
 	if _, ok := q["deviceTierConfigId"]; ok {

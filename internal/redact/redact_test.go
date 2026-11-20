@@ -9,12 +9,8 @@ import (
 	"testing"
 )
 
-// samplePEM is a SYNTHETIC key body: never a real credential, and shaped so a
-// leak is unmistakable in a failing test (the canary word is not base64).
 const samplePEM = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BLEAKEDSECRETBODY\nQIDAQAB\n-----END PRIVATE KEY-----\n"
 
-// canaries are the markers a leaked credential leaves behind. The canary test
-// greps every rendered error for them.
 var canaries = []string{"BEGIN PRIVATE KEY", "LEAKEDSECRETBODY", "ya29.", "eyJhbGciOi"}
 
 func TestStringMasksCredentialShapes(t *testing.T) {
@@ -25,10 +21,9 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 		wantPresent []string
 	}{
 		{
-			name:       "multiline PEM block",
-			in:         "could not read credential: bad key: " + samplePEM,
-			wantAbsent: []string{"LEAKEDSECRETBODY", "BEGIN PRIVATE KEY"},
-			// The diagnostic prefix must survive: masking is not silencing.
+			name:        "multiline PEM block",
+			in:          "could not read credential: bad key: " + samplePEM,
+			wantAbsent:  []string{"LEAKEDSECRETBODY", "BEGIN PRIVATE KEY"},
 			wantPresent: []string{"could not read credential", Mask},
 		},
 		{
@@ -44,18 +39,15 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 			wantPresent: []string{Mask},
 		},
 		{
-			name:       "service-account JSON private_key field",
-			in:         `{"type":"service_account","client_email":"ci@example.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nLEAKEDSECRETBODY\n-----END PRIVATE KEY-----\n","private_key_id":"abc123def456"}`,
-			wantAbsent: []string{"LEAKEDSECRETBODY", "abc123def456"},
-			// client_email is NOT a secret: it is the single most useful thing in a
-			// misconfiguration report, so it must survive redaction.
+			name:        "service-account JSON private_key field",
+			in:          `{"type":"service_account","client_email":"ci@example.iam.gserviceaccount.com","private_key":"-----BEGIN PRIVATE KEY-----\nLEAKEDSECRETBODY\n-----END PRIVATE KEY-----\n","private_key_id":"abc123def456"}`,
+			wantAbsent:  []string{"LEAKEDSECRETBODY", "abc123def456"},
 			wantPresent: []string{"ci@example.iam.gserviceaccount.com", "service_account"},
 		},
 		{
-			name:       "Authorization header, dump form",
-			in:         "GET /v3/applications HTTP/1.1\r\nAuthorization: Bearer ya29.a0AfB_byLEAKEDSECRETBODYxyz\r\n",
-			wantAbsent: []string{"LEAKEDSECRETBODY"},
-			// The scheme survives so the log still says what kind of credential it was.
+			name:        "Authorization header, dump form",
+			in:          "GET /v3/applications HTTP/1.1\r\nAuthorization: Bearer ya29.a0AfB_byLEAKEDSECRETBODYxyz\r\n",
+			wantAbsent:  []string{"LEAKEDSECRETBODY"},
 			wantPresent: []string{"Authorization: Bearer " + Mask, "/v3/applications"},
 		},
 		{
@@ -101,9 +93,8 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 			wantPresent: []string{"config rejected", Mask},
 		},
 		{
-			name: "bare Basic credential without an Authorization prefix",
-			in:   "proxy refused: Basic bGVha2VkOkxFQUtFRFNFQ1JFVEJPRFk=",
-			// Base64 hides the canary word, so assert on the encoded blob itself.
+			name:        "bare Basic credential without an Authorization prefix",
+			in:          "proxy refused: Basic bGVha2VkOkxFQUtFRFNFQ1JFVEJPRFk=",
 			wantAbsent:  []string{"bGVha2VkOkxFQUtFRFNFQ1JFVEJPRFk="},
 			wantPresent: []string{"Basic " + Mask, "proxy refused"},
 		},
@@ -114,33 +105,25 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 			wantPresent: []string{"Basic authentication", "service account"},
 		},
 		{
-			name: "a flag name without a value is not masked",
-			in:   "gplay: unknown flag: --token",
-			// Nothing follows the key, so there is no value to blank.
+			name:        "a flag name without a value is not masked",
+			in:          "gplay: unknown flag: --token",
 			wantAbsent:  []string{Mask},
 			wantPresent: []string{"unknown flag: --token"},
 		},
 		{
-			name: "a Go error prefixed `token:` keeps its diagnostic",
-			// Go's `pkg: message` convention collides with the credential-field
-			// shape. This exact line is what internal/auth/token renders, and the
-			// status code is the whole point of it.
+			name:        "a Go error prefixed `token:` keeps its diagnostic",
 			in:          "gplay: token: oauth2 exchange failed (401): invalid_grant",
 			wantAbsent:  []string{Mask},
 			wantPresent: []string{"oauth2 exchange failed (401)", "invalid_grant"},
 		},
 		{
-			name: "the oauth2 library's own fetch failure keeps its status",
-			in:   "oauth2: cannot fetch token: 401 Unauthorized",
-			// The library is not ours to rename; blanking the 401 would be a
-			// worse bug than the leak this rule is looking for.
+			name:        "the oauth2 library's own fetch failure keeps its status",
+			in:          "oauth2: cannot fetch token: 401 Unauthorized",
 			wantAbsent:  []string{Mask},
 			wantPresent: []string{"401 Unauthorized"},
 		},
 		{
-			name: "token_uri is a URL, not a credential",
-			// It sits in every service-account JSON, right next to the private
-			// key, and it is the first thing to check in a misconfiguration.
+			name:        "token_uri is a URL, not a credential",
 			in:          `{"token_uri":"https://oauth2.googleapis.com/token","client_email":"ci@example.iam.gserviceaccount.com"}`,
 			wantAbsent:  []string{Mask},
 			wantPresent: []string{"https://oauth2.googleapis.com/token", "ci@example.iam.gserviceaccount.com"},
@@ -164,9 +147,8 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 			wantPresent: []string{"com.example.app", "gplay apps add"},
 		},
 		{
-			name: "a dotted identifier is not mistaken for a JWT",
-			in:   "gplay: unknown method edits.tracks.update for v3.0.1",
-			// No mask at all: a false positive here would blank real diagnostics.
+			name:        "a dotted identifier is not mistaken for a JWT",
+			in:          "gplay: unknown method edits.tracks.update for v3.0.1",
 			wantAbsent:  []string{Mask},
 			wantPresent: []string{"edits.tracks.update", "v3.0.1"},
 		},
@@ -192,9 +174,6 @@ func TestStringMasksCredentialShapes(t *testing.T) {
 	}
 }
 
-// The four shapes a review proved were promised by the generic pattern's
-// comment ("JSON field or key=value") but not actually covered. Each secret is
-// a distinctive literal, so a leak is unmistakable.
 func TestStringMasksGenericKeyValueShapes(t *testing.T) {
 	tests := []struct {
 		in     string
@@ -221,11 +200,6 @@ func TestStringMasksGenericKeyValueShapes(t *testing.T) {
 	}
 }
 
-// Masking an already masked value is a no-op (#583). The unquoted rules used to
-// re-match "[REDACTED" (their value class stops at `]`) and leave the original
-// `]` behind, so a message masked once and relayed through a second masking
-// point (an API error echoing masked text, the envelope after the stderr
-// filter) came out as "password=[REDACTED]]".
 func TestStringIsIdempotent(t *testing.T) {
 	for _, in := range []string{
 		"password=hunter2",
@@ -250,7 +224,6 @@ func TestStringIsIdempotent(t *testing.T) {
 			t.Errorf("String(%q) = %q, want it unchanged", masked, got)
 		}
 	}
-	// A secret glued to a mask is still consumed, never half-kept.
 	if got := String("password=" + Mask + "LEAKEDSECRETBODY"); strings.Contains(got, "LEAKEDSECRETBODY") {
 		t.Errorf("secret after a mask survived: %q", got)
 	}
@@ -265,8 +238,6 @@ func TestStringEmpty(t *testing.T) {
 	}
 }
 
-// The filter must sit on the writer, not on each call site: anything written
-// through the wrapped writer is masked, whatever printed it.
 func TestWriterMasks(t *testing.T) {
 	var buf bytes.Buffer
 	w := Writer(&buf)
@@ -282,8 +253,6 @@ func TestWriterMasks(t *testing.T) {
 	}
 }
 
-// A short write is an error to most callers, and masking legitimately changes
-// the byte count, so Write must report the INPUT length.
 func TestWriterReportsInputLength(t *testing.T) {
 	var buf bytes.Buffer
 	w := Writer(&buf)
@@ -325,15 +294,10 @@ func TestWriterForwardsError(t *testing.T) {
 	}
 }
 
-// The canary test slice #460 asks for: take the failure messages gplay really
-// renders when a credential is bad, push them through the stderr boundary, and
-// grep the result for any credential marker.
 func TestCanaryNoCredentialMarkersInRenderedErrors(t *testing.T) {
 	saJSON := `{"type":"service_account","project_id":"p","private_key_id":"kid-LEAKEDSECRETBODY","private_key":"` +
 		strings.ReplaceAll(samplePEM, "\n", `\n`) + `","client_email":"ci@example.iam.gserviceaccount.com","token_uri":"https://oauth2.googleapis.com/token"}`
 
-	// Failure fixtures: the shapes a real gplay run produces when credentials go
-	// wrong, each wrapping the offending bytes the way Go's stdlib does.
 	fixtures := []error{
 		fmt.Errorf("could not read credential: invalid character 'x' in %s", saJSON),
 		fmt.Errorf("could not read credential: parsing key: %s", samplePEM),
@@ -343,7 +307,6 @@ func TestCanaryNoCredentialMarkersInRenderedErrors(t *testing.T) {
 
 	for i, fixture := range fixtures {
 		var buf bytes.Buffer
-		// Exactly what cmd/gplay/main.go does on the failure path.
 		_, _ = fmt.Fprintln(Writer(&buf), "gplay:", fixture)
 
 		got := buf.String()
