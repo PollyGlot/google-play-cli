@@ -33,8 +33,8 @@ GENERATED_PATH = re.compile(
     r"|(^|/)migrations/.*\.sql$|^scripts/lint/comments\.py$)"
 )
 GENERATED_HEAD = re.compile(
-    r"DO NOT EDIT|DO NOT MODIFY|@generated"
-    r"|^\s*(//+|#|--|/?\*+)\s*(GENERATED|(?i:auto-?generated)|This file (is|was) (automatically )?generated)",
+    r"^\s*(//+|#|--|/?\*+)\s*(Code generated .*DO NOT EDIT|DO NOT EDIT|DO NOT MODIFY|@generated|GENERATED"
+    r"|(?i:auto-?generated)|This file (is|was) (automatically )?generated)",
     re.M,
 )
 DIRECTIVE_WORDS = (
@@ -46,7 +46,7 @@ DIRECTIVE_WORDS = (
     r"plpgsql_check", r"webpackChunkName", r"syntax=", r">\s*statement-breakpoint",
     r"[@#]__(PURE|NO_SIDE_EFFECTS)__",
 )
-DIRECTIVE = re.compile(r"^\s*(#!|(//+|/\*+|#+|--|\*)\s*(" + "|".join(DIRECTIVE_WORDS) + "))", re.I)
+DIRECTIVE = re.compile(r"^\s*\{?\s*(#!|(//+|/\*+|#+|--|\*)\s*(" + "|".join(DIRECTIVE_WORDS) + "))", re.I)
 LICENSE = re.compile(r"copyright|license|spdx", re.I)
 COUNTED = ("comment", "doc", "docstring")
 AAA_WORD = r"(arrange|act|assert|given|when|then)"
@@ -92,9 +92,16 @@ def comment_nodes(root):
     while stack:
         n = stack.pop()
         if "comment" in n.type and n.type != "comment_content":
-            yield n
+            yield jsx_container(n)
             continue
         stack.extend(reversed(n.children))
+
+
+def jsx_container(n):
+    p = n.parent
+    if p is not None and p.type == "jsx_expression" and [c.type for c in p.children] == ["{", n.type, "}"]:
+        return p
+    return n
 
 
 def docstring_nodes(root):
@@ -256,6 +263,11 @@ def code_tokens(src: bytes, lang: str) -> list[bytes]:
             tokens.append(n)
             continue
         if (n.start_byte, n.end_byte) in skip:
+            continue
+        if n.type == "jsx_text":
+            text = re.sub(rb"\s+", b" ", masked[n.start_byte:n.end_byte]).strip()
+            if text:
+                tokens.append(text)
             continue
         if n.child_count == 0:
             if prev_end is not None and b"\n" in masked[prev_end:n.start_byte]:
