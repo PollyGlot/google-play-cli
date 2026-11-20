@@ -178,6 +178,12 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   refused.** `default.txt` therefore yields to a `<locale>.txt` that matches
   the default language case-insensitively (`en-us.txt` for `en-US`), instead
   of adding a second entry for the same locale.
+- **Only a bundle takes a device tier config.** `edits.bundles.upload` has a
+  `deviceTierConfigId` parameter and `edits.apks.upload` none: the config
+  drives how Google splits an App Bundle, and an APK is already the
+  deliverable. `releases upload --device-tier-config` applies to every bundle
+  of the set, and is refused (exit 2, before any request) when the set holds
+  none, so it is never silently dropped.
 
 ### Reviews
 
@@ -195,6 +201,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 - **`DeviceSpec.supportedAbis` is ordered by preference**, so gplay sends the
   caller's order unchanged, never sorted or deduplicated.
+- **`DeviceSpec.screenDensity` and the `variantId` path parameter are
+  `uint32`.** A value they cannot hold is refused locally (exit 2) before any
+  request rather than relayed as Google's 400.
 
 ### Team (`users`, `grants`)
 
@@ -213,6 +222,14 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   carrying the matching prefix, and refuses one carrying another form
   factor's prefix: Play rejects the mismatch, and guessing which side the
   caller meant would create the wrong track.
+- **`edits.tracks.list` can omit a standard track that was never
+  configured.** The table and markdown views of `tracks list` always show the
+  four standard tracks (`internal`, `alpha`, `beta`, `production`, in
+  promotion order, before any custom track), so the operator sees they exist;
+  `--output json` stays the body as returned.
+- **`inAppUpdatePriority` takes 0 to 5** (Discovery: "Can take values in the
+  range [0, 5]"), so `--update-priority` outside that range is a usage error
+  (exit 2) before any request, token exchange included.
 - **`inAppUpdatePriority` 0 is a real priority**, so the field is a pointer:
   absent stays absent (a release without a priority sends the bytes it sent
   before the field existed, #664), and an explicit 0 reaches the wire.

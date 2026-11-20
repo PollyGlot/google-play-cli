@@ -74,6 +74,10 @@ trivially fixable one.
 - **`requires` is always an array, never `null`.** Every gplay-authored array
   field (the dry-run `requires` included) is normalised to `[]` before it is
   encoded, so a consumer iterates it without a guard.
+- **The Routine tier reaches beyond `team`.** `apps details set` takes no
+  `--confirm`, for the reason `testers set` takes none: contact details are
+  low-stakes and reversible. It checks no email, URL or phone shape offline
+  either; the API arbitrates the format and its error surfaces verbatim.
 
 ## Considered options
 

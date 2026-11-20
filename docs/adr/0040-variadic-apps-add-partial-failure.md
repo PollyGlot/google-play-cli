@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `apps add` registered exactly one package per invocation
@@ -51,7 +53,11 @@ case unusable.
    **not** an ergonomics precedent — it exists only because the
    `orders.batchget` API caps a request at 1000 ids. `apps add` has no
    such API limit: each probe is an independent `edits.insert`/`delete`
-   pair, so a large selection is slow but correct, not refused.
+   pair, so a large selection is slow but correct, not refused. The 30 s
+   budget exists because validate-by-default is meant to fail fast: a
+   stalled connection would otherwise hang `apps add` in CI until the
+   job-level timeout, minutes or hours later. It is per package, so a long
+   batch never starves its last probe.
 
 3. **Exit code: non-retryable-wins.** Per `docs/DESIGN.md` §9, an exit
    code tells an automated caller *whether to retry*, not only what broke.
@@ -78,6 +84,10 @@ case unusable.
    (the per-package detail is already on stderr, so the kernel's final
    `Error:` line does not duplicate it); its `ExitCode()` implements the
    non-retryable-wins rule above.
+   If the final save of the global config fails, a multi-package run still
+   prints the per-package report first and then returns the save error unwrapped:
+   which packages probed clean is already known, and it lets the caller
+   retry a narrower set.
 
 5. **Dedup arguments.** `apps add a a b` collapses to `a b` before any
    work: `a` is probed and registered once, and produces one `✓`/`✗`

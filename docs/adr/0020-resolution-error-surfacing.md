@@ -157,3 +157,7 @@ than *absent*, see Considered options.
   ignores `--account`, `--service-account` and their environment variables
   ([ADR-0004](./0004-cascading-config.md)). An inline credential has no
   name, which is the `AccountName == ""` branch of decision 3.
+- **`apps add/list/remove` call `EnsureAccount` only when the name is
+  empty.** An empty name means only an inline or no-source layer is
+  reachable, so that call never probes the keyring; the common stored-Account
+  path keeps the registry commands keystore-free.

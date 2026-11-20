@@ -1,5 +1,11 @@
 # Generated APKs surface: Edit-free reads + gplay's first binary download-to-file gesture (`generatedapks`)
 
+## Status
+
+accepted
+
+amended (2026-11-20): implementation decisions moved from code comments
+
 Triaged from [#294](https://github.com/PollyGlot/google-play-cli/issues/294) and
 grilled into PRD [#299](https://github.com/PollyGlot/google-play-cli/issues/299)
 under [ADR-0026](0026-maximal-admin-api-coverage.md) (maximal admin-API
@@ -40,6 +46,9 @@ The decisions:
   Bytes are streamed (`io.Copy` to an `io.Writer`), never buffered whole — a
   universal APK can be large. On success a stderr `✓` line names the byte count
   and destination (DESIGN §8); stdout stays the data path.
+  A failed transfer, or a failed close of the destination file, removes the
+  file: a truncated APK left at `--dest` would be handed on to whatever
+  consumes it next. `releases system-apks download` follows the same rule.
 
 - **`list` is `list`, keyed by `--version-code`.** The API verb is `.list`
   returning a `GeneratedApksListResponse` (read-many). `--version-code N` is a

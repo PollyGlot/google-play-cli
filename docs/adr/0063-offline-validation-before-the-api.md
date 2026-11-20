@@ -4,6 +4,8 @@
 
 accepted (2026-11-20)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 A write command can fail on its own input in two places: locally, before the
@@ -46,6 +48,15 @@ there: Listing limits and locales in
 - **`--mapping` with several artifacts is refused.** A mapping deobfuscates
   one versionCode and nothing says which artifact it belongs to; `releases
   mappings upload --version-code` attaches it to the right one afterwards.
+
+### `--dry-run`
+
+- **A `--dry-run` resolves neither the Account nor the explicit-Edit pin.**
+  Nothing reaches the network and the dry-run path never reuses a pinned Edit,
+  so a missing Account or a corrupt pin must not fail a preview; both are
+  resolved on the live path only (`releases upload`, `promote`, `rollout`,
+  `releases mappings upload`). An unreadable pin is therefore refused by the live run
+  (DESIGN §4), not by its rehearsal.
 
 ### Input size caps
 

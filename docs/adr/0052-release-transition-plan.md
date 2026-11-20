@@ -4,6 +4,8 @@
 
 accepted (2026-11-09, #740); amended by [ADR-0054](./0054-promote-reads-its-destination.md) (`promote` gains `--plan`)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `gplay releases complete` can retire the previous full rollout of a track
@@ -19,7 +21,11 @@ The four state transitions gain `--plan`, an online, read-only preview:
 - It reads the track inside the pinned explicit Edit when there is one (so
   it sees the changes staged there), else inside a read-only Edit that it
   discards, best effort, as `releases list` does (`edits.WithReadOnlyEdit`).
-  It never sends `tracks.update` and never commits.
+  It never sends `tracks.update` and never commits. Since nothing is
+  committed, the commit flags (`--changes-in-review`,
+  `--changes-not-sent-for-review`) are not resolved under `--plan`:
+  resolving them would print the warning that the change is staged in the
+  pinned Edit, which a plan never does.
 - It reports the target release, the status and fraction it would end with,
   and the releases it would supersede and keep. These come from the same
   `pickTargetRelease` and `superseded` the write path uses, so a plan cannot

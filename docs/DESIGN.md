@@ -611,6 +611,19 @@ The Google Play Developer API has no `apps.list`, so `gplay apps list` reads a
 - `gplay apps view --package X` still hits the live API (via `edits.details`
   etc.) — only enumeration is local
 
+`gplay apps remove X` edits the registry only:
+
+- A name with no dot is refused (exit `20`), as `apps add` refuses it: the
+  registry can never hold such a name, so a typo must not read as a harmless
+  "not in registry".
+- A package that is not registered is a no-op: exit `0`, the config file is
+  not rewritten, and stderr says nothing matched, so a script does not lose
+  that signal in a silent success.
+- When the removed package is still pinned by the project's
+  `.gplay/config.json`, a warning says so after the success line (so it is
+  the last line of stderr); the project file is never rewritten, since
+  repinning is the caller's decision.
+
 Discovery of the apps a service account can reach ships as `apps accessible
 list` (`apps.search` on the Reporting API, ADR-0039); it complements the local
 registry rather than replacing it. The heavier Cloud Resource Manager + IAM
@@ -1126,7 +1139,7 @@ text with `(required)`, and its missing-value error names the flag and how to
 pass it, in one shape: `missing --track: pass --track <name> (internal, alpha,
 beta, production, or any closed-track name)`. The check stays in the command
 rather than cobra's `MarkFlagRequired`, whose error would skip the command's
-own wording.
+own wording and, being untyped, exit `1` instead of `2`.
 
 **Exit 70 is not an error.** A check command that sweeps and reports (today only
 `gplay apps audit`, PRD #449) exits `70` when its report carries at least one
@@ -1299,7 +1312,10 @@ low-stakes and reversible, unlike a production rollout.
 `releases upload` / `promote` keep their passthrough `--track` (§3.2). An
 upload/promote to a closed track that **does not exist yet** fails at the
 API; gplay attaches a hint pointing at `gplay tracks create <name>` (same
-pattern as the other track-not-found hints). gplay **never auto-creates** a
+pattern as the other track-not-found hints). The hint attaches to the
+`tracks.update` 404 only: on the same flow a package miss at `edits.insert`
+and a malformed bundle at `bundles.upload` also answer 404, and telling either
+to create a track would mislead. gplay **never auto-creates** a
 track as a side effect of an upload — a typo'd `--track` must fail, not
 silently spawn a phantom track.
 

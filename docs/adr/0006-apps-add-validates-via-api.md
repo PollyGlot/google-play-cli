@@ -54,6 +54,13 @@ verbatim from `edits.Validate`, the global config is never written,
 the registry stays consistent with what the credential can actually
 touch.
 
+The Account is checked against the global config before the probe. An
+Account present in the keystore but missing from the config cannot hold a
+registry entry; checked after the probe, it would cost a round trip to Google
+and then fail on the registry write with "unknown account", which reads as CLI
+misuse when the fix is `gplay auth login`. The early check fails with that
+hint instead.
+
 ### Exit-code mapping
 
 The probe surfaces three Play-API failure modes the user needs to

@@ -23,6 +23,9 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
 - **`metadata apply --dry-run`** emits a gplay-defined diff schema, not an API body — there is no upstream "diff" endpoint to pass through. Shape: `{"package","changes":[{locale,field,op,…}],"summary":{…}}` (see [ADR-0011](./0011-metadata-apply-sync-model.md)).
 - **`metadata apply`** (the real write) touches N locales, so its result is the per-locale write bodies keyed by locale (`{"<locale>": <body verbatim>, …}`: `edits.listings.patch` for a live locale, `edits.listings.update` for one it creates), not a single pass-through — same reasoning as `apps info`. Each value is the upstream body verbatim, so the three guarantees hold per locale. (`metadata list` stays a plain pass-through of `edits.listings.list`.)
 - **`subscriptions apply`** (with or without `--dry-run`) emits the gplay-defined Reconciliation-plan schema — there is no upstream "diff" endpoint, and an executed plan spans N create/patch/delete calls. Shape: `{"package","dryRun","changes":[{op,productId,fields?}],"summary":{…},"requires"?:[…]}`, flat so a CI gate is one `jq` line (see [ADR-0041](./0041-declarative-monetization-catalog.md)). (`subscriptions pull` stays API-shaped: the merged `ListSubscriptionsResponse` envelope, pages folded, the consumed `nextPageToken` dropped — the `team users list` precedent.)
+- **A write's `--dry-run`** makes no API call, so there is no body to pass through; under `--output json` (the default in pipes and CI, where a dry-run most often runs) it still emits parseable output: a gplay-shaped preview tagged `"dryRun": true`. `apps details set --dry-run` emits `{"dryRun":true,"patch":{…}}` with only the fields the patch would touch, which no `details.patch` response can be mistaken for (that echoes the full resource and has no `dryRun` key). A live write whose body is empty is an error, never zero bytes on stdout.
+- **`edits begin`, `commit`, `discard` and `status`** act on the local pin, so there is no upstream body to mirror; they emit a small gplay envelope (package, Edit ID, `open`, the past action). `edits status --live` adds `live` and the API's `expiryTimeSeconds`, kept as the string the API sends. `edits validate` does have an upstream body and mirrors the `AppEdit` verbatim.
+- **`releases artifacts list`** without `--format` reads both endpoints; its JSON is `{"apks":<body>,"bundles":<body>}`, each value the upstream body verbatim (`null` when absent).
 - **Errors** are not API pass-through. The human line goes to stderr; under `--output json` a gplay-defined envelope (`{"error":{"code","exitCode","retryable","message",...}}`) also goes to stdout, carrying the upstream `reasons` verbatim ([ADR-0023](./0023-json-error-envelope.md), [ADR-0044](./0044-structured-diagnostic-codes.md)).
 
 ## Considered Options
@@ -74,8 +77,14 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
   builds an encoder must also turn HTML escaping off, so the escaped form
   cannot come back through a file gplay writes (the Discovery and Schema index
   writers).
+- **A composite envelope never decodes the raw bodies it carries.**
+  `releases artifacts list` splices them into its own few bytes of JSON, so
+  each value stays byte for byte the API's response.
 - **Passthrough output is asserted byte-equal with the fixture body**, since
-  the API owns that shape. Goldens are for gplay-authored shapes (views,
+  the API owns that shape. The fixture is laid out as gplay would never
+  write it, and carries `&`, `<` and `>` wherever the resource has a free-text
+  field, so a re-encoding or a re-indent on the way out fails the test instead
+  of passing unnoticed. Goldens are for gplay-authored shapes (views,
   dry-run previews, summaries: the frozen contract of
   [ADR-0010](./0010-versioning-public-contract-and-ga.md)), and the golden
   helper also checks that the output is one valid JSON document with no HTML
