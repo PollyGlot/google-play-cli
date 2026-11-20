@@ -224,8 +224,6 @@ func ParseFreshness(body []byte) ([]Freshness, error) {
 	return out, nil
 }
 
-// --- validation against the embedded Schema index --------------------------
-
 // catalogEntry matches one `* `name“ bullet leader in a "Supported metrics" /
 // "Supported dimensions" prose list. Only the bullet-leading backtick token is
 // captured, so inline mentions of a name inside a description (e.g. "rolling
@@ -372,8 +370,6 @@ func SupportedPeriods(idx schemaindex.Index, set MetricSet) []string {
 	}
 	return out
 }
-
-// --- timeline projection of a query response -------------------------------
 
 // Row is one datapoint of a metric-set timeline: the period's start Date, the
 // dimension values that slice it (keyed by dimension name), and the metric

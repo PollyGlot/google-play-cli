@@ -18,13 +18,9 @@ REPO="PollyGlot/google-play-cli"
 INSTALL_DIR="${GPLAY_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${GPLAY_VERSION:-latest}"
 
-# -- Helpers -----------------------------------------------------------------
-
 log()  { printf "\033[1;34m==>\033[0m %s\n" "$*" >&2; }
 warn() { printf "\033[1;33m==>\033[0m %s\n" "$*" >&2; }
 die()  { printf "\033[1;31m==>\033[0m %s\n" "$*" >&2; exit 1; }
-
-# -- Detect OS / arch --------------------------------------------------------
 
 uname_s="$(uname -s)"
 case "$uname_s" in
@@ -41,8 +37,6 @@ case "$uname_m" in
   *) die "unsupported arch: $uname_m. Use go install or download from $REPO/releases." ;;
 esac
 
-# -- Resolve version ---------------------------------------------------------
-
 if [ "$VERSION" = "latest" ]; then
   log "resolving latest release of $REPO..."
   VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
@@ -53,8 +47,6 @@ fi
 # Drop the leading "v" for the archive name (matches goreleaser output).
 ver_no_v="${VERSION#v}"
 
-# -- Pick archive & extension ------------------------------------------------
-
 if [ "$os" = "windows" ]; then
   archive_ext="zip"
 else
@@ -62,8 +54,6 @@ else
 fi
 archive="gplay_${ver_no_v}_${os}_${arch}.${archive_ext}"
 url="https://github.com/$REPO/releases/download/$VERSION/$archive"
-
-# -- Download + extract ------------------------------------------------------
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -121,8 +111,6 @@ if [ "$archive_ext" = "zip" ]; then
 else
   tar -C "$tmp" -xzf "$tmp/$archive"
 fi
-
-# -- Install -----------------------------------------------------------------
 
 mkdir -p "$INSTALL_DIR"
 bin_name="gplay"

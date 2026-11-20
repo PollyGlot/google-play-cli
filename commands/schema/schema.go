@@ -159,8 +159,6 @@ func (p Payload) expandedSchemas() map[string]schemaindex.Schema {
 	return out
 }
 
-// --- table / markdown rendering -------------------------------------------
-
 type renderFormat int
 
 const (
@@ -381,8 +379,6 @@ func (p Payload) renderSchema(w io.Writer, f renderFormat, name string, s schema
 	return renderRows(w, f, propCols, propRows(s))
 }
 
-// --- JSON rendering --------------------------------------------------------
-
 // jsonView is the stable, machine-parseable synthesized shape: the matched
 // methods and the schemas (name matches plus one-hop request/response
 // expansions), keyed exactly as the index keys them.
@@ -397,8 +393,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 		Schemas: p.expandedSchemas(),
 	})
 }
-
-// --- command wiring --------------------------------------------------------
 
 // Run is the business function the kernel invokes. Fully offline: it loads the
 // embedded index, matches the query, and returns the matched slice. A zero-match

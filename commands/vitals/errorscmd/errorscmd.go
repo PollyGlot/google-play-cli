@@ -55,8 +55,6 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	return group
 }
 
-// --- shared helpers --------------------------------------------------------
-
 // windowHelp and sinceHelp state the window granularity in each search view's
 // --help.
 const (
@@ -104,8 +102,6 @@ func warnResult(rc *kernel.RunContext, kind string, n int) {
 	}
 	rc.Notef("%s", mappingsNoteBody)
 }
-
-// --- counts ----------------------------------------------------------------
 
 type countsInput struct {
 	Package, By, VersionCode, Since, Period string
@@ -177,8 +173,6 @@ time per aggregation period); the window flags do not apply and are rejected.`,
 	vitalscmd.RegisterVersionCodeCompletion(cmd, boot)
 	return cmd
 }
-
-// --- issues ----------------------------------------------------------------
 
 type issuesInput struct {
 	Package, Since, Filter, OrderBy string
@@ -292,8 +286,6 @@ Read-only; --output json mirrors the API response verbatim.`,
 	return cmd
 }
 
-// --- reports ---------------------------------------------------------------
-
 type reportsInput struct {
 	Package, Since, Filter string
 	Limit                  int
@@ -392,8 +384,6 @@ Read-only; --output json mirrors the API response verbatim.`,
 	cmd.Flags().IntVar(&in.Limit, "limit", 0, "max reports to return (0 = all, no cap); a capped list warns on stderr")
 	return cmd
 }
-
-// --- small helpers ---------------------------------------------------------
 
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {

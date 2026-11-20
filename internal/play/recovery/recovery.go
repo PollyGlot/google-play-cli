@@ -52,8 +52,6 @@ type ListResponse struct {
 	RecoveryActions []Action `json:"recoveryActions,omitempty"`
 }
 
-// --- request body types (mirror the API verbatim) ---
-
 type remoteInAppUpdate struct {
 	IsRemoteInAppUpdateRequested bool `json:"isRemoteInAppUpdateRequested"`
 }

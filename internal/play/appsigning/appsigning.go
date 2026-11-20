@@ -51,8 +51,6 @@ var (
 // still assert the expanded literal, which pins the value itself.
 const HelpCenterURL = "https://support.google.com/googleplay/android-developer/answer/9842756"
 
-// --- request body types (mirror the API schemas verbatim) ---
-
 // cloudKmsKey mirrors CloudKmsKey: the resource id of the private key hosted in
 // the developer's Cloud KMS.
 type cloudKmsKey struct {
@@ -95,8 +93,6 @@ type rotateAppSigningKeyRequest struct {
 	KeyRotationReason  string              `json:"keyRotationReason,omitempty"`
 }
 
-// --- response types ---
-
 // CertificateHashes mirrors the CertificateHashes schema: the three hex digests
 // of a certificate. The complete body is always available verbatim under
 // --output json (ADR-0003), so this stays exactly as wide as the human view.
@@ -117,8 +113,6 @@ type EnrollResponse struct {
 type RotateResponse struct {
 	RotatedKeyCertificate *CertificateHashes `json:"rotatedKeyCertificate,omitempty"`
 }
-
-// --- rotation reasons ---
 
 // rotationReasons maps the CLI's lowercase-hyphen --reason choices to the API
 // enum. KEY_ROTATION_REASON_UNSPECIFIED is deliberately absent: the API rejects
@@ -149,8 +143,6 @@ func RotationReasons() []string {
 	sort.Strings(out)
 	return out
 }
-
-// --- calls ---
 
 // EnrollOpts is the request-shaped input the command builds from its flags.
 // NewApp picks the EnrollNewApp branch (which requires PemCertificate); the

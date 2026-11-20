@@ -1,4 +1,4 @@
-.PHONY: help build test check lint verb-gate ratchets dash-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
+.PHONY: help build test check lint verb-gate ratchets dash-gate comment-gate install-test format install-hooks tidy clean release-snapshot discovery-update schema-index-update coverage-update stats \
 	lint-version fmt-check shellcheck required-files build-check test-race worker-test
 
 # Project metadata
@@ -23,7 +23,7 @@ test: ## Run tests (fast, no race detector; `make check` adds -race)
 # lint, test" and "Docs sanity" in .github/workflows/ci.yml), cheapest first so
 # a failure surfaces early. Generated-file freshness is asserted by Go tests, so
 # `test-race` covers it. Keep this list in step with ci.yml.
-check: lint-version fmt-check verb-gate dash-gate shellcheck install-test worker-test required-files lint build-check test-race ## Run every required CI check locally (the pre-PR gate)
+check: lint-version fmt-check verb-gate dash-gate comment-gate shellcheck install-test worker-test required-files lint build-check test-race ## Run every required CI check locally (the pre-PR gate)
 	@echo "check: OK"
 
 lint-version:
@@ -63,6 +63,9 @@ verb-gate: ## Fail if a pre-rename verb name (ADR-0019) reappears
 
 dash-gate: ## Fail if an em dash reappears in Go source (help text and errors reach users)
 	@bash scripts/dash-gate.sh
+
+comment-gate: ## Fail if a file's comment lines differ from scripts/lint/comments-baseline.json (needs uv)
+	@scripts/lint/comments.py check
 
 install-test: ## Exercise install.sh offline (fail-closed sha256 gate)
 	@bash scripts/install-test.sh
