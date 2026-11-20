@@ -390,8 +390,8 @@ jobs:
     name: Docs sanity
     runs-on: ubuntu-latest
     # Always runs: it's a required check, and its steps (verb gate, dash gate,
-    # shellcheck, required-files) are cheap and relevant to every PR regardless
-    # of scope.
+    # comment ratchet, shellcheck, required-files) are cheap and relevant to
+    # every PR regardless of scope.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -402,6 +402,11 @@ jobs:
 
       - name: Em dash gate (help text and error messages reach users)
         run: bash scripts/dash-gate.sh
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Comment ratchet (no file gains comment lines)
+        run: scripts/lint/comments.py check
 
       - name: shellcheck install.sh
         run: shellcheck install.sh scripts/install-test.sh scripts/repin-skills.sh

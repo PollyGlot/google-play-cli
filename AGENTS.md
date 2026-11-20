@@ -26,6 +26,7 @@ Issue tracker, triage labels and domain docs: `docs/agents/`. `to-tickets`,
 ## Vérifier
 
 - Gate before every PR: `make check`, the required CI checks run locally (`make format` fixes what its format step rejects; `make install-hooks` runs it on pre-push).
+- No new comments: `scripts/lint/comments.py check` (in `make check` and CI) fails when a file's comment lines differ from `scripts/lint/comments-baseline.json`. After deleting comments, run `scripts/lint/comments.py update` and commit the lowered baseline; never raise it to fit a new comment.
 - Tests stay offline: use `internal/testkit` (Play transport fake, shared RSA key) injected as `&http.Client{Transport: ...}`; a hand-rolled RoundTripper fails the ratchet (`internal/ratchet`), and a test that reaches the network is wrong.
 - New leaf command: classify it. Unlabelled means frozen Public contract (ADR-0010/0042); mark `kernel.Experimental(...)` at registration if its flags may still change. The registry test in `cmd/gplay` fails on unclassified leaves.
 - To prove a command **behaves** as advertised, build this worktree and drive the
