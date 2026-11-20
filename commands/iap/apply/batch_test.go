@@ -16,13 +16,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// overLimit is one change more than the 100 requests Discovery allows in each
-// one-time-product batch body (#807).
 const overLimit = 101
 
-// batchRT serves the live catalog of iapRT and records the identities each
-// batch call carries, in call order. failCall, when set, answers that batch
-// call (1-based) with failWith, or with a 500 when failWith is nil.
 type batchRT struct {
 	iapRT
 	mu       sync.Mutex
@@ -32,7 +27,7 @@ type batchRT struct {
 }
 
 type batchCall struct {
-	verb string // the custom verb: batchUpdate, batchDelete, batchUpdateStates
+	verb string
 	ids  []string
 }
 
@@ -76,7 +71,6 @@ func (r *batchRT) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(http.StatusOK, `{}`), nil
 }
 
-// ids returns n identifiers that sort in creation order: o000, o001, ...
 func ids(prefix string, n int) []string {
 	out := make([]string, n)
 	for i := range out {
@@ -95,8 +89,6 @@ func joinObjects(n int, format string, idList []string) string {
 
 const legacyFile = `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`
 
-// assertChunks checks the batch calls apply sent: verb, then the identities
-// of each call, in order.
 func assertChunks(t *testing.T, got []batchCall, verb string, want ...[]string) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -116,7 +108,6 @@ func assertChunks(t *testing.T, got []batchCall, verb string, want ...[]string) 
 	}
 }
 
-// offerCreatesCatalog declares 101 new offers under coins100/buy, none live.
 func offerCreatesCatalog(t *testing.T, offerIDs []string) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -169,9 +160,6 @@ func TestRun_offerDeletes_splitAtTheBatchLimit(t *testing.T) {
 	assertChunks(t, rt.batches, "batchDelete", offerIDs[:100], offerIDs[100:])
 }
 
-// A second chunk that came back 5xx leaves the first one applied and its own
-// outcome open: Play may have written it before failing. The error keeps the
-// API's failure and says so instead of declaring it not applied.
 func TestRun_failedChunk_reportsWhatWasApplied(t *testing.T) {
 	offerIDs := ids("o", overLimit)
 	rt := &batchRT{iapRT: iapRT{offersBody: `{}`}, failCall: 2}
@@ -194,8 +182,6 @@ func TestRun_failedChunk_reportsWhatWasApplied(t *testing.T) {
 	assertChunks(t, rt.batches, "batchUpdate", offerIDs[:100], offerIDs[100:])
 }
 
-// offerDeletes201 serves 201 live offers under coins100/buy that the catalog
-// drops: three batchDelete calls of 100, 100 and 1.
 func offerDeletes201(t *testing.T, rt *batchRT) ([]string, applycmd.Input) {
 	t.Helper()
 	offerIDs := ids("o", 2*100+1)
@@ -208,8 +194,6 @@ func offerDeletes201(t *testing.T, rt *batchRT) ([]string, applycmd.Input) {
 	return offerIDs, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true}
 }
 
-// A second chunk Play answered 200 but whose body broke mid-read was accepted:
-// its 100 deletions must not be reported as not applied (#807 review).
 func TestRun_chunkAcceptedButBodyUnreadable_isNotReportedNotApplied(t *testing.T) {
 	rt := &batchRT{failCall: 2, failWith: func() *http.Response {
 		resp := testkit.Response(http.StatusOK, "")
@@ -235,8 +219,6 @@ func TestRun_chunkAcceptedButBodyUnreadable_isNotReportedNotApplied(t *testing.T
 	assertChunks(t, rt.batches, "batchDelete", offerIDs[:100], offerIDs[100:200])
 }
 
-// A second chunk Play refused with a 400 wrote nothing: it and the chunk never
-// sent are both not applied.
 func TestRun_chunkRefused_isReportedNotApplied(t *testing.T) {
 	rt := &batchRT{failCall: 2, failWith: func() *http.Response {
 		return testkit.Response(http.StatusBadRequest, `{"error":{"code":400,"message":"invalid offer","status":"INVALID_ARGUMENT"}}`)

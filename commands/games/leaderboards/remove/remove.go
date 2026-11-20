@@ -1,8 +1,3 @@
-// Package remove implements `gplay games leaderboards remove <leaderboardId>`:
-// delete a leaderboard configuration (leaderboardConfigurations.delete).
-// DESTRUCTIVE tier (ADR-0017): requires --confirm (missing → exit 3), CI=true
-// never auto-confirms, --dry-run rehearses. MarkMutating gates it under
-// GPLAY_READONLY.
 package remove
 
 import (
@@ -14,14 +9,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	ID      string
 	Confirm bool
 	DryRun  bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	id, err := gamescmd.RequireID(in.ID, "missing leaderboard id: gplay games leaderboards remove <leaderboardId>")
 	if err != nil {
@@ -44,7 +37,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return gamescmd.DeletePayload{Kind: "leaderboard", ID: id}, nil
 }
 
-// NewCommand returns the cobra command for `gplay games leaderboards remove`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

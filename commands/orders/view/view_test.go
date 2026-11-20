@@ -20,9 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newFake answers the orders.get / orders.batchget calls. A non-zero status
-// serves body for the refusal path (403/404); otherwise it serves the batch
-// body for a :batchGet path and the single order body for a get.
 func newFake(status int, body string) *testkit.Fake {
 	if status != 0 {
 		return testkit.NewFake(testkit.Any(status, body))
@@ -35,7 +32,6 @@ func newFake(status int, body string) *testkit.Fake {
 	})
 }
 
-// lastURL is the URL of the last API call, failing the test when none was made.
 func lastURL(t *testing.T, fake *testkit.Fake) string {
 	t.Helper()
 	calls := fake.Calls()
@@ -83,8 +79,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_happyPath_packageScoped_noEdit asserts a single ID hits orders.get on
-// the package axis (no Edit) and passes the response through verbatim.
 func TestRun_happyPath_packageScoped_noEdit(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -99,8 +93,6 @@ func TestRun_happyPath_packageScoped_noEdit(t *testing.T) {
 	if strings.Contains(apiURL, "/edits/") {
 		t.Errorf("url %q must not open an Edit", apiURL)
 	}
-	// ADR-0003: --output json is the verbatim Order, including fields the typed
-	// summary drops (buyerAddress).
 	var out bytes.Buffer
 	if err := r.Renderers().JSON(&out); err != nil {
 		t.Fatalf("JSON: %v", err)
@@ -110,8 +102,6 @@ func TestRun_happyPath_packageScoped_noEdit(t *testing.T) {
 	}
 }
 
-// TestRun_humanSummary renders the single table view and asserts the compact
-// summary (order id, state, total + currency, create time, line items) appears.
 func TestRun_humanSummary(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -131,9 +121,6 @@ func TestRun_humanSummary(t *testing.T) {
 	}
 }
 
-// TestRun_batch_routesToBatchGet asserts two IDs hit orders.batchget (the
-// :batchGet endpoint with one orderIds param each), render one summary line per
-// order, and pass the BatchGetOrdersResponse through verbatim.
 func TestRun_batch_routesToBatchGet(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -148,7 +135,6 @@ func TestRun_batch_routesToBatchGet(t *testing.T) {
 	if c := strings.Count(apiURL, "orderIds="); c != 2 {
 		t.Errorf("url %q must carry one orderIds param per ID, got %d", apiURL, c)
 	}
-	// Human view: one summary line per order.
 	var tbl bytes.Buffer
 	if err := r.Renderers().Table(&tbl); err != nil {
 		t.Fatalf("Table: %v", err)
@@ -159,10 +145,9 @@ func TestRun_batch_routesToBatchGet(t *testing.T) {
 			t.Errorf("batch table %q missing %q", got, want)
 		}
 	}
-	if lines := strings.Count(strings.TrimSpace(got), "\n"); lines != 1 { // 2 orders → 2 lines → 1 separator
+	if lines := strings.Count(strings.TrimSpace(got), "\n"); lines != 1 {
 		t.Errorf("batch table should print one line per order, got %d separators in %q", lines, got)
 	}
-	// ADR-0003: --output json is the verbatim BatchGetOrdersResponse.
 	var js bytes.Buffer
 	if err := r.Renderers().JSON(&js); err != nil {
 		t.Fatalf("JSON: %v", err)
@@ -172,8 +157,6 @@ func TestRun_batch_routesToBatchGet(t *testing.T) {
 	}
 }
 
-// TestRun_missingOrderID_exit2_noNetwork asserts a whitespace-only order ID is
-// CLI misuse caught before any HTTP call.
 func TestRun_missingOrderID_exit2_noNetwork(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -184,8 +167,6 @@ func TestRun_missingOrderID_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_capExceeded_exit2_noNetwork asserts more than 1000 IDs is a usage
-// error naming the cap, caught before any HTTP call.
 func TestRun_capExceeded_exit2_noNetwork(t *testing.T) {
 	fake := newFake(0, "")
 	rc := newRC(t, fake)
@@ -203,8 +184,6 @@ func TestRun_capExceeded_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_403_namesPermission asserts a forbidden read maps to exit 11 and the
-// refusal message names CAN_VIEW_FINANCIAL_DATA (agent-resolvable).
 func TestRun_403_namesPermission(t *testing.T) {
 	fake := newFake(403, `{"error":{"message":"The caller does not have permission"}}`)
 	rc := newRC(t, fake)
@@ -215,8 +194,6 @@ func TestRun_403_namesPermission(t *testing.T) {
 	}
 }
 
-// TestRun_batch_404_exit30 asserts a batch 404 (any unknown ID fails the whole
-// request) maps to the not-found exit code with the all-or-nothing hint.
 func TestRun_batch_404_exit30(t *testing.T) {
 	fake := newFake(404, `{"error":{"message":"order not found"}}`)
 	rc := newRC(t, fake)
@@ -227,8 +204,6 @@ func TestRun_batch_404_exit30(t *testing.T) {
 	}
 }
 
-// TestRun_404_exit30 asserts an unknown single order id maps to the not-found
-// exit code with a hint.
 func TestRun_404_exit30(t *testing.T) {
 	fake := newFake(404, `{"error":{"message":"order not found"}}`)
 	rc := newRC(t, fake)

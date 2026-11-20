@@ -110,6 +110,11 @@ restoration.
   preflight sits after that branch, still before authentication and before
   the resumable session is reserved, which on an APK of up to 10 GiB is the
   point of running it first.
+- **`customapps create` runs the container check only**, accepting a bundle
+  or an APK. A custom app is created from the artifact and Google assigns its
+  package, so there is no local package to compare against; the mistake left
+  to catch is a path that is not an Android package at all, and the same call
+  covers the missing or non-regular path.
 
 ### Bounds
 

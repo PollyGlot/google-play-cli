@@ -16,10 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// fixtureRepo builds a real, local git repository holding a skills pack and
-// returns its path and the commit the pin should point at. Everything stays on
-// disk: the command's only network-shaped dependency is `git fetch`, and a
-// local path exercises the same code path without leaving the machine.
 func fixtureRepo(t *testing.T, files map[string]string) (repoDir, commit string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -49,9 +45,6 @@ func fixtureRepo(t *testing.T, files map[string]string) (repoDir, commit string)
 		}
 	}
 	git("init", "--quiet", "--initial-branch", "main")
-	// Fetching an explicit object name (rather than a ref) is what the installer
-	// does; a local upload-pack refuses it unless this is set. Public forges
-	// allow it by default.
 	git("config", "uploadpack.allowAnySHA1InWant", "true")
 	git("add", "-A")
 	git("commit", "--quiet", "-m", "fixture pack")
@@ -65,8 +58,6 @@ func fixtureRepo(t *testing.T, files map[string]string) (repoDir, commit string)
 	return repoDir, strings.TrimSpace(string(out))
 }
 
-// packFiles is the fixture pack: two skills, one of them multi-file, plus a
-// repo file outside skills/ that must never be installed.
 var packFiles = map[string]string{
 	"README.md":                       "not a skill",
 	"skills/gplay-setup/SKILL.md":     "setup skill body\n",
@@ -91,16 +82,12 @@ func fixturePin(t *testing.T, skills ...string) (installskills.Pin, string) {
 	}, repo
 }
 
-// execCmd drives the command end-to-end through cobra, returning what it wrote
-// to stdout / stderr and the run error.
 func execCmd(t *testing.T, opts installskills.Options, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	cmd := installskills.NewCommand(opts)
 	var out, errBuf bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&errBuf)
-	// Pass a non-nil slice even with no args: cobra falls back to os.Args[1:]
-	// when c.args is nil, which would leak `go test` flags into the command.
 	cmd.SetArgs(append([]string{}, args...))
 	err = cmd.ExecuteContext(context.Background())
 	return out.String(), errBuf.String(), err
@@ -119,8 +106,6 @@ func TestInstallSkills_installsPinnedPack(t *testing.T) {
 	pin, _ := fixturePin(t)
 	target := t.TempDir()
 
-	// Prior state: an unrelated skill that must survive, and a stale copy of a
-	// pack skill carrying a file the new version does not have.
 	mustWrite(t, filepath.Join(target, "my-own-skill", "SKILL.md"), "mine\n")
 	mustWrite(t, filepath.Join(target, "gplay-tracks", "SKILL.md"), "stale\n")
 	mustWrite(t, filepath.Join(target, "gplay-tracks", "leftover.md"), "stale leftover\n")
@@ -136,22 +121,18 @@ func TestInstallSkills_installsPinnedPack(t *testing.T) {
 	if got := read(t, filepath.Join(target, "gplay-tracks", "nested", "a.md")); got != "nested\n" {
 		t.Errorf("nested file = %q", got)
 	}
-	// The stale copy is replaced wholesale, not merged over.
 	if got := read(t, filepath.Join(target, "gplay-tracks", "SKILL.md")); got != "tracks skill body\n" {
 		t.Errorf("stale skill was not replaced: %q", got)
 	}
 	if _, err := os.Stat(filepath.Join(target, "gplay-tracks", "leftover.md")); !os.IsNotExist(err) {
 		t.Error("a file from the previous version of the skill survived the replacement")
 	}
-	// Unrelated skills are preserved.
 	if got := read(t, filepath.Join(target, "my-own-skill", "SKILL.md")); got != "mine\n" {
 		t.Errorf("unrelated skill was disturbed: %q", got)
 	}
-	// Only skills/ is installed, never the rest of the repository.
 	if _, err := os.Stat(filepath.Join(target, "README.md")); !os.IsNotExist(err) {
 		t.Error("a non-skill repository file was installed")
 	}
-	// No staging or backup scaffolding is left behind.
 	for _, e := range dirNames(t, target) {
 		if strings.HasPrefix(e, ".gplay-") {
 			t.Errorf("temporary directory %q left in the target", e)
@@ -169,8 +150,6 @@ func TestInstallSkills_installsPinnedPack(t *testing.T) {
 
 func TestInstallSkills_wrongCommitLeavesTargetUntouched(t *testing.T) {
 	pin, _ := fixturePin(t)
-	// A syntactically valid commit that the fixture does not contain: the fetch
-	// must fail rather than fall back to a branch tip.
 	pin.Commit = "0123456789abcdef0123456789abcdef01234567"
 	target := t.TempDir()
 	mustWrite(t, filepath.Join(target, "gplay-setup", "SKILL.md"), "previous\n")
@@ -188,8 +167,6 @@ func TestInstallSkills_wrongCommitLeavesTargetUntouched(t *testing.T) {
 }
 
 func TestInstallSkills_packMismatchInstallsNothing(t *testing.T) {
-	// The pin expects a skill the pinned checkout does not carry: the pack is
-	// incomplete, so nothing at all is installed.
 	pin, _ := fixturePin(t, "gplay-setup", "gplay-tracks", "gplay-vitals")
 	target := t.TempDir()
 	mustWrite(t, filepath.Join(target, "gplay-setup", "SKILL.md"), "previous\n")
@@ -207,9 +184,6 @@ func TestInstallSkills_packMismatchInstallsNothing(t *testing.T) {
 }
 
 func TestInstallSkills_unexpectedSkillInCheckoutIsRefused(t *testing.T) {
-	// The mirror case: the checkout carries a skill the reviewed pin does not
-	// list. Installing the rest and ignoring the intruder would silently accept
-	// a tampered pack, so the whole install is refused.
 	pin, _ := fixturePin(t, "gplay-setup")
 	target := t.TempDir()
 
@@ -225,9 +199,6 @@ func TestInstallSkills_unexpectedSkillInCheckoutIsRefused(t *testing.T) {
 	}
 }
 
-// gitIn runs git in dir with the ambient repository-location variables removed,
-// so an assertion about the victim repository below cannot be fooled by the very
-// GIT_DIR the test sets.
 func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	c := exec.CommandContext(t.Context(), "git", args...)
@@ -247,8 +218,6 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// victimRepo is an ordinary user repository, the one an inherited GIT_DIR would
-// point install-skills at.
 func victimRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -262,20 +231,12 @@ func victimRepo(t *testing.T) string {
 	return dir
 }
 
-// TestInstallSkills_inheritedGitDirDoesNotTouchThatRepo pins the worst failure
-// this command can have: git's own environment says *which* repository it acts
-// on, and c.Dir does not override it. git exports GIT_DIR to every hook it runs,
-// so `gplay install-skills` from a hook or a wrapper used to run `git init`,
-// `remote add origin` and `checkout --detach` against the user's repository,
-// detaching their HEAD and deleting their tracked files.
 func TestInstallSkills_inheritedGitDirDoesNotTouchThatRepo(t *testing.T) {
 	pin, _ := fixturePin(t)
 	victim := victimRepo(t)
 	target := t.TempDir()
 	head := gitIn(t, victim, "rev-parse", "HEAD")
 
-	// Set *after* the fixtures are built: these would otherwise redirect the
-	// fixture's own git commands too.
 	t.Setenv("GIT_DIR", filepath.Join(victim, ".git"))
 	t.Setenv("GIT_WORK_TREE", victim)
 
@@ -304,11 +265,6 @@ func TestInstallSkills_inheritedGitDirDoesNotTouchThatRepo(t *testing.T) {
 	}
 }
 
-// TestInstallSkills_runsNoConfiguredHook is the executable half of ADR-0045's
-// "nothing else is executed": hooks and init templates are configuration, so
-// they run code during `init` and `checkout` without the pack containing a
-// single script. The user's other configuration (proxies, CA bundles) is kept
-// on purpose, so this is neutralised with `-c`, not by discarding the config.
 func TestInstallSkills_runsNoConfiguredHook(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the hook fixture is a POSIX shell script")
@@ -336,9 +292,6 @@ func TestInstallSkills_runsNoConfiguredHook(t *testing.T) {
 	}
 }
 
-// TestInstallSkills_environmentConfigCannotReEnableHooks closes the other door:
-// GIT_CONFIG_COUNT is `-c` in environment form, so an inherited pair could put
-// core.hooksPath back.
 func TestInstallSkills_environmentConfigCannotReEnableHooks(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the hook fixture is a POSIX shell script")
@@ -368,21 +321,15 @@ func writeHook(t *testing.T, path, marker string) {
 	}
 }
 
-// TestInstallSkills_adoptsLeftoversOfAnInterruptedRun covers the run that never
-// reached its deferred cleanup (Ctrl-C, a reaped CI job): its scaffolding stays
-// in the target, possibly holding a skill that is nowhere else. The next run
-// repairs that, and it does so *before* the fetch, so it works even when the
-// install that follows fails.
 func TestInstallSkills_adoptsLeftoversOfAnInterruptedRun(t *testing.T) {
 	pin, _ := fixturePin(t)
-	pin.Commit = "0123456789abcdef0123456789abcdef01234567" // absent: this run will fail
+	pin.Commit = "0123456789abcdef0123456789abcdef01234567"
 	target := t.TempDir()
 
 	orphanBackup := filepath.Join(target, ".gplay-backup-1234")
 	mustWrite(t, filepath.Join(orphanBackup, "gplay-setup", "SKILL.md"), "rescued setup\n")
 	mustWrite(t, filepath.Join(orphanBackup, "gplay-tracks", "SKILL.md"), "stale tracks\n")
 	mustWrite(t, filepath.Join(target, ".gplay-stage-5678", "gplay-setup", "SKILL.md"), "half staged\n")
-	// gplay-tracks is installed, so the backup's copy of it is the older one.
 	mustWrite(t, filepath.Join(target, "gplay-tracks", "SKILL.md"), "installed tracks\n")
 
 	if _, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--dir", target); err == nil {
@@ -407,7 +354,6 @@ func TestInstallSkills_gitAbsent(t *testing.T) {
 	ran := false
 	opts := installskills.Options{
 		Pin: &pin,
-		// What a real exec.LookPath returns when git is not on PATH.
 		LookPath: func(string) (string, error) {
 			return "", &exec.Error{Name: "git", Err: exec.ErrNotFound}
 		},
@@ -436,8 +382,6 @@ func TestInstallSkills_gitAbsent(t *testing.T) {
 
 func TestInstallSkills_gitLookupError(t *testing.T) {
 	pin, _ := fixturePin(t)
-	// A non-"not found" lookup failure (git present but not executable): the
-	// "install git" recipe would mislead, so the real cause is surfaced instead.
 	opts := installskills.Options{
 		Pin:      &pin,
 		LookPath: func(string) (string, error) { return "", errors.New("permission denied") },
@@ -455,9 +399,6 @@ func TestInstallSkills_gitLookupError(t *testing.T) {
 	}
 }
 
-// exitErr mimics *exec.ExitError: it carries the child's exit code via an
-// ExitCode() method, the same shape as exit.Coder. A naive %w-wrap of a git
-// failure would leak the child's code as gplay's: the regression this pins.
 type exitErr struct{ code int }
 
 func (e exitErr) Error() string { return "exit status 7" }
@@ -487,18 +428,12 @@ func TestInstallSkills_gitFailureIsOpaqueExitOne(t *testing.T) {
 
 func TestInstallSkills_rejectsPositionalArgs(t *testing.T) {
 	pin, _ := fixturePin(t)
-	// The npx passthrough is gone: a stray positional argument is misuse, not
-	// something to forward to a third-party installer.
 	_, _, err := execCmd(t, installskills.Options{Pin: &pin}, "something")
 	if err == nil {
 		t.Fatal("expected an error for a positional argument")
 	}
 }
 
-// TestInstallSkills_legacyFlagsAreDeprecatedNoOps proves the frozen Public
-// contract survives the installer swap (ADR-0045 §4): every documented flag of
-// the old npx recipe is still accepted, changes nothing, warns on stderr, and
-// the run exits 0 with stdout carrying only data (ADR-0003).
 func TestInstallSkills_legacyFlagsAreDeprecatedNoOps(t *testing.T) {
 	pin, _ := fixturePin(t)
 	target := t.TempDir()
@@ -514,15 +449,12 @@ func TestInstallSkills_legacyFlagsAreDeprecatedNoOps(t *testing.T) {
 			t.Errorf("stderr missing %q\ngot:\n%s", want, stderr)
 		}
 	}
-	// The install itself ran normally: the flags were ignored, not honored.
 	if got := read(t, filepath.Join(target, "gplay-setup", "SKILL.md")); got != "setup skill body\n" {
 		t.Errorf("install did not run under legacy flags: %q", got)
 	}
-	// stdout stays data-only: installed paths, no warning leaked into it.
 	if strings.Contains(stdout, "deprecated") {
 		t.Errorf("deprecation warning leaked to stdout:\n%s", stdout)
 	}
-	// The legacy flags stay out of the advertised interface.
 	help, _, err := execCmd(t, installskills.Options{Pin: &pin}, "--help")
 	if err != nil {
 		t.Fatalf("--help: %v", err)
@@ -561,8 +493,6 @@ func TestInstallSkills_metadata(t *testing.T) {
 	if cmd.Use != "install-skills" {
 		t.Errorf("cmd.Use = %q, want install-skills", cmd.Use)
 	}
-	// --help documents the two facts the command's safety rests on: the pin and
-	// the single runtime requirement.
 	for _, want := range []string{"git", "pinned", "rolled back", "verified"} {
 		if !strings.Contains(cmd.Long, want) {
 			t.Errorf("--help should mention %q\n%s", want, cmd.Long)
@@ -570,9 +500,6 @@ func TestInstallSkills_metadata(t *testing.T) {
 	}
 }
 
-// TestNoPackageManagerExecution guards the acceptance criterion directly: the
-// command must not shell out to npx/npm, nor run a script from the skills repo.
-// A source-level check is the honest way to state "this no longer happens".
 func TestNoPackageManagerExecution(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

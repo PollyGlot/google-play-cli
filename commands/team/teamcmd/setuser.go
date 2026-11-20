@@ -11,12 +11,6 @@ import (
 	playteam "github.com/PollyGlot/google-play-cli/internal/play/team"
 )
 
-// SetUserPermissions is the `team users set` write: users.patch replacing the
-// member's account-wide permissions with enums (the whole set, not a merge),
-// with a 403 or 404 wrapped in an actionable hint. `team users add
-// --if-exists update` runs this same write on an existing member (ADR-0050),
-// so both commands send the same request and surface the same errors. The
-// wrapped *api.Error still drives the exit code (403→11, 404→30).
 func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email string, enums []string) (json.RawMessage, error) {
 	raw, err := playteam.SetUserPermissions(ctx, hc, developerID, email, enums)
 	if err != nil {
@@ -25,8 +19,6 @@ func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email
 	return raw, nil
 }
 
-// forbiddenError is a 403 on a member write: the service account lacks the
-// manage-permissions access the team writes need.
 type forbiddenError struct {
 	developerID string
 	cause       error

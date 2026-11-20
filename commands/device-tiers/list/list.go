@@ -1,7 +1,3 @@
-// Package list implements `gplay device-tiers list`: list the app's device tier
-// configs (newest first). Read-only, no Edit transaction. --page-size/--page-token
-// expose pagination; --output json passes ListDeviceTierConfigsResponse through
-// verbatim (including nextPageToken).
 package list
 
 import (
@@ -17,7 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package   string
 	PageSize  int
@@ -25,7 +20,6 @@ type Input struct {
 	Columns   string
 }
 
-// Payload renders the configs as a table / verbatim JSON.
 type Payload struct {
 	Rows []devicetierscmd.Row
 	Cols []output.Column[devicetierscmd.Row]
@@ -40,7 +34,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.PageSize < 0 {
 		return nil, exit.Usagef("invalid --page-size: must be >= 0")
@@ -61,15 +54,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, devicetierscmd.Classify(pkg, err)
 	}
-	// One page per invocation: without the note a first page in table or
-	// markdown reads as the whole list (--output json keeps the token).
 	if lr.NextPageToken != "" {
 		rc.Notef("more device tier configs available, re-run with --page-token %s for the next page.", lr.NextPageToken)
 	}
 	return Payload{Rows: devicetierscmd.BuildRows(lr.DeviceTierConfigs), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay device-tiers list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

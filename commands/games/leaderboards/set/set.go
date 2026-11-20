@@ -1,11 +1,3 @@
-// Package set implements `gplay games leaderboards set <leaderboardId>`:
-// replace a leaderboard configuration's metadata (leaderboardConfigurations.update,
-// PUT). Writes affect the editable draft (no publish method, ADR-0033). Routine
-// tier (ADR-0017): no --confirm, --dry-run rehearses and previews the body.
-// MarkMutating gates it under GPLAY_READONLY.
-//
-// set is a full PUT replace: for a partial edit fetch the current config
-// (`view --output json`), edit it, and resend it with --file.
 package set
 
 import (
@@ -17,14 +9,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	ID     string
 	Write  gamescmd.LeaderboardWrite
 	DryRun bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	id, err := gamescmd.RequireID(in.ID, "missing leaderboard id: gplay games leaderboards set <leaderboardId>")
 	if err != nil {
@@ -54,7 +44,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return gamescmd.LeaderboardWritePayload{Verb: "set leaderboard", Target: target, Row: gamescmd.BuildLeaderboardRow(l), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay games leaderboards set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

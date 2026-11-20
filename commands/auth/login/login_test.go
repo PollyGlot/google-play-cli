@@ -20,7 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_pureBusiness drives login.Run with a hand-built RunContext.
 func TestRun_pureBusiness(t *testing.T) {
 	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
@@ -50,8 +49,6 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// TestRun_missingSAPath_isCLIError verifies the typed error mapping:
-// the empty-input case must exit 2 (CLI misuse), not 1 (generic).
 func TestRun_missingSAPath_isCLIError(t *testing.T) {
 	_, _, boot := newCmd(t)
 	rc := kernel.NewForTest(context.Background(), boot, kernel.Inputs{})
@@ -64,9 +61,6 @@ func TestRun_missingSAPath_isCLIError(t *testing.T) {
 	}
 }
 
-// fakeKeyring is a configurable double for keystore.KeyringAPI. The login
-// tests use it in "unavailable" mode to force the file backend path, plus
-// one test in available mode to confirm the keyring path also persists.
 type fakeKeyring struct {
 	mu          sync.Mutex
 	store       map[string]string
@@ -139,10 +133,7 @@ func newCmd(t *testing.T) (*bytes.Buffer, *bytes.Buffer, kernel.Boot) {
 	boot := kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
-		// Force file backend in the standard tests so the existing
-		// `keystore.NewFileBackend(boot.KeystoreRoot).Load(...)` reads keep
-		// working. The keyring path has its own dedicated test below.
-		Keyring: newFakeKeyring(true),
+		Keyring:      newFakeKeyring(true),
 	}
 	return &bytes.Buffer{}, &bytes.Buffer{}, boot
 }
@@ -151,9 +142,6 @@ func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args .
 	t.Helper()
 	boot.Stdout = stdout
 	boot.Stderr = stderr
-	// Wrap the subcommand in a minimal root that mirrors cmd/gplay/main.go:
-	// --service-account is a persistent root flag (so login can read it
-	// from cmd.Flags()) and --verbose is the standard verbosity persistent.
 	sub := login.NewCommand(boot)
 	root := &cobra.Command{Use: "gplay"}
 	root.PersistentFlags().String("service-account", "", "")
@@ -241,7 +229,6 @@ func TestLogin_reloginSameName_overwritesCleanly(t *testing.T) {
 		t.Errorf("after re-login, stored content still contains v1KEY")
 	}
 
-	// And there should be exactly one entry
 	names, _ := be.List(context.Background())
 	if len(names) != 1 {
 		t.Errorf("List = %v, want exactly one entry", names)
@@ -259,13 +246,11 @@ func TestLogin_activateFalse_onSecondAccount_keepsCurrentActive(t *testing.T) {
 	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
 
-	// First login (default --activate=true).
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath, "--name", "first"); err != nil {
 		t.Fatalf("first login: %v", err)
 	}
 
-	// Second login with --activate=false must NOT shift the active flag.
 	stdout.Reset()
 	stderr.Reset()
 	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath, "--name", "second", "--activate=false"); err != nil {
@@ -292,8 +277,6 @@ func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
 	_, _, boot := newCmd(t)
 	saPath := writeSA(t, validSAJSON)
 
-	// Empty registry + --activate=false: the new Account is still
-	// activated because the registry would otherwise be left without one.
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, boot, &stdout, &stderr, "--service-account", saPath, "--name", "only", "--activate=false"); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -312,9 +295,6 @@ func TestLogin_activateFalse_onFirstAccount_stillActivates(t *testing.T) {
 	}
 }
 
-// TestLogin_developerID_recordedOnAccount asserts `auth login --developer-id`
-// stores the id on the Account (ADR-0015 / #151 capture point 1) and mentions
-// it on stderr.
 func TestLogin_developerID_recordedOnAccount(t *testing.T) {
 	saPath := writeSA(t, validSAJSON)
 	stdout, stderr, boot := newCmd(t)
@@ -337,7 +317,7 @@ func TestLogin_developerID_recordedOnAccount(t *testing.T) {
 
 func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 	root := t.TempDir()
-	fk := newFakeKeyring(false) // available
+	fk := newFakeKeyring(false)
 	boot := kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
@@ -350,28 +330,21 @@ func TestLogin_keyringBackend_writesToKeyringAndNotFile(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	// The credential must land in the keyring fake, not on disk.
 	be := keystore.NewKeyringBackend(fk, keystore.KeyringService)
 	if _, err := be.Load(context.Background(), "playci"); err != nil {
 		t.Errorf("keyring backend: Load after login: %v", err)
 	}
-	// And the file accounts/ directory must not have been created.
 	if _, err := os.Stat(boot.KeystoreRoot); !os.IsNotExist(err) {
 		t.Errorf("expected no file at %s when keyring backend active; stat err=%v", boot.KeystoreRoot, err)
 	}
-	// And no plaintext warning: it belongs to the file fallback only.
 	if strings.Contains(stderr.String(), "plaintext") {
 		t.Errorf("keyring login printed the file warning: %q", stderr.String())
 	}
 }
 
-// TestLogin_fileBackend_warnsWithPath pins SEC-03 (#589): when the keyring
-// probe fails, login must say, without -v, that the key went to a plaintext
-// file and name that file. A bare "registered" line is how a login over SSH
-// to a Mac with a locked keychain left the key on disk unnoticed.
 func TestLogin_fileBackend_warnsWithPath(t *testing.T) {
 	saPath := writeSA(t, validSAJSON)
-	stdout, stderr, boot := newCmd(t) // keyring unavailable: file backend
+	stdout, stderr, boot := newCmd(t)
 	if err := runCmd(t, boot, stdout, stderr, "--service-account", saPath); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

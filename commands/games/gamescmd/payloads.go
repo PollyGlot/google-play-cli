@@ -8,9 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// writeDryRunView is the gplay-shaped --dry-run report for a create/set: the
-// verb, the addressing target, and the exact request body that WOULD be sent,
-// so an agent can inspect the payload offline before writing live.
 type writeDryRunView struct {
 	DryRun bool            `json:"dryRun"`
 	Verb   string          `json:"verb"`
@@ -18,17 +15,14 @@ type writeDryRunView struct {
 	Body   json.RawMessage `json:"body"`
 }
 
-// AchievementWritePayload renders a create/set result (the row table + the
-// verbatim API response for --output json) or, under --dry-run, a preview of
-// the request body.
 type AchievementWritePayload struct {
-	Verb   string // "create" | "set"
-	Target string // e.g. "application 123" | "achievement a7"
+	Verb   string
+	Target string
 	DryRun bool
-	Body   json.RawMessage // the request body (preview in dry-run)
+	Body   json.RawMessage
 	Row    AchievementRow
 	Cols   []output.Column[AchievementRow]
-	Raw    json.RawMessage // live API response
+	Raw    json.RawMessage
 }
 
 func (p AchievementWritePayload) Renderers() output.Renderers {
@@ -49,7 +43,6 @@ func (p AchievementWritePayload) Renderers() output.Renderers {
 	}
 }
 
-// LeaderboardWritePayload mirrors AchievementWritePayload for leaderboards.
 type LeaderboardWritePayload struct {
 	Verb   string
 	Target string
@@ -78,11 +71,8 @@ func (p LeaderboardWritePayload) Renderers() output.Renderers {
 	}
 }
 
-// DeletePayload renders a delete result. The API returns no body, so the JSON
-// view is a synthesized {"id":...,"deleted":true} (not an API pass-through:
-// there is nothing to pass through). --dry-run reports the --confirm gate.
 type DeletePayload struct {
-	Kind   string // "achievement" | "leaderboard"
+	Kind   string
 	ID     string
 	DryRun bool
 }

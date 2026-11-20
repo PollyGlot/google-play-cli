@@ -1,12 +1,3 @@
-// Package pull implements `gplay iap pull`: read the complete live
-// one-time-product catalog from BOTH surfaces: the v2
-// monetization.onetimeproducts model (with each purchase option's offers
-// nested from one wildcard walk) AND the read-only legacy inappproducts, and
-// write their union as the on-disk catalog, one <productId>.json per product,
-// deduped by product ID with v2 winning (an unmigrated legacy product is
-// invisible to the v2 list, so a v2-only pull would strand it: ADR-0041 §8).
-// A legacy file is recognizable by its `sku` field; apply never writes legacy
-// in place. Edit-free, package axis. Ships [experimental] (ADR-0010).
 package pull
 
 import (
@@ -24,18 +15,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-	// Dir is the catalog directory; "" means the default one, which
-	// catalog.ResolveDefault keeps inside the working directory.
-	Dir string
+	Dir     string
 }
 
-// Payload renders what pull wrote. Raw is a composite of the two verbatim
-// list envelopes (the apps view precedent: no single API response covers a
-// union); Shadowed names legacy products hidden by a v2 product of the same
-// ID.
 type Payload struct {
 	Package  string
 	Dir      string
@@ -92,8 +76,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"FILE", "RESULT"}, rows)
 }
 
-// Run is the business function the kernel invokes: list both live surfaces to
-// completion, union them (v2 wins), mirror into --dir.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -120,9 +102,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if retired {
 		rc.Notef(iapcmd.LegacyRetiredNote, pkg)
 	}
-	// Mirror semantics make pull destructive locally: refuse to erase a
-	// populated directory on an unexpectedly-empty live catalog (the
-	// subscriptions pull guard).
 	if len(items) == 0 && len(legacy) == 0 {
 		if existing, readErr := catalog.Read(dir); readErr == nil && len(existing) > 0 {
 			return nil, exit.Usagef("live one-time-product catalog of %q is empty while %q holds %d catalog file(s): refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
@@ -152,8 +131,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	for _, lg := range legacy {
 		rawLegacy = append(rawLegacy, lg.Raw)
 		if v2IDs[lg.SKU] {
-			// The same ID exists in both models: the v2 resource is the
-			// forward one, the legacy row is its pre-migration shadow.
 			shadowed = append(shadowed, lg.SKU)
 			continue
 		}
@@ -164,9 +141,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	// No single API response covers a two-surface union, so the json view is a
-	// composite of the two verbatim list envelopes (the `apps view` precedent:
-	// each sub-array is upstream bytes, key names mirror the API envelopes).
 	merged, err := output.Marshal(struct {
 		OneTimeProducts []json.RawMessage `json:"oneTimeProducts"`
 		InAppProduct    []json.RawMessage `json:"inappproduct"`
@@ -177,7 +151,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Dir: dir, Written: written, Removed: removed, Shadowed: shadowed, Raw: merged}, nil
 }
 
-// NewCommand returns the cobra command for `gplay iap pull`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -1,5 +1,3 @@
-// Package recoverycmd holds the wiring shared by the `gplay recovery` leaves:
-// the ADR-0018 list-table machinery and 404/403 hint classification. Mirrors commands/team/teamcmd.
 package recoverycmd
 
 import (
@@ -12,14 +10,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// Row is the synthesized one-line-per-recovery view.
 type Row struct {
 	ID      string
 	Status  string
 	Created string
 }
 
-// BuildRow / BuildRows project API actions into rows.
 func BuildRow(a recovery.Action) Row {
 	return Row{ID: a.AppRecoveryID, Status: a.Status, Created: a.CreateTime}
 }
@@ -32,8 +28,6 @@ func BuildRows(actions []recovery.Action) []Row {
 	return rows
 }
 
-// Columns is the single source of truth for the recovery table (ADR-0018). Keys
-// mirror API field names (ADR-0003).
 var Columns = output.NewColumnSet(
 	output.Column[Row]{Key: "id", Header: "ID", Value: func(r Row) string { return r.ID }},
 	output.Column[Row]{Key: "status", Header: "STATUS", Value: func(r Row) string { return r.Status }},
@@ -43,9 +37,6 @@ var Columns = output.NewColumnSet(
 func ResolveColumns(spec string) ([]output.Column[Row], error) { return Columns.Resolve(spec) }
 func DefaultColumns() string                                   { return strings.Join(Columns.DefaultKeys(), ",") }
 
-// packageNotFoundError attaches the recovery-specific 404 hint (a 403 gets
-// apihint.ForbiddenError), leaving the wrapped *api.Error to drive the exit
-// code.
 type packageNotFoundError struct {
 	pkg   string
 	cause error
@@ -56,7 +47,6 @@ func (e *packageNotFoundError) Error() string {
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
-// Classify adds 404/403 hints, leaving the *api.Error to drive the exit code.
 func Classify(pkg string, err error) error {
 	if apihint.Status(err) == http.StatusNotFound {
 		return &packageNotFoundError{pkg: pkg, cause: err}

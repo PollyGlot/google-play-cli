@@ -82,6 +82,13 @@ question is *where* — and (1) answers it: with the credential.
   error one step later. The Account check runs only on that failure path, so
   a resolved id never costs a keyring probe.
 
+- **`auth login --developer-id` overwrites.** Login is explicit, so a
+  re-login with the flag updates the Account's id, unlike the type-once
+  capture of a `team` command, which never replaces an id already recorded
+  (the flag then overrides for that invocation only).
+- **A failed type-once persistence is a warning on stderr**, not a failure:
+  resolution already succeeded, and the command runs with the flag's value.
+
 ## Considered options
 
 - **Resolve like `--package` (committed project pin).** Rejected: wrong

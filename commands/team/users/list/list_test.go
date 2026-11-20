@@ -1,7 +1,3 @@
-// Package list_test exercises `gplay team users list` at the command level: it
-// asserts external behaviour (table + json shape, admin marking, pagination to
-// completion, error-code mapping, and the unresolved-developer-id path)
-// against a stubbed users.list response via the shared teamtest transport.
 package list_test
 
 import (
@@ -53,8 +49,6 @@ const twoUsers = `{"users":[
   {"email":"bob@example.com","accessState":"PENDING","developerAccountPermissions":["CAN_REPLY_TO_REVIEWS_GLOBAL"],"grants":[{"packageName":"com.example.app","appLevelPermissions":["CAN_REPLY_TO_REVIEWS"]}]}
 ]}`
 
-// TestUsersList_table_marksAdmin asserts the table lists every member and
-// marks the account-wide admin distinctly (US24).
 func TestUsersList_table_marksAdmin(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(twoUsers))
 	rc := teamtest.NewRC(t, rt)
@@ -69,15 +63,11 @@ func TestUsersList_table_marksAdmin(t *testing.T) {
 			t.Errorf("table missing %q\n%s", want, out)
 		}
 	}
-	// bob is not an admin: his row must not carry the admin marker. Assert the
-	// admin column count is exactly one "yes" across the table.
 	if got := strings.Count(out, "yes"); got != 1 {
 		t.Errorf("expected exactly one admin marker, got %d\n%s", got, out)
 	}
 }
 
-// TestUsersList_json_verbatim asserts --output json passes the users.list
-// response through (ADR-0003): every member present, raw enums intact.
 func TestUsersList_json_verbatim(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(twoUsers))
 	rc := teamtest.NewRC(t, rt)
@@ -103,8 +93,6 @@ func TestUsersList_json_verbatim(t *testing.T) {
 	}
 }
 
-// TestUsersList_paginatesToCompletion asserts ListUsers follows nextPageToken
-// and the merged result carries every page's members (no silent truncation).
 func TestUsersList_paginatesToCompletion(t *testing.T) {
 	page1 := `{"users":[{"email":"a@example.com"}],"nextPageToken":"tok"}`
 	page2 := `{"users":[{"email":"b@example.com"}]}`
@@ -121,17 +109,11 @@ func TestUsersList_paginatesToCompletion(t *testing.T) {
 			t.Errorf("merged json missing %q (pagination truncated?)\n%s", want, out)
 		}
 	}
-	// Two GET pages, each to /users.
 	if got := len(rt.Calls()); got != 2 {
 		t.Errorf("expected 2 users.list page requests, got %d", got)
 	}
 }
 
-// TestUsersList_repeatedToken_abortsLoop asserts that a server repeating the
-// same nextPageToken makes ListUsers abort with the standard pagination
-// token-loop api.Error instead of following the token forever. UsersList serves
-// the same body (carrying a nextPageToken) on every page, so the second
-// sighting of the token trips the guard.
 func TestUsersList_repeatedToken_abortsLoop(t *testing.T) {
 	looping := `{"users":[{"email":"a@example.com"}],"nextPageToken":"stuck"}`
 	rt := teamtest.New(teamtest.UsersList(looping))
@@ -144,15 +126,11 @@ func TestUsersList_repeatedToken_abortsLoop(t *testing.T) {
 	if !strings.Contains(err.Error(), "pagination token loop detected in users.list") {
 		t.Errorf("error %q should report the repeated-nextPageToken loop", err.Error())
 	}
-	// The guard aborts on the second sighting: page 1 seeds the token, page 2
-	// re-sees it and stops. No unbounded following.
 	if got := len(rt.Calls()); got != 2 {
 		t.Errorf("expected exactly 2 page requests before the loop guard aborts, got %d", got)
 	}
 }
 
-// TestUsersList_empty_jsonArray asserts an account with no members renders
-// {"users":[]} (not null): the conventional empty-array shape.
 func TestUsersList_empty_jsonArray(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(`{"users":[]}`))
 	rc := teamtest.NewRC(t, rt)
@@ -167,13 +145,11 @@ func TestUsersList_empty_jsonArray(t *testing.T) {
 	}
 }
 
-// TestUsersList_unresolvedDeveloperID_exit10 asserts that with no developer-id
-// anywhere the command fails with exit 10 before any network call.
 func TestUsersList_unresolvedDeveloperID_exit10(t *testing.T) {
 	t.Setenv("GPLAY_DEVELOPER_ID", "")
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
-	rc.Resolved = &config.Resolved{} // no developer-id from any layer
+	rc.Resolved = &config.Resolved{}
 
 	_, err := listcmd.Run(rc, listcmd.Input{})
 	if got := exitCodeOf(t, err); got != 10 {
@@ -184,13 +160,11 @@ func TestUsersList_unresolvedDeveloperID_exit10(t *testing.T) {
 	}
 }
 
-// TestUsersList_flagDeveloperID_overrides asserts an explicit --developer-id is
-// used and lands in the request path.
 func TestUsersList_flagDeveloperID_overrides(t *testing.T) {
 	t.Setenv("GPLAY_DEVELOPER_ID", "")
 	rt := teamtest.New(teamtest.UsersList(`{"users":[]}`))
 	rc := teamtest.NewRC(t, rt)
-	rc.Resolved = &config.Resolved{} // force the flag to be the only source
+	rc.Resolved = &config.Resolved{}
 
 	_, err := listcmd.Run(rc, listcmd.Input{DeveloperID: "12345"})
 	if err != nil {
@@ -202,8 +176,6 @@ func TestUsersList_flagDeveloperID_overrides(t *testing.T) {
 	}
 }
 
-// TestUsersList_apiErrors maps upstream failures to exit codes: 403→11 (with
-// the grant hint), 404→30 (with the verify-developer-id hint), 500→40.
 func TestUsersList_apiErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -229,8 +201,6 @@ func TestUsersList_apiErrors(t *testing.T) {
 	}
 }
 
-// TestUsersList_unknownColumn_exit2 asserts an unknown --columns key is a usage
-// error before any network call.
 func TestUsersList_unknownColumn_exit2(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -240,7 +210,6 @@ func TestUsersList_unknownColumn_exit2(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := listcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"developer-id", "columns", "output"} {

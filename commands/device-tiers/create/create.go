@@ -1,9 +1,3 @@
-// Package create implements `gplay device-tiers create`: create a new (immutable)
-// Device Tier Config on Play from a JSON DeviceTierConfig body read from --file
-// or stdin. The resource is app-scoped and OUTSIDE the Edit lifecycle, and the
-// API has no update/patch/delete, so create is the ROUTINE tier (ADR-0017):
-// --dry-run rehearses, no --confirm (a create can never overwrite or destroy).
-// MarkMutating gates it under GPLAY_READONLY (exit 4). Ships [experimental].
 package create
 
 import (
@@ -22,24 +16,18 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package             string
-	File                string // "" or "-" → stdin
+	File                string
 	AllowUnknownDevices bool
 	DryRun              bool
 }
 
-// validationError is a client-side validation failure (exit 20): an unreadable
-// or empty body, malformed JSON, or a body carrying the output-only
-// deviceTierConfigId (a sign the caller wants an update, which the API has no
-// method for).
 type validationError struct{ msg string }
 
 func (e *validationError) Error() string { return e.msg }
 func (e *validationError) ExitCode() int { return 20 }
 
-// Payload renders the created config (live) or the rehearsal (--dry-run).
 type Payload struct {
 	Package string
 	Bytes   int
@@ -65,8 +53,6 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []devicetierscmd.Row{p.Row})
 }
 
-// dryRunView carries the ADR-0017 `requires` array like the other dry-run
-// previews: empty, because create is the ROUTINE tier (no --confirm).
 type dryRunView struct {
 	DryRun   bool     `json:"dryRun"`
 	Package  string   `json:"package"`
@@ -82,7 +68,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return err
 }
 
-// readBody reads the config body from --file (or stdin when "" / "-").
 func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	file = strings.TrimSpace(file)
 	if file == "" || file == "-" {
@@ -102,8 +87,6 @@ func readBody(rc *kernel.RunContext, file string) ([]byte, error) {
 	return b, nil
 }
 
-// validateBody enforces: non-empty, valid JSON, and NO deviceTierConfigId (it is
-// output-only; its presence means the caller wants an update the API lacks).
 func validateBody(body []byte) error {
 	if len(bytes.TrimSpace(body)) == 0 {
 		return &validationError{msg: "the DeviceTierConfig body is empty: pass --file <path> or pipe JSON on stdin"}
@@ -120,7 +103,6 @@ func validateBody(body []byte) error {
 	return nil
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	cols, err := devicetierscmd.ResolveColumns("")
 	if err != nil {
@@ -155,7 +137,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Bytes: len(body), Row: devicetierscmd.BuildRow(cfg), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay device-tiers create`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

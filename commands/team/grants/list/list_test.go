@@ -1,6 +1,3 @@
-// Package list_test exercises `gplay team grants list` at the command level:
-// the table + json projection of grants out of the user list, and the
-// --package / --user filters.
 package list_test
 
 import (
@@ -15,7 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/teamtest"
 )
 
-// twoUsersWithGrants: alice has a grant on foo, bob on foo and bar.
 const twoUsersWithGrants = `{"users":[
   {"email":"alice@example.com","grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_REPLY_TO_REVIEWS"]}]},
   {"email":"bob@example.com","grants":[
@@ -56,7 +52,6 @@ func grantsOf(t *testing.T, rc *kernel.RunContext, in listcmd.Input) []map[strin
 	return view.Grants
 }
 
-// TestGrantsList_all lists every grant across members.
 func TestGrantsList_all(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(twoUsersWithGrants))
 	rc := teamtest.NewRC(t, rt)
@@ -72,7 +67,6 @@ func TestGrantsList_all(t *testing.T) {
 	}
 }
 
-// TestGrantsList_packageFilter answers "who can touch this app".
 func TestGrantsList_packageFilter(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(twoUsersWithGrants))
 	rc := teamtest.NewRC(t, rt)
@@ -88,7 +82,6 @@ func TestGrantsList_packageFilter(t *testing.T) {
 	}
 }
 
-// TestGrantsList_userFilter answers "what apps this person touches".
 func TestGrantsList_userFilter(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(twoUsersWithGrants))
 	rc := teamtest.NewRC(t, rt)
@@ -104,7 +97,6 @@ func TestGrantsList_userFilter(t *testing.T) {
 	}
 }
 
-// TestGrantsList_unresolvedDeveloperID_exit10.
 func TestGrantsList_unresolvedDeveloperID_exit10(t *testing.T) {
 	t.Setenv("GPLAY_DEVELOPER_ID", "")
 	rt := teamtest.New()
@@ -121,7 +113,6 @@ func TestGrantsList_unresolvedDeveloperID_exit10(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := listcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"package", "user", "columns", "developer-id", "output"} {

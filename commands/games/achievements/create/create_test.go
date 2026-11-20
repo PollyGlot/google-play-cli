@@ -32,7 +32,6 @@ func TestRun_dryRun_previewsBodyAndDoesNotCall(t *testing.T) {
 	if err := r.Renderers().JSON(&out); err != nil {
 		t.Fatalf("JSON: %v", err)
 	}
-	// The dry-run envelope embeds the exact body that would be sent.
 	var got struct {
 		DryRun bool            `json:"dryRun"`
 		Body   json.RawMessage `json:"body"`
@@ -83,10 +82,6 @@ func TestRun_happyPath_postsAndConfirms(t *testing.T) {
 	}
 }
 
-// TestRun_explicitZeroFlags_reachTheBody is the command-level regression guard
-// for the *int fix: an explicit --point-value 0 / --steps-to-unlock 0 (the *Set
-// bits flipped, as the leaf does via cmd.Flags().Changed) must survive into the
-// request body, not be dropped by omitempty.
 func TestRun_explicitZeroFlags_reachTheBody(t *testing.T) {
 	var gotBody string
 	rc := gamescmdtest.NewRC(t, gamescmdtest.RTFunc(func(r *http.Request) (*http.Response, error) {

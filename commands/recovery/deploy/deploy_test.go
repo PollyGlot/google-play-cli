@@ -53,8 +53,6 @@ func exitOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// TestRun_missingConfirm_exit3_noNetwork asserts the destructive gate fires
-// before any HTTP and is exit 3 (deterministically resolvable).
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -71,8 +69,6 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noNetwork_requiresConfirm asserts --dry-run rehearses offline
-// and the JSON view advertises requires:["confirm"].
 func TestRun_dryRun_noNetwork_requiresConfirm(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -102,8 +98,6 @@ func TestRun_dryRun_noNetwork_requiresConfirm(t *testing.T) {
 	}
 }
 
-// TestRun_confirmed_postsDeploy_andPassesThrough asserts the confirmed path
-// POSTs :deploy, emits ✓, and passes the empty {} through verbatim.
 func TestRun_confirmed_postsDeploy_andPassesThrough(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)

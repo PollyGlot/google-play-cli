@@ -1,14 +1,3 @@
-// Package rotate implements `gplay signing rotate`: rotate an app's signing key
-// to a new self-hosted Google Cloud KMS key (appsigning.rotateAppSigningKey).
-//
-// Rotation through the API applies ONLY to apps enrolled with a self-hosted
-// Cloud KMS key. For an app on standard Google-managed Play App Signing, a key
-// rotation request goes through the Play Console UI.
-//
-// DESTRUCTIVE tier (ADR-0017/0043): it swaps the live signing key of a real app,
-// irreversibly and visibly to every device, so it requires --confirm (missing →
-// exit 3) and is MarkMutating (GPLAY_READONLY → exit 4). Ships [experimental]
-// (ADR-0010/0042).
 package rotate
 
 import (
@@ -23,7 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
 )
 
-// Input is the request-shaped struct cobra builds from the flags.
 type Input struct {
 	Package string
 	KmsKey  string
@@ -34,7 +22,6 @@ type Input struct {
 	DryRun  bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.KmsKey == "" {
 		return nil, exit.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource of the NEW signing key")
@@ -59,7 +46,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if opts.PemCertificate, err = signingcmd.ReadPEM("kms-cert", in.KmsCert); err != nil {
 		return nil, err
 	}
-	// The lineage is an apksigner binary artifact, not PEM: read it as-is.
 	if opts.Lineage, err = signingcmd.ReadFile("lineage", in.Lineage); err != nil {
 		return nil, err
 	}
@@ -88,7 +74,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return signingcmd.Payload{Verb: "rotate", Package: pkg, Rows: rows, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay signing rotate`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -27,14 +27,11 @@ const rotateBody = `{"rotatedKeyCertificate":{"certificateHashMd5":"AA:BB","cert
 
 const lineageBin = "\x00\x01lineage-bytes\xff"
 
-// certPEM is a real self-signed certificate: ReadPEM parses every block.
 func certPEM(t *testing.T) string {
 	t.Helper()
 	return string(testkit.CertificatePEM(t))
 }
 
-// rt is the offline transport: it answers the OAuth token exchange and the
-// single appsigning POST, recording the request for shape assertions.
 type rt struct {
 	mu     sync.Mutex
 	calls  []string
@@ -89,8 +86,6 @@ func writeFile(t *testing.T, dir, name, content string) string {
 	return p
 }
 
-// validInput returns a complete, valid --confirm-ed input; each test mutates the
-// one field it is about.
 func validInput(t *testing.T) rotatecmd.Input {
 	t.Helper()
 	dir := t.TempDir()
@@ -122,7 +117,6 @@ func render(t *testing.T, r output.Renderable, format output.Format) string {
 	return buf.String()
 }
 
-// TestRun_missingConfirm_exit3_noNetwork asserts the irreversible-write gate.
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	r := &rt{}
 	in := validInput(t)
@@ -139,7 +133,6 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_previewsWithoutHTTP asserts --dry-run rehearses offline.
 func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 	r := &rt{}
 	in := validInput(t)
@@ -160,8 +153,6 @@ func TestRun_dryRun_previewsWithoutHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_postsRotateRequest asserts the URL, the nesting, the enum mapping and
-// the base64 of BOTH byte fields (certificate and lineage).
 func TestRun_postsRotateRequest(t *testing.T) {
 	r := &rt{}
 	in := validInput(t)
@@ -206,7 +197,6 @@ func TestRun_postsRotateRequest(t *testing.T) {
 	}
 }
 
-// TestRun_everyReasonMapsToTheApiEnum pins the whole --reason vocabulary.
 func TestRun_everyReasonMapsToTheApiEnum(t *testing.T) {
 	want := map[string]string{
 		"compromised-key":                "COMPROMISED_KEY",
@@ -234,8 +224,6 @@ func TestRun_everyReasonMapsToTheApiEnum(t *testing.T) {
 	}
 }
 
-// TestRun_missingOrInvalidFlags_areUsageErrors asserts every required flag and
-// the --reason vocabulary are enforced client-side (exit 2), offline.
 func TestRun_missingOrInvalidFlags_areUsageErrors(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -268,8 +256,6 @@ func TestRun_missingOrInvalidFlags_areUsageErrors(t *testing.T) {
 	}
 }
 
-// TestRun_tablePrintsRotatedKeyHashes asserts the human view surfaces the
-// rotated key's hashes.
 func TestRun_tablePrintsRotatedKeyHashes(t *testing.T) {
 	r := &rt{}
 	got, err := rotatecmd.Run(newRC(t, testkit.RoundTripFunc(r.serve), output.FormatTable), validInput(t))
@@ -284,11 +270,6 @@ func TestRun_tablePrintsRotatedKeyHashes(t *testing.T) {
 	}
 }
 
-// TestNewCommand_helpNamesTheKmsOnlyBoundary asserts --help states the trap:
-// rotation via API applies only to self-hosted Cloud KMS keys. The Help Center
-// URL is spelled out here on purpose rather than read from
-// appsigning.HelpCenterURL: the literal is what pins the constant's value, so a
-// silent edit of the constant fails this test instead of shipping.
 func TestNewCommand_helpNamesTheKmsOnlyBoundary(t *testing.T) {
 	cmd := rotatecmd.NewCommand(kernel.Boot{})
 	for _, want := range []string{

@@ -8,8 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRenderJSON_allPassed_golden freezes the green checklist: a bare array
-// of CheckResult with no hint key (omitempty), the shape scripts branch on.
 func TestRenderJSON_allPassed_golden(t *testing.T) {
 	p := doctor.Payload{Results: []authdoctor.CheckResult{
 		{Name: "Service account JSON is valid", Passed: true, ExitCode: 10},
@@ -21,9 +19,6 @@ func TestRenderJSON_allPassed_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "all_passed.json.golden", p)
 }
 
-// TestRenderJSON_failedThenSkipped_golden freezes the red chain: one failure
-// carrying its hint, every later check reported skipped. The hint is free
-// text quoting an error, hence the <, > and & that must reach stdout raw.
 func TestRenderJSON_failedThenSkipped_golden(t *testing.T) {
 	p := doctor.Payload{Results: []authdoctor.CheckResult{
 		{Name: "Service account JSON is valid", Passed: true, ExitCode: 10},

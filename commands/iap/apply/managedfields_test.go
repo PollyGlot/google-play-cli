@@ -7,9 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// offerNotDeclarable lists the OneTimeProductOffer properties that are not
-// declarable offer config, each with the reason it stays out of the diff.
-// Everything else the schema carries must be in offerManagedFields.
 var offerNotDeclarable = map[string]string{
 	"packageName":      "identity: Required. Immutable; the parent app, carried by the request path",
 	"productId":        "identity: Required. Immutable; the parent product, part of the offer key",
@@ -19,12 +16,6 @@ var offerNotDeclarable = map[string]string{
 	"state":            "Output only: reconciled by planStates through the dedicated state verbs, never a patch",
 }
 
-// TestOfferManagedFields_matchDiscovery pins offerManagedFields to the
-// declarable set of OneTimeProductOffer in the embedded Schema index (itself
-// gated byte-identical to the committed Discovery snapshots). A field Google
-// adds turns this red until it is either managed or listed above with its
-// reason: an unlisted declarable field is otherwise invisible to both the
-// diff and the updateMask, a silent no-op on patch (#537).
 func TestOfferManagedFields_matchDiscovery(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {

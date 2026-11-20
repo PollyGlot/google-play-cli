@@ -9,10 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRun_humanViews_stripTerminalEscapes serves an order whose state and
-// line-item title carry an OSC title and a CSI erase-screen, and asserts the
-// human views print them without the sequences while JSON keeps the bytes
-// verbatim (ADR-0003).
 func TestRun_humanViews_stripTerminalEscapes(t *testing.T) {
 	body := strings.NewReplacer(
 		`"PROCESSED"`, `"PROCESSED`+outputtest.HostileJSON+`"`,

@@ -22,12 +22,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRun_pureBusiness drives status.Run with a hand-built RunContext.
-// Run pulls Account/Resolved/KeystoreLabel from rc and shapes Payload.
 func TestRun_pureBusiness(t *testing.T) {
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{KeystoreRoot: "/keys"}, kernel.Inputs{})
 	rc.Account = &serviceaccount.ServiceAccount{ClientEmail: "playci@x"}
-	rc.AccountName = "playci" // the credential in use: status keys the name off this
+	rc.AccountName = "playci"
 	rc.Resolved = &config.Resolved{ConfigAccount: "playci"}
 	rc.KeystoreLabel = keystore.BackendFile
 
@@ -44,9 +42,6 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// fakeKeyring is a minimal in-process double for keystore.KeyringAPI used by
-// the status tests. Each test constructs a fresh one: never touches the
-// real OS keystore.
 type fakeKeyring struct {
 	mu          sync.Mutex
 	store       map[string]string
@@ -105,13 +100,8 @@ const validSAJSON = `{
 
 func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 	t.Helper()
-	// Hermetic env: the status command resolves credentials via the same
-	// resolver as everywhere else, so a stray GPLAY_* in the developer's
-	// shell must not bleed into these tests.
 	t.Setenv(resolver.EnvServiceAccount, "")
 	t.Setenv(resolver.EnvAccount, "")
-	// Reset the package-global Select cache so each test picks the
-	// backend appropriate to its fake keyring.
 	root := t.TempDir()
 	return kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
@@ -120,9 +110,6 @@ func newBoot(t *testing.T, kr keystore.KeyringAPI) kernel.Boot {
 	}
 }
 
-// seedActiveAccount writes a service account into whichever backend Select
-// chooses for the given Boot. Using Select (vs. NewFileBackend directly)
-// keeps the seed in step with what the command itself will read.
 func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 	t.Helper()
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
@@ -145,10 +132,6 @@ func seedActiveAccount(t *testing.T, boot kernel.Boot) {
 	}
 }
 
-// seedCorruptAccount mirrors seedActiveAccount but Saves badBytes (instead of
-// validSAJSON) under "playci" into the Select-chosen backend, then writes a
-// global config with "playci" active. It models an active Account whose stored
-// credential is *invalid* (ADR-0020): present but unusable.
 func seedCorruptAccount(t *testing.T, boot kernel.Boot, badBytes []byte) {
 	t.Helper()
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
@@ -175,9 +158,6 @@ func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args .
 	t.Helper()
 	boot.Stdout = stdout
 	boot.Stderr = stderr
-	// Wrap the subcommand in a minimal root so the persistent --verbose
-	// flag (declared at the binary level) is in scope, matching the
-	// production wiring in cmd/gplay/main.go.
 	sub := status.NewCommand(boot)
 	root := &cobra.Command{Use: "gplay"}
 	root.PersistentFlags().BoolP("verbose", "v", false, "")
@@ -193,9 +173,6 @@ func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
 	seedActiveAccount(t, boot)
 	var stdout, stderr bytes.Buffer
 
-	// Tests target the table rendering. The auto-default resolves to JSON
-	// here (test buffer is not a TTY), so we pass --output table to pin
-	// the format being asserted.
 	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -211,7 +188,6 @@ func TestStatus_fileBackend_tableShowsNameEmailBackendAndPath(t *testing.T) {
 	if !strings.Contains(out, wantPath) {
 		t.Errorf("output missing credential path; got %q", out)
 	}
-	// Backend label: per the issue spec, "file: <path>" when file-backed.
 	if !strings.Contains(out, "file") {
 		t.Errorf("output missing 'file' backend label; got %q", out)
 	}
@@ -262,8 +238,6 @@ func TestStatus_keyringBackend_displaysKeyringLabelAndOmitsPath(t *testing.T) {
 	if !strings.Contains(out, keystore.BackendKeyring) {
 		t.Errorf("output missing %q backend label; got %q", keystore.BackendKeyring, out)
 	}
-	// File path is meaningless when the keyring is active and must not
-	// appear: otherwise users go hunting for a file that doesn't exist.
 	if strings.Contains(out, filepath.Join(boot.KeystoreRoot, "playci.json")) {
 		t.Errorf("output should omit file path when keyring is active; got %q", out)
 	}
@@ -294,9 +268,6 @@ func TestStatus_keyringBackend_jsonOmitsPath(t *testing.T) {
 	}
 }
 
-// TestStatus_keyringBackend_warnsOnStrayPlaintextFiles pins the SEC-03 (#589)
-// audit hint: with the keyring active, a credential file left by an earlier
-// keyring-less login is no longer read by anything, so status names it.
 func TestStatus_keyringBackend_warnsOnStrayPlaintextFiles(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(false))
 	seedActiveAccount(t, boot)
@@ -311,7 +282,6 @@ func TestStatus_keyringBackend_warnsOnStrayPlaintextFiles(t *testing.T) {
 		t.Errorf("stderr = %q, want the stray-file warning naming %s and \"old\"", got, boot.KeystoreRoot)
 	}
 
-	// No stray file: no warning.
 	boot2 := newBoot(t, newFakeKeyring(false))
 	seedActiveAccount(t, boot2)
 	stdout.Reset()
@@ -483,13 +453,8 @@ func TestStatus_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
 	}
 }
 
-// TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing locks in the
-// fix for the reintroduced keychain probe: an inline GPLAY_SERVICE_ACCOUNT
-// credential resolves without the keystore, so status must report it as an
-// env override and leave the backend label empty rather than probing (which,
-// with this unavailable keyring, would have surfaced "file").
 func TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing(t *testing.T) {
-	boot := newBoot(t, newFakeKeyring(true)) // a probe here would yield "file"
+	boot := newBoot(t, newFakeKeyring(true))
 	t.Setenv(resolver.EnvServiceAccount, validSAJSON)
 	var stdout, stderr bytes.Buffer
 
@@ -515,10 +480,6 @@ func TestStatus_inlineCredential_reportsEnvOverrideWithoutProbing(t *testing.T) 
 	}
 }
 
-// TestStatus_corruptActiveCredential_malformedJSON_isExit10 locks in the
-// ADR-0020 invalid path: an active Account whose stored bytes are not valid
-// JSON must hard-error (exit 10) with the "could not read credential" message
-// and render no payload: status must not paper over a corrupt credential.
 func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seedCorruptAccount(t, boot, []byte("{ not valid json"))
@@ -534,24 +495,14 @@ func TestStatus_corruptActiveCredential_malformedJSON_isExit10(t *testing.T) {
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error %q missing 'could not read credential'", err.Error())
 	}
-	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
-	// error survives, not just the wrapper prefix.
 	if !strings.Contains(err.Error(), "invalid character") {
 		t.Errorf("error %q should preserve the underlying JSON parse cause", err.Error())
 	}
-	// Under --output json a failure emits the structured error envelope on
-	// stdout (ADR-0023): it must be exactly that (exit 10 + the real cause) and
-	// must NOT paper over the corrupt credential with a status payload. The
-	// exit-10 envelope assertion below would not hold if status had instead
-	// rendered a fabricated `{}`/account payload (that path returns exit 0).
 	if out := stdout.String(); !strings.Contains(out, `"exitCode": 10`) {
 		t.Fatalf("json hard-error path should emit the exit-10 error envelope; got %q", out)
 	}
 }
 
-// TestStatus_corruptActiveCredential_missingField_namesTheCause checks that the
-// typed cause survives the credentialError wrapping (Unwrap): a service account
-// missing client_email surfaces exit 10 with the field name in the message.
 func TestStatus_corruptActiveCredential_missingField_namesTheCause(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	seedCorruptAccount(t, boot, []byte(`{"type":"service_account"}`))
@@ -569,11 +520,6 @@ func TestStatus_corruptActiveCredential_missingField_namesTheCause(t *testing.T)
 	}
 }
 
-// TestStatus_loggedOutActiveAccount_staysExitZero covers the ADR-0020 absent
-// path: a config naming "playci" active but with no key in the store resolves
-// to ErrNotFound (benign), so status exits 0 with "No active account" rather
-// than erroring. The unavailable keyring forces the file backend; no key file
-// exists, so Load returns ErrNotFound.
 func TestStatus_loggedOutActiveAccount_staysExitZero(t *testing.T) {
 	boot := newBoot(t, newFakeKeyring(true))
 	cfg := &config.Global{}

@@ -1,9 +1,3 @@
-// Package remove implements `gplay team grants remove <email> --package <pkg>`:
-// remove a member's access to one app via grants.delete, targeted by
-// email+package path (no pre-read), WITHOUT removing them from the account.
-// Destructive tier (ADR-0017): refuses without --confirm (exit 3, naming the
-// flag); --dry-run previews the target with no HTTP. CI=true never
-// auto-confirms.
 package remove
 
 import (
@@ -25,7 +19,6 @@ import (
 	playteam "github.com/PollyGlot/google-play-cli/internal/play/team"
 )
 
-// Input is the request-shaped struct cobra builds from flags + the email arg.
 type Input struct {
 	Email       string
 	Package     string
@@ -68,7 +61,6 @@ func classifyError(developerID, email, pkg string, err error) error {
 	return err
 }
 
-// Payload renders what remove did (or, on --dry-run, would do).
 type Payload struct {
 	Email    string
 	Package  string
@@ -145,8 +137,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}{OK: true, Removed: p.Email, Package: p.Package})
 }
 
-// Run is the business function the kernel invokes. It enforces the destructive
-// --confirm gate (unless --dry-run previews offline) and deletes the grant.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	pkg := strings.TrimSpace(in.Package)
@@ -183,7 +173,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Email: email, Package: pkg, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team grants remove`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

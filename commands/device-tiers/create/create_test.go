@@ -24,8 +24,6 @@ import (
 
 const createdBody = `{"deviceTierConfigId":"42","deviceGroups":[{"name":"high"}],"deviceTierSet":{"deviceTiers":[{"level":0}]}}`
 
-// newFake serves createdBody on the create POST; any other request fails the
-// round trip.
 func newFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return http.StatusOK, createdBody, c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/deviceTierConfigs")
@@ -77,8 +75,6 @@ func exitOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// TestRun_happyPath_postsAndPassesThrough asserts a create POSTs the file body
-// (no /edits/ segment) and the JSON view is the verbatim response, plus a ✓.
 func TestRun_happyPath_postsAndPassesThrough(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -108,8 +104,6 @@ func TestRun_happyPath_postsAndPassesThrough(t *testing.T) {
 	}
 }
 
-// TestRun_rejectsDeviceTierConfigId_exit20 asserts a body carrying the
-// output-only id is refused offline (no update API).
 func TestRun_rejectsDeviceTierConfigId_exit20(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -122,7 +116,6 @@ func TestRun_rejectsDeviceTierConfigId_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_malformedJSON_exit20 asserts a non-JSON body fails offline.
 func TestRun_malformedJSON_exit20(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -135,8 +128,6 @@ func TestRun_malformedJSON_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noNetwork_noConfirm asserts --dry-run validates offline and
-// emits a dryRun view with no ✓.
 func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -163,7 +154,6 @@ func TestRun_dryRun_noNetwork_noConfirm(t *testing.T) {
 	}
 }
 
-// TestRun_stdinBody asserts the body is read from stdin when --file is empty.
 func TestRun_stdinBody(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -176,7 +166,6 @@ func TestRun_stdinBody(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts a missing package is CLI misuse, offline.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	fake := newFake()
 	rc := newRC(t, fake)
@@ -189,9 +178,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag surface. The [experimental] label is
-// applied at registration by kernel.Experimental and pinned centrally by
-// TestStabilityRegistry_pinsPublicContract (ADR-0010/ADR-0042).
 func TestNewCommand_flags(t *testing.T) {
 	cmd := createcmd.NewCommand(kernel.Boot{})
 	for _, n := range []string{"package", "file", "allow-unknown-devices", "dry-run", "output"} {

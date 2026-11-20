@@ -72,6 +72,26 @@ guard on an existing one, gets its entry under the route it concerns.
   aligned 16-byte block of the raw value**, besides PEM markers and a canary: that is
   what catches a base64 blob, which no redaction pattern matches.
 
+### Request bodies
+
+- **A file sent in an irreversible request is decoded, not sniffed.** The
+  certificate that `signing enroll` and `signing rotate` upload lands in the
+  body of a call that cannot be undone, so every PEM block must be a
+  `CERTIFICATE` that x509 parses. A private key block (the usual
+  `openssl pkcs12 -nodes` export puts the upload key beside its certificate)
+  or a service-account JSON (its `private_key` holds a PEM key) is refused as
+  a usage error, even under `--dry-run`, naming the block type and never
+  quoting its bytes. Text around the blocks (openssl "Bag Attributes") is
+  dropped and only re-encoded certificate blocks are forwarded.
+
+### Child processes
+
+- **A child process inherits no `GPLAY_` variable.** The whole prefix is
+  stripped from the environment of every `git` gplay spawns, the inline
+  service-account key first among them, while `PATH`, `HOME` and the proxy
+  settings git needs still pass
+  ([ADR-0045](./0045-install-skills-pinned-git-install.md) §1b).
+
 ### Requests to hosts outside the API
 
 - **A URL the API hands back is fetched without credentials.** A Store
@@ -158,7 +178,8 @@ guard on an existing one, gets its entry under the route it concerns.
   behind `-v`: a private key in plaintext on disk (a locked keychain over SSH,
   a headless box) is something to learn at login, not during an offboarding
   audit.
-- **Stray key files draw a warning** when the keyring is the active backend.
+- **Stray key files draw a warning** when the keyring is the active backend,
+  `auth doctor` included.
   An earlier process that could not reach the keyring wrote them, gplay no
   longer reads them, and nothing else would point at them. The warning is
   advice: a listing failure is ignored and never fails the command.

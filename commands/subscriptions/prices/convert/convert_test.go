@@ -49,7 +49,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestParseMoney_shapes asserts the decimal-to-Money conversion.
 func TestParseMoney_shapes(t *testing.T) {
 	m, err := convertcmd.ParseMoney("4.99", "usd")
 	if err != nil {
@@ -72,8 +71,6 @@ func TestParseMoney_shapes(t *testing.T) {
 	}
 }
 
-// TestRun_convertsAndPassesThrough asserts the POST hits the pricing endpoint,
-// the table is one sorted line per region, and json is verbatim.
 func TestRun_convertsAndPassesThrough(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, convertBody))
 	rc := newRC(t, fake)
@@ -108,8 +105,6 @@ func TestRun_convertsAndPassesThrough(t *testing.T) {
 	}
 }
 
-// TestRun_badPrice_exit2_noNetwork asserts an invalid amount is CLI misuse
-// before any HTTP call.
 func TestRun_badPrice_exit2_noNetwork(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, convertBody))
 	rc := newRC(t, fake)

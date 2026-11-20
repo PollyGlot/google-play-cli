@@ -85,6 +85,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   error, not an API shape error.
 - **`KEY_ROTATION_REASON_UNSPECIFIED` is refused by the API** (Discovery:
   "Cannot be used"), so it is not among the `--reason` choices.
+- **A rotation's lineage is an `apksigner` binary artifact, not PEM**, so it
+  is sent as read, without the certificate decoding the PEM inputs go
+  through.
 
 ### Hosted apps (`appstoreappsreview`)
 
@@ -157,6 +160,21 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
   Library, so gplay reads it and never declares it.
 - **`:cancel` is irreversible** (pending pre-orders are cancelled too), so a
   plan carrying one is gated behind `--confirm`.
+- **Reachability follows the verbs.** `ACTIVE` is reachable from anything but
+  `CANCELLED`, which is terminal. `INACTIVE` is reachable only from `ACTIVE`:
+  `:deactivate` and the purchase-option batch deactivate refuse any other
+  state. `CANCELLED` applies only to an `ACTIVE` offer (`:cancel` exists for
+  pre-orders; purchase options have no such verb). A declared state the verbs
+  cannot reach is a usage error naming the transition.
+- **`INACTIVE` is never planned over `INACTIVE_PUBLISHED`.** The refusal
+  leaves out the usual "activate it first" advice, since following it would
+  put a migrated option back on sale; declaring `INACTIVE_PUBLISHED` over any
+  other live state is refused too.
+- **An offer goes `ACTIVE` only under an active purchase option.** State
+  moves therefore run parents before children when activating, children
+  before parents when deactivating, and the irreversible cancels last.
+- **Deleting a product takes its purchase options and offers**, so nothing is
+  planned on them once their product is deleted.
 - **The one-time state requests echo the resource identity** their schema
   lists, while the subscription siblings accept an empty body; gplay sends the
   listed fields on the one-time requests rather than rely on the server
@@ -172,6 +190,14 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 ### Subscriptions (`monetization.subscriptions`)
 
+- **Discovery ties no Play permission to the monetization methods**
+  (`monetization.subscriptions`, `monetization.onetimeproducts`), so a 403
+  hint there points at Users and permissions without naming an enum value it
+  cannot vouch for.
+- **An offer goes `ACTIVE` only under an active base plan**, so a plan runs
+  its activations before its deactivations.
+- **Only `patch` takes `latencyTolerance`.** `subscriptions.create` and
+  `offers.create` have no such parameter, so a create never carries it.
 - **`basePlans.migratePrices` repeats the path identity in its body**
   (`packageName`, `productId`, `basePlanId`), so gplay echoes them. Discovery
   says "Must be equal to" the resource fields for `packageName` and
@@ -198,6 +224,9 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 
 - **`AppVersionRange` includes both bounds**: every versionCode from start to
   end.
+- **`apprecovery.list` requires `versionCode`** (Discovery: "Required"), so
+  `recovery list` requires `--version-code` and refuses its absence before any
+  request (exit 2). The resource exposes no `get`, hence no `recovery view`.
 
 ### Releases and release notes
 

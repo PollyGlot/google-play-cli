@@ -1,7 +1,3 @@
-// Package list implements `gplay games leaderboards list --application-id <id>`:
-// list a game's leaderboard configurations (leaderboardConfigurations.list).
-// Read-only. --output json passes LeaderboardConfigurationListResponse through
-// verbatim, including nextPageToken (ADR-0003). Ships [experimental] (ADR-0033).
 package list
 
 import (
@@ -17,7 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	ApplicationID string
 	PageSize      int
@@ -25,7 +20,6 @@ type Input struct {
 	Columns       string
 }
 
-// Payload renders the leaderboards as a table / verbatim JSON.
 type Payload struct {
 	Rows []gamescmd.LeaderboardRow
 	Cols []output.Column[gamescmd.LeaderboardRow]
@@ -40,7 +34,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.PageSize < 0 {
 		return nil, exit.Usagef("invalid --page-size: must be >= 0")
@@ -61,15 +54,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, gamescmd.Classify(appID, err)
 	}
-	// One page per invocation: without the note a first page in table or
-	// markdown reads as the whole list (--output json keeps the token).
 	if lr.NextPageToken != "" {
 		rc.Notef("more leaderboards available, re-run with --page-token %s for the next page.", lr.NextPageToken)
 	}
 	return Payload{Rows: gamescmd.BuildLeaderboardRows(lr.Items), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay games leaderboards list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

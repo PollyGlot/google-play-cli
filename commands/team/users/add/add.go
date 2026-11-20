@@ -1,17 +1,3 @@
-// Package add implements `gplay team users add <email>`: invite a member with
-// account-wide permissions via users.create. Permissions are expressed in
-// friendly form (--role <bundle> XOR --permissions <alias,…>) resolved by
-// the vocabulary module in account scope (it appends _GLOBAL).
-//
-// add lands the write-safety scaffold the other `team` writes reuse (ADR-0017):
-// the exit-3 "safety flag required" code, --dry-run previewing the resolved
-// payload offline plus a machine-readable `requires` array, and the named
-// --grant-admin gate for admin-conferring writes. add itself is the routine
-// tier (no gate) unless it confers admin. CI=true never auto-confirms a gate.
-//
-// --if-exists skip|update makes a re-run converge: the member is looked up
-// first and, when present, left as is (skip) or given the `team users set`
-// write (update), behind the same gate (ADR-0050).
 package add
 
 import (
@@ -34,9 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// Input is the request-shaped struct cobra builds from flags + the email arg.
-// RoleSet/PermsSet record whether the flag was passed (cmd.Flags().Changed) so
-// the XOR guard distinguishes "unset" from "set empty".
 type Input struct {
 	Email       string
 	DeveloperID string
@@ -46,17 +29,11 @@ type Input struct {
 	PermsSet    bool
 	GrantAdmin  bool
 	DryRun      bool
-	// IfExists is the --if-exists policy; the zero value is ifexists.Fail.
-	IfExists ifexists.Policy
+	IfExists    ifexists.Policy
 }
 
-// policies are the --if-exists values add offers: update is the `team users
-// set` write, the one update path a member already has (ADR-0050).
 var policies = []ifexists.Policy{ifexists.Skip, ifexists.Update, ifexists.Fail}
 
-// forbiddenError / alreadyMemberError attach actionable hints to a 403 / 409 on
-// users.create, leaving the wrapped *api.Error to drive the exit code
-// (403→11, 409→60).
 type forbiddenError struct {
 	developerID string
 	cause       error
@@ -90,10 +67,6 @@ func classifyError(developerID, email string, err error) error {
 	return err
 }
 
-// Payload renders what add did (or, on --dry-run, would do). On a dry-run it is
-// the offline preview (the resolved permissions + the `requires` array); on a
-// real write Raw carries the users.create response for the ADR-0003 --output
-// json pass-through.
 type Payload struct {
 	Email       string
 	Permissions []string
@@ -101,15 +74,9 @@ type Payload struct {
 	Warnings    []string
 	DryRun      bool
 	Raw         json.RawMessage
-	// Skipped marks a member left as is under --if-exists skip: Raw is then
-	// the users.list object of the matched member.
-	Skipped bool
-	// Updated marks a member whose permissions were replaced under
-	// --if-exists update: Raw is then the users.patch response.
-	Updated bool
-	// IfExists is the policy a dry-run preview reports when it is not the
-	// default, so a default preview keeps its exact bytes.
-	IfExists ifexists.Policy
+	Skipped     bool
+	Updated     bool
+	IfExists    ifexists.Policy
 }
 
 func (p Payload) Renderers() output.Renderers {
@@ -156,9 +123,6 @@ func (p Payload) renderTable(w io.Writer) error {
 	return nil
 }
 
-// previewPolicy is the --if-exists policy a dry-run preview reports, or ""
-// for the default, so a default preview keeps the bytes it had before the
-// flag.
 func (p Payload) previewPolicy() string {
 	if !p.DryRun || p.IfExists == "" || p.IfExists == ifexists.Fail {
 		return ""
@@ -188,9 +152,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"FIELD", "VALUE"}, rows)
 }
 
-// dryRunView is the gplay-shaped --dry-run JSON: the resolved payload plus the
-// machine-readable `requires` array (ADR-0017 §4). A live write emits the API
-// response verbatim instead.
 type dryRunView struct {
 	DryRun      bool     `json:"dryRun"`
 	Email       string   `json:"email"`
@@ -218,18 +179,12 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return err
 }
 
-// Run is the business function the kernel invokes. It validates the flag
-// combination, resolves the permissions in account scope, applies the
-// write-safety gate, and, unless --dry-run short-circuits before any network,
-// creates the member.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
 		return nil, exit.Usagef("missing <email>: usage: gplay team users add <email> --role <bundle>|--permissions <alias,…>")
 	}
 
-	// --role XOR --permissions: exactly one is required for add (a member must
-	// be invited with some access; emptying is a `set --clear` concern).
 	if in.RoleSet && in.PermsSet {
 		return nil, exit.Usagef("--role and --permissions are mutually exclusive")
 	}
@@ -261,8 +216,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}, nil
 	}
 
-	// Live path: enforce the gate before any network so a missing flag fails
-	// instantly, never after a write.
 	if err := gate.Verify(false, in.GrantAdmin); err != nil {
 		return nil, err
 	}
@@ -276,9 +229,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// ADR-0050: existence comes from the users.list lookup `team users view`
-	// trusts, never from the create's 409, and only under skip or update:
-	// fail adds no request.
 	if policy != ifexists.Fail {
 		found, raw, ok, err := playteam.FindUserRaw(rc.Ctx, httpClient, developerID, email)
 		if err != nil {
@@ -286,11 +236,9 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		switch {
 		case ok && policy == ifexists.Skip:
-			// Not a ✓: nothing was written.
 			rc.Logf("%s already exists, skipped (--if-exists skip): permissions unchanged", email)
 			return Payload{Email: email, Permissions: found.DeveloperAccountPermissions, Raw: raw, Skipped: true}, nil
 		case ok:
-			// update: the `team users set` write, gated above like the invite.
 			raw, err := teamcmd.SetUserPermissions(rc.Ctx, httpClient, developerID, email, enums)
 			if err != nil {
 				return nil, err
@@ -307,7 +255,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Email: email, Permissions: enums, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team users add`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

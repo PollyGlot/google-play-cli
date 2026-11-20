@@ -204,3 +204,48 @@ dead end.
 - **Merge the new pack over the existing directory instead of replacing it.**
   Rejected: a file removed from a skill would survive forever, and an agent
   would keep reading instructions gplay no longer ships.
+
+## Implementation notes
+
+### The git environment
+
+- **git runs non-interactive.** Every git child gets `GIT_TERMINAL_PROMPT=0`
+  and empty `GIT_ASKPASS` and `SSH_ASKPASS`: a credential or SSH prompt on an
+  agent's or a CI job's stdin would hang forever instead of failing.
+
+### Install safety
+
+- **A skill name in the pin is a single path element.** Anything else would
+  let the pin, or a tampered checkout matched against it, escape the target
+  directory during the copy.
+- **Only the executable bit of a pack file survives.** Installed files are
+  `0644`, or `0755` when the source is executable (a skill may ship a helper
+  script), so a permissive mode in the pack cannot widen the install.
+- **The pin is validated at first use**, not in an `init()`, so a malformed
+  pin is an ordinary command error rather than a crash of every command.
+- **The `.gplay-stage-` and `.gplay-backup-` prefixes are a namespace.** The
+  sweep removes whatever carries them, so nothing else may use them.
+- **Two concurrent runs against the same target are not supported**, by the
+  sweep or by the swap.
+- **A test greps the package's sources for package-runner names**, so the
+  "nothing else is executed" promise cannot quietly regress.
+
+### Reporting
+
+- **A legacy flag's deprecation warning is printed before the install runs**,
+  so the user hears about the ignored flag even when the install then fails
+  for an unrelated reason.
+- **A broken stdout after the install does not undo it.** The files are on
+  disk; the success report is best effort and the exit code stays 0.
+- **Only a "not found" from the `git` lookup prints the install-git recipe.**
+  Any other lookup failure (git present but not executable) would be
+  misdescribed by it, so its real cause surfaces instead.
+
+### Tests
+
+- **The fixture repository sets `uploadpack.allowAnySHA1InWant`.** A local
+  `upload-pack` refuses a fetch by object name without it; public forges
+  allow it by default.
+- **A test sets `GIT_DIR` only after its fixtures are built.** The fixture
+  helpers run `git` with the process environment, so a `GIT_DIR` set earlier
+  would point them at the wrong repository.

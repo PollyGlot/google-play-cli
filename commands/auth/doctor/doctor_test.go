@@ -28,10 +28,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestRun_pureBusiness drives doctor.Run with a hand-built RunContext.
-// doctor renders directly to rc.Stdout (so a failing check still prints
-// the checklist), so the assertion targets the rendered bytes rather
-// than the (nil) return value.
 func TestRun_pureBusiness(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, signedSAJSON(t))
@@ -60,9 +56,6 @@ func TestRun_pureBusiness(t *testing.T) {
 	}
 }
 
-// fakeKeyring mirrors the status_test double: tracks no state by default
-// but can be flipped to "unavailable" so Select() falls back to the file
-// backend. The fake is what keeps the OS keystore out of unit runs.
 type fakeKeyring struct {
 	mu          sync.Mutex
 	store       map[string]string
@@ -113,26 +106,16 @@ func (f *fakeKeyring) Delete(service, user string) error {
 
 func newBoot(t *testing.T) kernel.Boot {
 	t.Helper()
-	// Hermetic env: doctor resolves credentials via the same resolver as
-	// every other command, so a stray GPLAY_* in the developer's shell
-	// must not bleed into these tests.
 	t.Setenv(resolver.EnvServiceAccount, "")
 	t.Setenv(resolver.EnvAccount, "")
-	// Reset the package-global Select cache so each test picks the
-	// backend appropriate to its fake keyring.
 	root := t.TempDir()
 	return kernel.Boot{
 		ConfigPath:   filepath.Join(root, "config.json"),
 		KeystoreRoot: filepath.Join(root, "accounts"),
-		// Default: keyring unavailable so the file backend is used and
-		// the existing setup (seeded SA on disk) works unchanged.
-		Keyring: newFakeKeyring(true),
+		Keyring:      newFakeKeyring(true),
 	}
 }
 
-// signedSAJSON produces a service-account JSON whose private_key is a
-// real RSA key so the OAuth2 library can sign the
-// exchange JWT in tests.
 func signedSAJSON(t *testing.T) []byte {
 	t.Helper()
 	key := testkit.RSAKey(t)
@@ -154,10 +137,6 @@ func signedSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// seedActiveAccount writes a service account into whichever backend
-// Select chooses for the given Boot. Using Select (vs. NewFileBackend
-// directly) keeps the seed in step with what the command itself will
-// read: i.e. the test exercises the same code path as production.
 func seedActiveAccount(t *testing.T, boot kernel.Boot, saBytes []byte) {
 	t.Helper()
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
@@ -192,25 +171,16 @@ func runCmd(t *testing.T, boot kernel.Boot, ctx context.Context, stdout, stderr 
 	return cmd.Execute()
 }
 
-// successRT answers the OAuth2 token exchange with a healthy token so
-// checks 2 and 3 pass. Any other request fails its round trip: the
-// package-less checks must not reach the Play API.
 func successRT() http.RoundTripper {
 	return testkit.NewFake()
 }
 
-// fullStackFake answers the OAuth2 token exchange plus per-package
-// edits.insert and edits.delete, for command-level integration tests.
-// insertByPackage sets the edits.insert status per package (200 when
-// absent); every edits.delete answers 204.
 func fullStackFake(insertByPackage map[string]int) *testkit.Fake {
-	// /androidpublisher/v3/applications/<pkg>/edits[/<id>]
 	const prefix = "/androidpublisher/v3/applications/"
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if !strings.HasPrefix(c.Path, prefix) {
 			return 0, "", false
 		}
-		// Either "<pkg>/edits" (insert) or "<pkg>/edits/<id>" (delete).
 		parts := strings.SplitN(strings.TrimPrefix(c.Path, prefix), "/edits", 2)
 		if len(parts) != 2 {
 			return 0, "", false
@@ -242,9 +212,6 @@ func TestDoctor_happyPath_prints4CheckmarksAndExits0(t *testing.T) {
 	seedActiveAccount(t, boot, signedSAJSON(t))
 
 	var stdout, stderr bytes.Buffer
-	// Pin the format being asserted: this test verifies the table emoji
-	// output, not the auto-default (which would be JSON in this non-TTY
-	// test context).
 	if err := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -305,7 +272,6 @@ func TestDoctor_markdownOutput_emitsTaskList(t *testing.T) {
 	if !strings.Contains(out, "- [x]") {
 		t.Errorf("markdown happy path missing '- [x]'; got:\n%s", out)
 	}
-	// Markdown checklist must not use the emoji that belongs to the table form.
 	if strings.Contains(out, "✅") {
 		t.Errorf("markdown output should not carry emoji ✅; got:\n%s", out)
 	}
@@ -362,8 +328,6 @@ func TestDoctor_unknownOutput_returnsErrorMentioningValidSet(t *testing.T) {
 func TestDoctor_malformedSA_failsCheck1_skipsRest(t *testing.T) {
 	boot := newBoot(t)
 	bad := []byte(`{"type":"service_account","client_email":"","private_key":"","token_uri":""}`)
-	// Seed with bytes the keystore accepts but the doctor will detect as
-	// missing required fields at resolution time.
 	be, _, err := keystore.Select(context.Background(), keystore.SelectOptions{
 		Keyring:  boot.Keyring,
 		FileRoot: boot.KeystoreRoot,
@@ -516,8 +480,6 @@ func TestDoctor_twoPackages_bothPassing_returns6ResultsAndExit0(t *testing.T) {
 			t.Errorf("result[%d] %s: Passed=false (%+v)", i, r.Name, r)
 		}
 	}
-	// The per-package round-trip entries (after the 4 non-API checks) must each
-	// carry the package name in their Name.
 	if !strings.Contains(parsed[4].Name, "com.example.app1") {
 		t.Errorf("parsed[4].Name = %q, want to contain com.example.app1", parsed[4].Name)
 	}
@@ -546,14 +508,8 @@ func TestDoctor_twoPackages_one403_overallExit11(t *testing.T) {
 	}
 }
 
-// TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause asserts
-// the ADR-0020 behavioral delta: a corrupt active credential (missing a
-// required field) makes check 1 surface the REAL resolution cause:
-// the field-named hint, not the synthetic "no Account resolved" message.
 func TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause(t *testing.T) {
 	boot := newBoot(t)
-	// Valid JSON, accepted by the keystore, but missing client_email so
-	// resolution fails with a MissingFieldError on the production path.
 	seedActiveAccount(t, boot, []byte(`{"type":"service_account"}`))
 
 	var stdout, stderr bytes.Buffer
@@ -571,15 +527,11 @@ func TestDoctor_corruptActiveCred_missingField_check1ShowsRealCause(t *testing.T
 	if strings.Contains(out, "no Account resolved") {
 		t.Errorf("check 1 must not fall back to the synthetic absent message; got:\n%s", out)
 	}
-	// The checklist is rendered exactly once: no double-report of check 1.
 	if n := strings.Count(out, "Service account JSON is valid"); n != 1 {
 		t.Errorf("check-1 name appears %d times, want exactly 1; got:\n%s", n, out)
 	}
 }
 
-// TestDoctor_corruptActiveCred_malformedJSON_hintCarriesCause asserts that
-// when the active credential is malformed JSON, check 1's hint carries the
-// underlying resolution cause ("could not read credential: ...").
 func TestDoctor_corruptActiveCred_malformedJSON_hintCarriesCause(t *testing.T) {
 	boot := newBoot(t)
 	seedActiveAccount(t, boot, []byte("{ not json"))
@@ -597,11 +549,8 @@ func TestDoctor_corruptActiveCred_malformedJSON_hintCarriesCause(t *testing.T) {
 	}
 }
 
-// TestDoctor_absentCred_check1IsGenericSynthetic is a regression guard: with
-// no credential at all (absent), check 1 carries the one no-Account wording
-// (kernel.NoAccountError) rather than a resolution-error cause.
 func TestDoctor_absentCred_check1IsGenericSynthetic(t *testing.T) {
-	boot := newBoot(t) // no seeding → genuinely absent
+	boot := newBoot(t)
 
 	var stdout, stderr bytes.Buffer
 	runErr := runCmd(t, boot, ctxWithRT(successRT()), &stdout, &stderr, "--output", "table")

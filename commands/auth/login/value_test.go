@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// login reads --service-account like every other command (#583): a
-// base64-encoded credential is refused WITHOUT being echoed back, where the
-// old path read quoted the whole value in "open <value>: ...".
 func TestLogin_base64Value_isRefusedWithoutEcho(t *testing.T) {
 	value := base64.StdEncoding.EncodeToString([]byte(validSAJSON))
 	stdout, stderr, boot := newCmd(t)
@@ -33,8 +30,6 @@ func TestLogin_base64Value_isRefusedWithoutEcho(t *testing.T) {
 	}
 }
 
-// The flag's help promises "a path to a service-account JSON, or inline
-// JSON": login now honours the inline half like the other commands do.
 func TestLogin_inlineJSON_registersAccount(t *testing.T) {
 	stdout, stderr, boot := newCmd(t)
 

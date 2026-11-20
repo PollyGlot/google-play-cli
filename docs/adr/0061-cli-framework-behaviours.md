@@ -42,6 +42,11 @@ either is the moment to re-read it.
   error path**, which `GroupRunE` bypasses, so gplay applies the same default
   itself. The matching stays cobra's (`SuggestionsFor`); only the rendering is
   gplay's.
+- **A help topic is runnable.** cobra never runs the `Args` validator of a
+  command without `Run`, so a runless topic (`exit-codes`) printed its text
+  and exited 0 on a surplus argument. The topic gets a `RunE` that prints its
+  help, and a help template without the usage block, which cobra prints only
+  for runnable commands, so its output stays that of a topic.
 
 ### Positional arguments (`kernel.WrapArgErrors`)
 
@@ -145,6 +150,9 @@ either is the moment to re-read it.
 - **Parsing sets flag values on the tree it parses into.** A test that parses
   several command lines builds a fresh tree for each, so a value left by one
   can never satisfy a required flag of the next.
+- **cobra falls back to `os.Args[1:]` when a command's args are nil.** A
+  test that executes a command with no arguments sets an empty, non-nil
+  slice, or the `go test` flags would reach the command.
 - **cobra adds `--help` to a command lazily, at execution.** A test that
   lists a command's flags skips it, or its output would depend on test order.
 - **`os/exec`'s `Wait` closes the output pipes**, so a test reading a child's

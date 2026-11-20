@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// renderPlan exercises every entry the subscription plan can carry: a create, a
-// patch, a subscription delete, a base-plan delete, the three offer actions,
-// and both state verbs on base plans and offers.
 func renderPlan() reconcile.Plan {
 	return reconcile.Plan{
 		Creates:         []reconcile.Change{{ProductID: "premium"}},
@@ -32,9 +29,6 @@ func renderPlan() reconcile.Plan {
 	}
 }
 
-// TestRender_golden pins the table, markdown and JSON views of the plan byte
-// for byte, planned and executed, so moving the renderer (ARCH-07, #591)
-// provably changes nothing a user or a jq gate sees.
 func TestRender_golden(t *testing.T) {
 	cases := []struct {
 		name string

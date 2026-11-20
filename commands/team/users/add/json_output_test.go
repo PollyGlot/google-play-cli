@@ -7,9 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRenderJSON_dryRun_golden freezes the --dry-run preview of the member to
-// invite. Nil requires prints [] (a routine write needs no safety flag) and
-// warnings is omitted; the live path passes the API body through (ADR-0003).
 func TestRenderJSON_dryRun_golden(t *testing.T) {
 	p := add.Payload{
 		Email:       "dev@example.com",
@@ -19,8 +16,6 @@ func TestRenderJSON_dryRun_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run.json.golden", p)
 }
 
-// TestRenderJSON_dryRunAdminWithWarning_golden freezes the admin gate and a
-// steering warning, the two optional parts of the preview.
 func TestRenderJSON_dryRunAdminWithWarning_golden(t *testing.T) {
 	p := add.Payload{
 		Email:       "admin@example.com",

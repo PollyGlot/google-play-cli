@@ -1,18 +1,3 @@
-// Package view implements `gplay team users view <email>`: a read-only, deep
-// view of ONE member of the Developer account, addressed by email: the
-// `team users` analogue of `apps view` / `tracks view`. The human views show a
-// scalar header (email, accessState, an admin marker, account-wide permissions)
-// then the member's Grants one row each; --output json is the matched User
-// object verbatim (ADR-0003 pass-through), not a gplay envelope.
-//
-// The Play Developer API has no users.get and no standalone grants endpoint (a
-// Grant is a field of the User), so reading one member means listing users.list
-// to completion and filtering by email: the same cost as `team grants list --user`.
-// A member that does not exist is a not-found (exit 30) even though the
-// underlying users.list returns HTTP 200: addressing a missing resource mirrors
-// `tracks view`/`apps view`. The developer-id resolves through the ADR-0015
-// cascade via teamcmd; 403→exit 11 and 404→exit 30 are classified as in
-// `team users list`.
 package view
 
 import (
@@ -35,17 +20,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// Input is the request-shaped struct cobra builds from the positional email.
 type Input struct {
 	DeveloperID string
 	Email       string
 }
 
-// memberNotFoundError is the synthetic not-found for an addressed member that
-// no row of users.list matched. The underlying call returns HTTP 200, but
-// addressing a member that does not exist is semantically a not-found, so it
-// carries ExitCode()=30 (docs/DESIGN.md §9: "API 4xx … not found"), mirroring
-// `tracks view`/`apps view`. The message hints at `gplay team users list`.
 type memberNotFoundError struct{ email string }
 
 func (e *memberNotFoundError) Error() string {
@@ -53,10 +32,6 @@ func (e *memberNotFoundError) Error() string {
 }
 func (e *memberNotFoundError) ExitCode() int { return 30 }
 
-// forbiddenError wraps a 403 on users.list (the service account lacks the
-// account-level permission to read members) with an actionable hint. It carries
-// no ExitCode of its own so the wrapped *api.Error (403 → exit 11) stays
-// authoritative.
 type forbiddenError struct {
 	developerID string
 	cause       error
@@ -67,9 +42,6 @@ func (e *forbiddenError) Error() string {
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
-// developerNotFoundError wraps a 404 on users.list (the developer-id is wrong or
-// the credential is not a member of it) with a hint. It carries no ExitCode of
-// its own so the wrapped *api.Error (404 → exit 30) stays authoritative.
 type developerNotFoundError struct {
 	developerID string
 	cause       error
@@ -93,18 +65,11 @@ func classifyError(developerID string, err error) error {
 	return err
 }
 
-// grantColumns is the per-grant sub-table shown under the member header: package
-// + app-level permissions, one row per grant. It reuses the shared column
-// machinery so the table/markdown renders match the rest of the CLI.
 var grantColumns = output.NewColumnSet(
 	output.Column[playteam.Grant]{Key: "package", Header: "PACKAGE", Value: func(g playteam.Grant) string { return g.PackageName }},
 	output.Column[playteam.Grant]{Key: "permissions", Header: "PERMISSIONS", Value: func(g playteam.Grant) string { return strings.Join(g.AppLevelPermissions, ",") }},
 )
 
-// Payload satisfies output.Renderable. Raw carries the matched User's verbatim
-// bytes for the ADR-0003 JSON pass-through; the typed fields drive the
-// human-shaped table and markdown views. None of the typed fields are
-// json-tagged: the JSON path is the raw pass-through, never the struct.
 type Payload struct {
 	Email       string           `json:"-"`
 	AccessState string           `json:"-"`
@@ -122,8 +87,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// adminCell renders the admin marker the same way `team users list` does: "yes"
-// for an all-permissions member, empty otherwise.
 func adminCell(admin bool) string {
 	if admin {
 		return "yes"
@@ -131,9 +94,6 @@ func adminCell(admin bool) string {
 	return ""
 }
 
-// renderTable writes the scalar header as `FIELD<TAB>VALUE` lines (like
-// `apps view`), then (when the member has any Grants) the shared grants table
-// beneath. A grant-less member shows GRANTS\t0 and no sub-table.
 func renderTable(w io.Writer, p Payload) error {
 	rows := [][2]string{
 		{"EMAIL", p.Email},
@@ -157,10 +117,6 @@ func renderTable(w io.Writer, p Payload) error {
 	return output.RenderTable(w, cols, p.Grants)
 }
 
-// renderJSON emits the matched User's bytes verbatim (ADR-0003 pass-through).
-// Raw is always populated on the Run path; an empty Raw would mean we never
-// captured the API body (every Payload field is json:"-"), so we error rather
-// than emit zero bytes.
 func renderJSON(w io.Writer, p Payload) error {
 	if len(p.Raw) == 0 {
 		return fmt.Errorf("missing raw users.list payload for --output json")
@@ -169,9 +125,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown renders the member as a record: a level-2 heading (the email)
-// then a `- **Field**: value` list (docs/DESIGN.md §7), and (when present) the
-// grants as a GitHub-Flavored Markdown table, so a pasted report stands alone.
 func renderMarkdown(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "## %s\n\n- **Access state**: %s\n- **Admin**: %s\n- **Permissions**: %s\n- **Grants**: %d\n",
 		p.Email, p.AccessState, adminCell(p.Admin), strings.Join(p.Permissions, ", "), len(p.Grants)); err != nil {
@@ -190,10 +143,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return output.RenderMarkdown(w, cols, p.Grants)
 }
 
-// Run is the business function the kernel invokes. It validates the email,
-// resolves the developer-id, builds an authenticated client, reads the single
-// member (list-and-filter, no users.get), and renders. An absent member is a
-// synthetic not-found (exit 30).
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
@@ -228,7 +177,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team users view <email>`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

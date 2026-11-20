@@ -31,8 +31,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 
 const configBody = `{"deviceTierConfigId":"42","deviceGroups":[{"name":"high"}]}`
 
-// TestRun_happyPath_addressesIDAndPassesThrough asserts the GET addresses the id
-// and the JSON view is verbatim.
 func TestRun_happyPath_addressesIDAndPassesThrough(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, configBody))
 	r, err := viewcmd.Run(newRC(t, fake), viewcmd.Input{Package: "com.example.app", ID: "42"})
@@ -51,8 +49,6 @@ func TestRun_happyPath_addressesIDAndPassesThrough(t *testing.T) {
 	}
 }
 
-// TestRun_missingID_exit2 asserts an empty id is CLI misuse, refused before
-// any API call (the Fake fails an unclaimed call, and none is claimed).
 func TestRun_missingID_exit2(t *testing.T) {
 	fake := testkit.NewFake()
 	_, err := viewcmd.Run(newRC(t, fake), viewcmd.Input{Package: "com.example.app"})

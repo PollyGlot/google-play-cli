@@ -1,10 +1,3 @@
-// Package create implements `gplay games achievements create --application-id
-// <id>`: insert a new achievement configuration (achievementConfigurations.insert).
-// Writes affect the editable draft (there is no publish method, ADR-0033).
-// A draft create is the ROUTINE tier (ADR-0017): no --confirm, --dry-run
-// rehearses and previews the request body. MarkMutating gates it under
-// GPLAY_READONLY. The payload is built from field flags or supplied whole with
-// --file (the ADR-0003 round-trip of `view --output json`).
 package create
 
 import (
@@ -16,14 +9,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	ApplicationID string
 	Write         gamescmd.AchievementWrite
 	DryRun        bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	appID, err := gamescmd.ResolveApplicationID(in.ApplicationID)
 	if err != nil {
@@ -53,7 +44,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return gamescmd.AchievementWritePayload{Verb: "create achievement", Target: target, Row: gamescmd.BuildAchievementRow(a), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay games achievements create`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

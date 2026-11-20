@@ -1,9 +1,3 @@
-// Package addtargeting implements `gplay recovery add-targeting <appRecoveryId>`:
-// widen the audience of a recovery action. The API's addTargeting is APPEND-ONLY
-// : it can only add users/regions/sdk-levels, never narrow. Because it increases
-// the force-update blast radius it is the DESTRUCTIVE tier (ADR-0017): requires
-// --confirm (missing → exit 3), MarkMutating. `add-targeting` is a domain verb
-// admitted under ADR-0019 §2 (see ADR-0030), not `set` (it cannot replace).
 package addtargeting
 
 import (
@@ -16,7 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	Package   string
 	ID        string
@@ -27,7 +20,6 @@ type Input struct {
 	DryRun    bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ID == "" {
 		return nil, exit.Usagef("missing recovery id: gplay recovery add-targeting <appRecoveryId>")
@@ -58,7 +50,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return recoverycmd.LifecyclePayload{Verb: "add-targeting", RecoveryID: in.ID, Package: pkg, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay recovery add-targeting`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

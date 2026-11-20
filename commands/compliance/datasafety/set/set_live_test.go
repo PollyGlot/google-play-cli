@@ -1,10 +1,3 @@
-// Package set_test (live half) exercises the #142 surface of `gplay
-// compliance datasafety set`: the real POST, the --confirm gate, CI=true
-// non-auto-confirm, the implicit-validate short-circuit on the confirm path,
-// and the upstream-error exit-code mapping. It uses a mocked transport that
-// terminates the OAuth2 /token exchange and the dataSafety POST (httptest
-// style, like internal/play/*_test.go). Helpers exitCodeOf/writeCSV/validCSV
-// live in set_test.go (same package).
 package set_test
 
 import (
@@ -29,12 +22,9 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// liveRT terminates the /token exchange and the dataSafety POST. It captures
-// the POST body and serves a configurable status/body so the success and
-// error paths can be exercised.
 type liveRT struct {
 	t        *testing.T
-	postCode int // 0 → 200
+	postCode int
 	postResp string
 
 	mu       sync.Mutex
@@ -98,9 +88,6 @@ func liveSAJSON(t *testing.T) []byte {
 	return raw
 }
 
-// newLiveRC builds a RunContext with a resolved Account and the mocked
-// transport threaded through ctx (the kernel's test seam covers BOTH the
-// /token exchange and the androidpublisher POST).
 func newLiveRC(t *testing.T, rt *liveRT) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(liveSAJSON(t))
@@ -116,9 +103,6 @@ func newLiveRC(t *testing.T, rt *liveRT) *kernel.RunContext {
 	return rc
 }
 
-// TestConfirm_happyPath asserts a real `set --confirm` issues the /token
-// exchange then the dataSafety POST carrying the CSV verbatim, and reports
-// success; --output json passes the API response through.
 func TestConfirm_happyPath(t *testing.T) {
 	hdr := strings.Join([]string{"a", "b"}, ",")
 	path := writeCSV(t, hdr+"\n1,2\n")
@@ -152,9 +136,6 @@ func TestConfirm_happyPath(t *testing.T) {
 	}
 }
 
-// TestConfirm_missing_refuses_exit3 asserts a real write without --confirm
-// refuses with exit 3 (safety flag required, docs/DESIGN.md §9, NOT the
-// generic usage exit 2, #406), points at --dry-run, and makes NO POST.
 func TestConfirm_missing_refuses_exit3(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rt := &liveRT{t: t}
@@ -172,10 +153,6 @@ func TestConfirm_missing_refuses_exit3(t *testing.T) {
 	}
 }
 
-// TestConfirm_missing_namesFlagInEnvelope asserts the refusal is a
-// *exit.SafetyFlagError naming "confirm", so the --output json error envelope
-// carries requires:["confirm"] and an agent can recover deterministically
-// (ADR-0017 / ADR-0023).
 func TestConfirm_missing_namesFlagInEnvelope(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rt := &liveRT{t: t}
@@ -211,8 +188,6 @@ func TestConfirm_missing_namesFlagInEnvelope(t *testing.T) {
 	}
 }
 
-// TestConfirm_CI_neverAutoConfirms asserts CI=true does NOT auto-confirm: a
-// missing --confirm still refuses (exit 3) and makes no POST, even under CI.
 func TestConfirm_CI_neverAutoConfirms(t *testing.T) {
 	t.Setenv("CI", "true")
 	path, _, _ := validCSV(t, 1)
@@ -228,8 +203,6 @@ func TestConfirm_CI_neverAutoConfirms(t *testing.T) {
 	}
 }
 
-// TestConfirm_invalidCSV_shortCircuits asserts a structurally invalid CSV
-// fails (exit 20) before any POST, even with --confirm.
 func TestConfirm_invalidCSV_shortCircuits(t *testing.T) {
 	path := writeCSV(t, "a,b,c\nonly,two\n")
 	rt := &liveRT{t: t}
@@ -244,9 +217,6 @@ func TestConfirm_invalidCSV_shortCircuits(t *testing.T) {
 	}
 }
 
-// TestConfirm_apiErrors asserts upstream failures surface with the correct
-// exit code (403→11 with API-access hint, 404→30 with apps-list hint,
-// 500→40).
 func TestConfirm_apiErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -274,9 +244,6 @@ func TestConfirm_apiErrors(t *testing.T) {
 	}
 }
 
-// TestConfirm_emptyResponse_jsonSuccessObject asserts that when the API
-// returns an empty 2xx body, --output json emits a gplay-shaped success
-// object (the documented ADR-0003 exception) rather than zero bytes.
 func TestConfirm_emptyResponse_jsonSuccessObject(t *testing.T) {
 	path, _, _ := validCSV(t, 1)
 	rt := &liveRT{t: t, postCode: 200, postResp: ""}
@@ -302,7 +269,6 @@ func TestConfirm_emptyResponse_jsonSuccessObject(t *testing.T) {
 	}
 }
 
-// TestNewCommand_hasConfirm asserts the #142 flag surface adds --confirm.
 func TestNewCommand_hasConfirm(t *testing.T) {
 	cmd := setcmd.NewCommand(kernel.Boot{})
 	if cmd.Flags().Lookup("confirm") == nil {
@@ -310,9 +276,6 @@ func TestNewCommand_hasConfirm(t *testing.T) {
 	}
 }
 
-// TestConfirm_emitsConfirmationOnStderr asserts a committed data-safety POST
-// prints a single ✓ line on stderr (DESIGN §8) naming the package, alongside
-// the stdout payload.
 func TestConfirm_emitsConfirmationOnStderr(t *testing.T) {
 	hdr := strings.Join([]string{"a", "b"}, ",")
 	path := writeCSV(t, hdr+"\n1,2\n")
@@ -330,7 +293,6 @@ func TestConfirm_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestDryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestDryRun_noConfirmationOnStderr(t *testing.T) {
 	hdr := strings.Join([]string{"a", "b"}, ",")
 	path := writeCSV(t, hdr+"\n1,2\n")

@@ -17,10 +17,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestEnroll_nonSuccessBecomesApiError asserts a refusal surfaces as *api.Error
-// tagged with the REST method id, so the exit-code taxonomy maps transparently.
 func TestEnroll_nonSuccessBecomesApiError(t *testing.T) {
-	// Every request refused: enough to drive the *api.Error path offline.
 	hc := &http.Client{Transport: testkit.NewFake(testkit.Any(http.StatusForbidden, `{"error":{"code":403,"message":"caller lacks permission"}}`))}
 	_, _, err := appsigning.Enroll(context.Background(), hc, "com.example.app", appsigning.EnrollOpts{KmsKeyResource: "k"})
 	var apiErr *api.Error
@@ -35,8 +32,6 @@ func TestEnroll_nonSuccessBecomesApiError(t *testing.T) {
 	}
 }
 
-// TestClassify_addsActionableHints asserts a 404 and a 403 become messages an
-// agent can act on, while keeping the wrapped *api.Error's exit code.
 func TestClassify_addsActionableHints(t *testing.T) {
 	cases := []struct {
 		status int
@@ -56,15 +51,12 @@ func TestClassify_addsActionableHints(t *testing.T) {
 			t.Errorf("Classify(%d) must keep the *api.Error unwrappable", tc.status)
 		}
 	}
-	// An error that is not an *api.Error passes through untouched.
 	plain := errors.New("dial tcp: no route to host")
 	if got := signingcmd.Classify("com.example.app", plain); !errors.Is(got, plain) {
 		t.Errorf("Classify must pass a non-API error through: %v", got)
 	}
 }
 
-// TestRotationReasons_coverTheApiEnumMinusUnspecified pins the vocabulary: the
-// UNSPECIFIED value is deliberately not offerable, the API rejects it.
 func TestRotationReasons_coverTheApiEnumMinusUnspecified(t *testing.T) {
 	got := appsigning.RotationReasons()
 	want := []string{"compromised-key", "other", "routine-key-upgrade", "use-same-key-for-multiple-apps", "use-stronger-key"}
@@ -82,22 +74,17 @@ func TestRotationReasons_coverTheApiEnumMinusUnspecified(t *testing.T) {
 	}
 }
 
-// TestReadPEM_acceptsOnlyCertificates pins SEC-08 (#589): the file's bytes go
-// into the body of an irreversible call, so ReadPEM decodes it and refuses a
-// private key or a service-account JSON, naming what to pass instead and never
-// echoing the key material. Surrounding text (openssl "Bag Attributes") is
-// dropped and only the certificate blocks are forwarded.
 func TestReadPEM_acceptsOnlyCertificates(t *testing.T) {
 	cert := string(testkit.CertificatePEM(t))
 	key := string(testkit.PrivateKeyPEM(t))
 	rsaKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(testkit.RSAKey(t))}))
 	pub := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("x")}))
-	keyBody := strings.Split(key, "\n")[1] // a line of base64 key material
+	keyBody := strings.Split(key, "\n")[1]
 
 	cases := []struct {
 		name     string
 		content  string
-		wantErr  []string // substrings of the usage error; nil = accepted
+		wantErr  []string
 		wantBody string
 	}{
 		{name: "one certificate", content: cert, wantBody: cert},
