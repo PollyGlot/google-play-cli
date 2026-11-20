@@ -1,33 +1,18 @@
-/* Starlight theme overrides and the landing's semantic tokens (ADR-0035). */
-
-/* ---------------------------------------------------------------------------
-   Brand primitives: every raw colour the themes share is written once, here.
-   Starlight's accent, the landing tokens below, the Tailwind brand utilities
-   (global.css) and the dark-island literals all alias these, so a colour
-   change is one edit and no theme path can silently keep an old copy.
-   The browser-chrome pair (theme-color meta) cannot read CSS; it lives in
-   src/theme-color.mjs and must match --gplay-ink / --light-surface.
-   --------------------------------------------------------------------------- */
 :root {
-  --gplay-neon: #3ddc84; /* solid fills, dark islands, accent text on dark */
-  --gplay-neon-dim: #2bb46b; /* CTA hover, Starlight's pre-theme accent */
-  /* Accent text on light surfaces. WCAG AA for normal text: 5.37:1 on white,
-     4.88:1 on the #f4f4f5 panel, 4.62:1 on the #d7f5e4 accent-low tint.
-     (The former #1d9457 only reached 3.87:1, the large-text bar.) */
+  --gplay-neon: #3ddc84;
+  --gplay-neon-dim: #2bb46b;
   --gplay-green-text: #177a48;
-  --gplay-ink: #050507; /* dark page surface */
-  --gplay-ink-panel: #0a0a0e; /* dark cards, bands, docs nav */
+  --gplay-ink: #050507;
+  --gplay-ink-panel: #0a0a0e;
 
-  /* Light palette, aliased by both light paths below (explicit theme and the
-     no-JS OS fallback). zinc scale; ratios are for text on --light-surface. */
   --light-surface: #ffffff;
-  --light-surface-panel: #f4f4f5; /* zinc-100 */
-  --light-fg: #18181b; /* zinc-900 */
-  --light-fg-body: #27272a; /* zinc-800 */
-  --light-fg-muted: #52525b; /* zinc-600, 7.73:1 */
-  --light-fg-subtle: #71717a; /* zinc-500, 4.83:1 (footer, on surface only) */
-  --light-border: #e4e4e7; /* zinc-200 */
-  --light-border-strong: #d4d4d8; /* zinc-300 */
+  --light-surface-panel: #f4f4f5;
+  --light-fg: #18181b;
+  --light-fg-body: #27272a;
+  --light-fg-muted: #52525b;
+  --light-fg-subtle: #71717a;
+  --light-border: #e4e4e7;
+  --light-border-strong: #d4d4d8;
 }
 
 :root {
@@ -45,47 +30,26 @@
   --sl-color-bg-sidebar: #07070a;
 }
 
-/* Starlight light uses --sl-color-accent as text (links, site title), so it
-   takes the AA text green, the same one the landing uses. */
 :root[data-theme='light'] {
   --sl-color-accent-low: #d7f5e4;
   --sl-color-accent: var(--gplay-green-text);
   --sl-color-accent-high: #123d27;
 }
 
-/* ---------------------------------------------------------------------------
-   Semantic theme tokens for the landing page (ADR-0035).
-
-   The landing's utilities resolve to these variables (exposed to Tailwind via
-   `@theme inline` in global.css), so the whole page follows the active
-   `data-theme` attribute. Dark-island regions (terminal mockup, shell
-   snippets, code) deliberately keep literal dark classes and never read them.
-
-   Default (`:root`, no resolved theme, e.g. JS disabled) is the dark brand
-   surface, overridden to light when `data-theme='light'`.
-   --------------------------------------------------------------------------- */
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --surface: var(--gplay-ink); /* page background */
-  --surface-panel: var(--gplay-ink-panel); /* cards, stat band, section bands */
-  --fg: #fafafa; /* headings / strong text */
-  --fg-body: #e4e4e7; /* body copy, nav links */
-  --fg-muted: #a1a1aa; /* captions, labels, 7.95:1 */
-  /* Footer legalese at text-xs: 5.35:1 on the page (zinc-500 #71717a only
-     reached 4.21:1, below AA). */
+  --surface: var(--gplay-ink);
+  --surface-panel: var(--gplay-ink-panel);
+  --fg: #fafafa;
+  --fg-body: #e4e4e7;
+  --fg-muted: #a1a1aa;
   --fg-subtle: #82828b;
-  --border: #27272a; /* structural + component borders */
-  --border-strong: #3f3f46; /* interactive outlines (buttons, tags) */
-  --accent: var(--gplay-neon); /* text/link/stat accent, 11.41:1 */
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --accent: var(--gplay-neon);
 }
 
-/* The light palette has two entry points that must stay two blocks: an
-   explicit light choice wins whatever the OS says, while the OS preference
-   only applies when no theme was resolved (no JS). Merging them under the
-   media query would drop explicit light for visitors on a dark OS. Both
-   blocks only alias the --light-* primitives, so the values live once; a new
-   token needs a line in each. */
 :root[data-theme='light'] {
   color-scheme: light;
   --surface: var(--light-surface);
@@ -99,8 +63,6 @@
   --accent: var(--gplay-green-text);
 }
 
-/* No-JS light fallback: with no first-paint script run, follow the OS so a
-   light-mode visitor without JS still gets a light surface. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
@@ -116,20 +78,11 @@
   }
 }
 
-/* Keep the header logo at a sane size. */
 .site-title img {
   height: 1.5rem;
   width: auto;
 }
 
-/* ---------------------------------------------------------------------------
-   Landing-only presentation (ADR-0035): logo swap + dark-only hero glows.
-   theme.css is shared (imported by the landing and the docs), but these
-   classes only exist on the landing markup.
-   --------------------------------------------------------------------------- */
-
-/* Per-theme logo swap in the landing's custom header. Default (dark / no-JS)
-   shows the glowing mark; light shows the deepened, glow-free variant. */
 .logo-light {
   display: none;
 }
@@ -140,16 +93,12 @@
   display: inline;
 }
 
-/* Icon-only theme control in the landing header: a segmented group of native
-   radios rendered as icon buttons. The checked option takes the accent. */
 .theme-opt {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   border-radius: 0.25rem;
-  /* Keep each option a comfortable pointer/touch target (≥ 32px square,
-     WCAG 2.5.8 needs 24px) without inflating the header visually. */
   min-width: 2rem;
   min-height: 2rem;
   padding: 0.25rem 0.4rem;
@@ -161,9 +110,6 @@
 .theme-opt:hover {
   color: var(--fg);
 }
-/* Active state is driven by JS (.is-active) rather than :has(input:checked):
-   the latter does not reliably re-evaluate when the radio changes and the
-   theme tokens flip at the same time. */
 .theme-opt.is-active {
   background: var(--surface-panel);
   color: var(--accent);
@@ -173,10 +119,6 @@
   outline-offset: 2px;
 }
 
-/* Blinking block cursor for the hero terminal typing animation. Lives in a
-   dark island, so it takes the brand neon in every theme (no semantic token).
-   The animation script never runs under prefers-reduced-motion, but the
-   blink is disabled there too in case the class is ever reused. */
 .demo-cursor {
   display: inline-block;
   width: 0.55em;
@@ -197,7 +139,6 @@
   }
 }
 
-/* Hero radial glows, painted only on the near-black dark surface. */
 .hero-glow {
   background:
     radial-gradient(42rem 22rem at 85% -10%, rgba(130, 175, 255, 0.1), transparent),
@@ -211,7 +152,6 @@
   background: none;
 }
 
-/* No-JS light fallback: follow the OS for the landing's logo + hero glow. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .logo-dark {
     display: none;

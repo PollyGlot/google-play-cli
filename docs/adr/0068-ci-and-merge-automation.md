@@ -38,6 +38,8 @@ too (the story is in docs/CI_CD.md). The script puts that rule back.
 - **The merge passes `--match-head-commit <sha>`.** A push to the PR between
   the checks and the merge then makes GitHub reject the merge, instead of
   squashing a head nobody verified.
+- **The draft gate is checked last.** It is the cheapest to clear, so the
+  "behind" and "checks red" refusals speak first.
 
 ### Dependabot auto-merge (`.github/scripts/dependabot-merge.sh`)
 
@@ -124,6 +126,10 @@ too (the story is in docs/CI_CD.md). The script puts that rule back.
 - **The section sits between two HTML comment markers** in the release body,
   replacing any earlier copy, so a rerun or a manual replay never duplicates
   it.
+- **Each changelog line is credited to its PR author**, as GitHub-generated
+  notes do: ` by @login` goes at the end of the release-please line
+  (`* **scope:** title ([#N](url)) ([sha](url))`), and a line already
+  credited is left alone.
 
 ### `gh` and GitHub API behaviours
 
@@ -167,7 +173,9 @@ too (the story is in docs/CI_CD.md). The script puts that rule back.
   workflow is what keeps the local gate identical to CI.
 - **The label set is code** (`scripts/sync-labels.sh`). A label created by hand
   on GitHub joins the list in the same change, or the next `--check` reports
-  it.
+  it. The `autorelease:` labels are listed although nothing in the repository
+  uses them: release-please sets them on its release PR, and `--check` would
+  otherwise fail on every release.
 
 ### Shell portability
 

@@ -1,12 +1,5 @@
 import type { APIRoute } from 'astro';
 
-// Everything on this site is public documentation — crawling is welcome,
-// explicitly including AI/answer-engine crawlers (GEO). The AI bots are
-// named individually so the intent survives any future tightening of the
-// catch-all rule.
-//
-// Served at the gplay.sh apex as the real /robots.txt.
-
 const AI_CRAWLERS = [
   'GPTBot',
   'OAI-SearchBot',

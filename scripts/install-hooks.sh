@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# install-hooks.sh: opt-in installer for the versioned hooks in .githooks/.
-#
-# It writes a small shim into the hooks directory git actually reads, and the
-# shim delegates to .githooks/<hook> of whichever worktree runs it. Two choices
-# follow from how this repo is used:
-#
-# - `git rev-parse --git-path hooks` rather than `.git/hooks`: in a worktree
-#   `.git` is a file, and the hooks directory is shared through the common dir
-#   (or wherever core.hooksPath points). One install covers every worktree.
-# - A shim rather than `git config core.hooksPath .githooks`: repointing
-#   core.hooksPath would silently disable hooks already installed there (a
-#   post-checkout hook, for example), and a delegating shim never goes stale
-#   when .githooks/ changes. A branch that predates .githooks/ simply skips.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

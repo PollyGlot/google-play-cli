@@ -1,9 +1,3 @@
-// Offline tests for the /install route of worker.js (issue #601, ADR-0009
-// amendment): tag resolution, fallback, fail-closed answers. Run with
-// `make worker-test` (also the "Docs sanity" CI job). globalThis.fetch is
-// replaced by a fake for every test, so nothing here reaches GitHub or
-// Cloudflare. Hostname, Markdown and asset routing live in worker.test.mjs.
-
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
@@ -23,8 +17,6 @@ const realFetch = globalThis.fetch;
 let calls;
 let warnings;
 
-// Installs a fake fetch that answers from `routes` (URL -> handler) and records
-// every call. An unrouted URL is a test bug, so it throws loudly.
 function fakeFetch(routes) {
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === "string" ? input : input.url;
@@ -61,7 +53,6 @@ beforeEach((t) => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
-  // The whole point of #601: no path of the install route may read `main`.
   for (const { url } of calls) {
     assert.ok(!url.includes("/main/"), `fetched a branch URL: ${url}`);
   }

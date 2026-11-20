@@ -34,6 +34,9 @@ This ADR is a catalogue. A new entry goes under the layer it concerns.
 - **The asset binding uses `auto-trailing-slash` HTML handling**: it redirects
   between `/a/` and `/a` to whichever file exists, so `/a`, `/a/` and
   `/a.html` all resolve.
+- **The Worker is tested through its real `fetch` entry point** with a fake
+  asset binding and a stubbed global `fetch`, offline. Nothing internal is
+  exported from the deployed `worker.js` for the tests' sake.
 
 ### Security headers
 

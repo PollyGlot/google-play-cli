@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Offline test harness for install.sh — proves the sha256 gate is fail-closed.
-#
-# Runs install.sh against a fake release built on disk, with a stub `curl` on
-# PATH mapping URLs to local fixtures. No network, no real download, so it can
-# run in CI on every PR alongside shellcheck.
-#
-# Usage: bash scripts/install-test.sh
 
 set -euo pipefail
 
@@ -22,9 +15,6 @@ sha256() {
   else sha256sum "$1" | awk '{print $1}'; fi
 }
 
-# -- Fixture release ---------------------------------------------------------
-# The archive name install.sh builds depends on the host, so mirror its own
-# os/arch detection rather than hardcoding a platform.
 case "$(uname -s)" in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
@@ -52,13 +42,9 @@ printf '%s  %s\n' "$good_sum" "$archive" >"$fixtures/checksums.good.txt"
 printf '%s  %s\n' "0000000000000000000000000000000000000000000000000000000000000000" "$archive" \
   >"$fixtures/checksums.bad.txt"
 printf '%s  %s\n' "$good_sum" "gplay_9.9.9_other_platform.tar.gz" >"$fixtures/checksums.missing-entry.txt"
-# Two entries for the same archive: ambiguous, so unverifiable.
 { printf '%s  %s\n' "$good_sum" "$archive"; printf '%s  %s\n' "$good_sum" "$archive"; } \
   >"$fixtures/checksums.duplicate.txt"
 
-# -- curl stub ---------------------------------------------------------------
-# Serves the archive always; serves whatever CHECKSUMS_FIXTURE names, or 404s
-# (curl -f's exit 22) when it is empty.
 mkdir -p "$work/bin"
 cat >"$work/bin/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -83,7 +69,6 @@ if [ -n "$out" ]; then cp "$src" "$out"; else cat "$src"; fi
 EOF
 chmod +x "$work/bin/curl"
 
-# run <name> <expected-exit> <expected-stderr-substring> <checksums-fixture> [env=val ...]
 run() {
   local name="$1" want_exit="$2" want_msg="$3" fixture="$4"; shift 4
   local dest="$work/dest/$name" out="$work/$name.log" rc=0
@@ -122,9 +107,6 @@ run duplicate-entries       1 "found 2"                         checksums.duplic
 run bypass-installs-anyway  0 "SKIPPING checksum verification"  checksums.bad.txt GPLAY_INSTALL_NO_VERIFY=1
 run bypass-off-still-checks 1 "checksum mismatch"               checksums.bad.txt GPLAY_INSTALL_NO_VERIFY=0
 
-# A host with no sha256 tool must abort, not install unverified. `command -v`
-# has to come up empty, so run against a PATH built from an explicit tool list
-# that omits shasum and sha256sum.
 hidden="$work/hidden"
 mkdir -p "$hidden"
 for tool in sh bash uname mktemp tar unzip grep awk sed head printf mkdir install rm cp tr; do

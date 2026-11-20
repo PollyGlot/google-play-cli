@@ -1,20 +1,4 @@
 #!/usr/bin/env bash
-# Show gplay download stats from the GitHub Releases API (read-only).
-#
-# Because both install.sh and the Homebrew formula pull the release tarball
-# from GitHub Releases, the per-asset download_count already merges three
-# install paths into one number: install script + brew + manual download.
-# It does NOT include `curl gplay.sh/install` *script* fetches (those live in
-# Cloudflare Worker Logs), and GitHub does not de-duplicate bots/mirrors — a
-# release whose every platform archive has the same nonzero count is flagged
-# as a likely crawler and excluded from the "humans" estimate.
-#
-# Usage:
-#   scripts/stats.sh                  # default: PollyGlot/google-play-cli
-#   scripts/stats.sh other/repo       # override repo
-#
-# Requires the `gh` CLI authenticated with read access. Uses gh's built-in jq
-# engine (--jq), so no external `jq` is needed.
 
 set -euo pipefail
 
@@ -25,9 +9,6 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 1
 fi
 
-# One TSV line per release: tag, date(YYYY-MM-DD), binary downloads,
-# all-asset downloads, BOT flag. Archives are .tar.gz / .zip only — checksums,
-# signatures and SBOMs are counted in "all assets" but not in "binaries".
 tsv="$(
   gh api --paginate "repos/$REPO/releases" --jq '
     .[]
@@ -52,7 +33,6 @@ if [ -z "$tsv" ]; then
   exit 0
 fi
 
-# Repo metadata (stars) and the latest *stable* release tag, for context.
 read -r stars <<< "$(gh repo view "$REPO" --json stargazerCount --jq '.stargazerCount' 2>/dev/null || echo "?")"
 latest="$(gh release view --repo "$REPO" --json tagName --jq '.tagName' 2>/dev/null || echo "")"
 today="$(date +%F)"

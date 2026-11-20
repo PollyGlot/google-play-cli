@@ -1,22 +1,4 @@
 #!/usr/bin/env node
-// Generates the Agent Skills Discovery index served at
-// /.well-known/agent-skills/index.json (Agent Skills Discovery RFC v0.2.0,
-// https://github.com/cloudflare/agent-skills-discovery-rfc).
-//
-// gplay's agent skills live in the sibling repo PollyGlot/google-play-cli-skills
-// (ADR-0021); this index makes them machine-discoverable from gplay.sh without
-// duplicating their content — each entry's `url` points at the canonical
-// SKILL.md on `main`, and `digest` is the SHA-256 of that artifact.
-//
-// The website build (CI) does NOT have the skills repo checked out, so this is
-// a LOCAL dev tool: it reads a local clone of the skills repo and rewrites the
-// committed JSON. Re-run it whenever the skills set changes, against a checkout
-// that is in sync with the skills repo's `main`, then commit the result.
-//
-//   node scripts/gen-agent-skills.mjs [path-to-skills-repo/skills]
-//
-// Default skills dir is the conventional sibling clone (../google-play-cli-skills),
-// overridable by argv[2] or $GPLAY_SKILLS_DIR.
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -37,12 +19,8 @@ const OUT = resolve(__dirname, '../public/.well-known/agent-skills/index.json');
 const RAW_BASE =
   'https://raw.githubusercontent.com/PollyGlot/google-play-cli-skills/main/skills';
 
-// The foundation skill leads; the rest follow alphabetically — same order the
-// skills repo README presents them in.
 const FOUNDATION = 'gplay-cli-usage';
 
-// Minimal frontmatter reader: the two keys we need (name, description) are each
-// a single line. Good enough — this is not a general YAML parser.
 function frontmatterField(text, key) {
   const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!fm) throw new Error('missing frontmatter');
