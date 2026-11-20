@@ -1,5 +1,3 @@
-// Behavior of the four `gplay releases system-apks` leaves, driven through
-// their Run functions against the offline Play fake.
 package systemapks_test
 
 import (
@@ -191,8 +189,6 @@ func TestVariantID_mustBeAnUnsignedInteger(t *testing.T) {
 	}
 }
 
-// binaryRT answers the alt=media GET with raw bytes, which the Fake's JSON
-// responses cannot express.
 func binaryRT(status int, gotURL *string) http.RoundTripper {
 	return testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if resp, ok := testkit.TokenResponse(req); ok {

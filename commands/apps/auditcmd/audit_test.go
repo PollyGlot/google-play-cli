@@ -1,14 +1,3 @@
-// Package auditcmd_test drives `gplay apps audit` at the kernel level: a
-// RunContext built by hand and a testkit.Fake injected via the
-// oauth2.HTTPClient context key, so the whole sweep runs offline.
-//
-// The transport is the read-only guard PRD #449 asks for: it serves the
-// Reporting discovery call and the per-app reads, and FAILS the test on any
-// mutating request. The one exception is the Edit envelope every gplay read
-// rides (POST .../edits then DELETE .../edits/{id}); the transport asserts the
-// discard actually happens, so "read-only" here means "no app state is ever
-// written and no Edit is ever committed", the same contract `tracks list`
-// enforces.
 package auditcmd_test
 
 import (
@@ -33,21 +22,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// appFixture is one app's canned API state.
 type appFixture struct {
 	tracksBody   string
 	listingsBody string
-	// status, when non-zero, makes the app's tracks.list fail with that HTTP
-	// status: the partial-failure path.
-	status int
+	status       int
 }
 
-// auditFake routes the whole sweep offline. Any request that is not the
-// token exchange, the Reporting search, a GET read, or the Edit open/discard
-// fails the test: an audit that PUTs, PATCHes or commits is a contract breach,
-// not a wrong answer. The breach is reported through t rather than only as a
-// failed round trip, because the sweep folds a per-app transport error into
-// its report and would otherwise carry on.
 func auditFake(t *testing.T, searchBody string, apps map[string]appFixture) *testkit.Fake {
 	t.Helper()
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
@@ -72,12 +52,10 @@ func auditFake(t *testing.T, searchBody string, apps map[string]appFixture) *tes
 	})
 }
 
-// isDiscard reports whether c is an Edit discard (edits.delete).
 func isDiscard(c testkit.Call) bool {
 	return c.Method == http.MethodDelete && strings.Contains(c.Path, "/edits/")
 }
 
-// discards counts the Edits the sweep discarded.
 func discards(fake *testkit.Fake) int {
 	n := 0
 	for _, c := range fake.Calls() {
@@ -88,7 +66,6 @@ func discards(fake *testkit.Fake) int {
 	return n
 }
 
-// openEdits returns the packages whose Edit was opened and never discarded.
 func openEdits(fake *testkit.Fake) map[string]bool {
 	open := map[string]bool{}
 	for _, c := range fake.Calls() {
@@ -102,7 +79,6 @@ func openEdits(fake *testkit.Fake) map[string]bool {
 	return open
 }
 
-// pkgOf pulls the package out of an androidpublisher applications path.
 func pkgOf(path string) string {
 	const marker = "/applications/"
 	i := strings.Index(path, marker)
@@ -151,13 +127,10 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 }
 
 const (
-	// driftedTracks: a lingering draft on internal, and a production release
-	// with no release notes.
 	driftedTracks = `{"tracks":[
 		{"track":"internal","releases":[{"name":"3.0.0","status":"draft","versionCodes":["30"]}]},
 		{"track":"production","releases":[{"name":"2.0.0","status":"completed","versionCodes":["20"]}]}
 	]}`
-	// cleanTracks: production shipped with notes, nothing in draft.
 	cleanTracks = `{"tracks":[
 		{"track":"production","releases":[{"name":"2.0.0","status":"completed","versionCodes":["20"],
 			"releaseNotes":[{"language":"en-US","text":"Bug fixes"},{"language":"fr-FR","text":"Corrections"}]}]}
@@ -171,9 +144,6 @@ const (
 	]}`
 )
 
-// TestRun_discoversAndFindsDrift is the happy multi-app path: with no
-// positional packages the sweep discovers via apps.search, reads both apps,
-// and reports the drift on the one that has it.
 func TestRun_discoversAndFindsDrift(t *testing.T) {
 	fake := auditFake(t, searchTwoApps, map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
@@ -208,8 +178,6 @@ func TestRun_discoversAndFindsDrift(t *testing.T) {
 		t.Errorf("no-production-release hit %v, want nothing (both apps ship to production)", pkgs)
 	}
 
-	// Read-only proof: every Edit opened was discarded, and the fake fails
-	// the test on any other mutating verb.
 	if n := discards(fake); n != 2 {
 		t.Errorf("discarded %d Edits, want 2 (one per audited app)", n)
 	}
@@ -218,8 +186,6 @@ func TestRun_discoversAndFindsDrift(t *testing.T) {
 	}
 }
 
-// TestRun_cleanAccount is the zero-findings path: the report still names what
-// ran, so a clean bill is distinguishable from an empty sweep.
 func TestRun_cleanAccount(t *testing.T) {
 	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.b": {tracksBody: cleanTracks, listingsBody: twoLocales},
@@ -236,7 +202,6 @@ func TestRun_cleanAccount(t *testing.T) {
 	if report.Summary.AppsAudited != 1 || len(report.Ran.Checks) == 0 {
 		t.Errorf("ran section = %+v / %+v, want the audited app and the checks named", report.Ran, report.Summary)
 	}
-	// Explicit packages must not cost a Reporting call.
 	for _, c := range fake.Calls() {
 		if strings.Contains(c.Path, "apps:search") {
 			t.Errorf("named packages still hit apps.search: %s %s", c.Method, c.Path)
@@ -244,9 +209,6 @@ func TestRun_cleanAccount(t *testing.T) {
 	}
 }
 
-// TestRun_partialFailureDoesNotAbort covers the sweep-error path: one app the
-// credential cannot read is reported inside the document, the others are still
-// audited, and the failure carries its taxonomy exit code.
 func TestRun_partialFailureDoesNotAbort(t *testing.T) {
 	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
@@ -270,15 +232,11 @@ func TestRun_partialFailureDoesNotAbort(t *testing.T) {
 	if len(report.Ran.Apps) != 1 || report.Ran.Apps[0] != "com.example.a" {
 		t.Errorf("ran.apps = %v, want only the app that was actually read", report.Ran.Apps)
 	}
-	// The failed app's Edit is still discarded: a dangling Edit would block
-	// the operator's next publish for 24h.
 	if n := discards(fake); n != 2 {
 		t.Errorf("discarded %d Edits, want 2 (including the app that failed mid-read)", n)
 	}
 }
 
-// TestRun_checkSelection asserts --check / --skip-check reach both the
-// evaluation and the what-ran section, and that an unknown ID is CLI misuse.
 func TestRun_checkSelection(t *testing.T) {
 	fixtures := map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
@@ -347,8 +305,6 @@ func TestRun_checkSelection(t *testing.T) {
 	})
 }
 
-// TestExitCodes pins the three outcomes an automated caller branches on:
-// clean (0), findings (70), and a sweep that could not run at all.
 func TestExitCodes(t *testing.T) {
 	t.Run("clean sweep exits 0 and hands the report to the kernel", func(t *testing.T) {
 		fake := auditFake(t, "", map[string]appFixture{
@@ -401,9 +357,6 @@ func TestExitCodes(t *testing.T) {
 		}
 	})
 
-	// The regression this pins: a sweep where nothing could be read used to
-	// return zero findings and exit 0, handing back a clean bill for an
-	// account it never actually looked at.
 	t.Run("every app failed exits with the API code, not 0", func(t *testing.T) {
 		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {status: http.StatusForbidden},
@@ -432,7 +385,6 @@ func TestExitCodes(t *testing.T) {
 		}
 	})
 
-	// Errors outrank findings: a hole in the sweep is not a result.
 	t.Run("errors win over findings", func(t *testing.T) {
 		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
@@ -451,8 +403,6 @@ func TestExitCodes(t *testing.T) {
 		}
 	})
 
-	// Non-retryable-wins, the `apps add` batch rule: a permanent failure must
-	// not be masked by a transient one, or a caller loops on a 403 forever.
 	t.Run("a permanent failure outranks a transient one", func(t *testing.T) {
 		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {status: http.StatusServiceUnavailable},
@@ -468,7 +418,6 @@ func TestExitCodes(t *testing.T) {
 		}
 	})
 
-	// The mirror image: when every failure is transient, the caller is told so.
 	t.Run("all-transient failures keep a retryable code", func(t *testing.T) {
 		fake := auditFake(t, "", map[string]appFixture{
 			"com.example.a": {status: http.StatusServiceUnavailable},
@@ -496,9 +445,6 @@ func TestExitCodes(t *testing.T) {
 	})
 }
 
-// TestReportJSONShape pins the gplay-owned document: the keys a CI job or an
-// agent reads. Not an API pass-through (the report composes several
-// resources), so gplay owns and must not silently reshape it.
 func TestReportJSONShape(t *testing.T) {
 	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.a": {tracksBody: driftedTracks, listingsBody: oneLocale},
@@ -546,8 +492,6 @@ func TestReportJSONShape(t *testing.T) {
 	}
 }
 
-// TestRun_dedupesPackages: naming the same package twice must not audit it
-// twice, which would double the quota cost for no new information.
 func TestRun_dedupesPackages(t *testing.T) {
 	fake := auditFake(t, "", map[string]appFixture{
 		"com.example.b": {tracksBody: cleanTracks, listingsBody: twoLocales},

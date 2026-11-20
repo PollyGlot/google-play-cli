@@ -17,8 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newEFFake serves the implicit Edit around expansionfiles.update: insert,
-// PUT, commit.
 func newEFFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -33,7 +31,6 @@ func newEFFake() *testkit.Fake {
 	})
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -42,7 +39,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// putBody returns the body of the recorded PUT, nil when none was sent.
 func putBody(f *testkit.Fake) []byte {
 	for _, c := range f.Calls() {
 		if c.Method == http.MethodPut {
@@ -64,7 +60,6 @@ func newRC(t *testing.T, transport http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_missingReferencesVersion_exit2 asserts --references-version is required.
 func TestRun_missingReferencesVersion_exit2(t *testing.T) {
 	r := newEFFake()
 	rc := newRC(t, r)
@@ -78,7 +73,6 @@ func TestRun_missingReferencesVersion_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_happyPath_putsReference asserts insert → PUT → commit with the body.
 func TestRun_happyPath_putsReference(t *testing.T) {
 	r := newEFFake()
 	rc := newRC(t, r)

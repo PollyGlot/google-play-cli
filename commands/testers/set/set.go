@@ -1,15 +1,3 @@
-// Package set implements `gplay testers set`: it replaces the authorized
-// audience (Google Groups) of a single track, declaratively: the whole
-// list is sent, mapping 1:1 to edits.testers.update (there is no
-// add/remove). It is a write: an implicit Edit (open → testers.update →
-// commit), with --dry-run (validate + preview, no HTTP) and
-// --keep-edit-on-failure, matching `releases upload` / `promote`. There is
-// NO --confirm: a closed test track is low-stakes and reversible.
-//
-// The footgun guard is the key behavior: a bare `set` with neither --group
-// nor --clear is a misuse (exit 2), so a forgotten --group can never
-// silently wipe the list; emptying the audience on purpose is the explicit
-// --clear.
 package set
 
 import (
@@ -33,9 +21,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/testers"
 )
 
-// Input is the request-shaped struct cobra builds from flags. GroupsSet
-// records whether --group was passed at all (cmd.Flags().Changed), so the
-// footgun guard can tell "no --group" from "--group with an empty value".
 type Input struct {
 	Package           string
 	Track             string
@@ -47,30 +32,17 @@ type Input struct {
 	Commit            commitflags.Flags
 }
 
-// trackNotFoundError wraps a testers.update 404 with an actionable hint
-// pointing at `gplay tracks list`. It carries no ExitCode of its own so
-// the wrapped *api.Error (404 → exit 30) stays authoritative through the
-// Coder chain: an unknown track is an API 4xx, not a CLI misuse.
 type trackNotFoundError struct {
 	track string
 	cause error
 }
 
-// Error renders the not-found message plus the `gplay tracks list` hint.
 func (e *trackNotFoundError) Error() string {
 	return fmt.Sprintf("track %q not found: run `gplay tracks list` to see the tracks configured for this app: %v", e.track, e.cause)
 }
 
-// Unwrap exposes the underlying *api.Error so the Coder chain keeps
-// mapping the 404 to exit 30.
 func (e *trackNotFoundError) Unwrap() error { return e.cause }
 
-// Payload satisfies output.Renderable. Raw carries the testers.update body
-// for the ADR-0003 JSON pass-through (empty on --dry-run, which never hits
-// the API and renders a dryRunView instead); Track and DryRun are
-// gplay-derived context shown above the group list, absent from the live
-// JSON, which stays a faithful testers.update pass-through. Groups is the
-// audience that was (or would be) written.
 type Payload struct {
 	Track  string          `json:"-"`
 	Groups []string        `json:"-"`
@@ -78,9 +50,6 @@ type Payload struct {
 	DryRun bool            `json:"-"`
 }
 
-// Renderers satisfies output.Renderable with one renderer per Format. The
-// JSON form is the ADR-0003 testers.update pass-through; table and markdown
-// are human-shaped views over the same Google Groups.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p) },
@@ -89,10 +58,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// renderTable writes a one-line track-context header (plus a `(dry-run)`
-// marker when nothing was written) then one Google Group per line under a
-// GROUP header. An empty audience (a --clear, or a track with no testers)
-// renders a `(no testers)` line so the empty state reads unambiguously.
 func renderTable(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "Track: %s%s\n", p.Track, dryRunSuffix(p.DryRun)); err != nil {
 		return err
@@ -114,20 +79,12 @@ func renderTable(w io.Writer, p Payload) error {
 	return tw.Flush()
 }
 
-// dryRunView is the gplay-shaped --dry-run JSON: the testers.update body that
-// would be sent, tagged dryRun and addressed by its track (a path parameter,
-// not a body field), as `tracks create` and `expansion-files set` preview.
 type dryRunView struct {
 	DryRun       bool     `json:"dryRun"`
 	Track        string   `json:"track"`
 	GoogleGroups []string `json:"googleGroups"`
 }
 
-// renderJSON emits the raw testers.update body verbatim (ADR-0003
-// pass-through). A --dry-run made no API call, yet JSON is the default in CI
-// and pipes, exactly where a rehearsal runs (#777): it prints the planned
-// body as a dryRunView instead. An empty Raw outside a dry-run is a contract
-// break, surfaced loudly rather than as zero bytes.
 func renderJSON(w io.Writer, p Payload) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, Track: p.Track, GoogleGroups: output.NonNil(p.Groups)})
@@ -139,10 +96,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	return err
 }
 
-// renderMarkdown writes the Google Groups as a GitHub-Flavored Markdown
-// table via output.MarkdownTable, preceded by the same track-context line
-// (with the dry-run marker) as the table view so a pasted report stands on
-// its own. An empty audience yields a header-only table (zero rows).
 func renderMarkdown(w io.Writer, p Payload) error {
 	if _, err := fmt.Fprintf(w, "Track: %s%s\n\n", p.Track, dryRunSuffix(p.DryRun)); err != nil {
 		return err
@@ -154,9 +107,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return output.MarkdownTable(w, []string{"GROUP"}, rows)
 }
 
-// dryRunSuffix returns the ` (dry-run)` marker appended to the track-context
-// line when nothing was written, so a previewed payload is never mistaken
-// for an applied one.
 func dryRunSuffix(dryRun bool) string {
 	if dryRun {
 		return " (dry-run)"
@@ -164,9 +114,6 @@ func dryRunSuffix(dryRun bool) string {
 	return ""
 }
 
-// isStatus reports whether err carries a *api.Error with the given HTTP
-// status: the signal used to attach actionable hints to a testers.update
-// 404 (unknown track) or a 403 (service account not invited).
 func isStatus(err error, status int) bool {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
@@ -175,16 +122,6 @@ func isStatus(err error, status int) bool {
 	return false
 }
 
-// classifyTrackError attaches an actionable hint to the operator-facing
-// failures of a testers replacement, while leaving the wrapped *api.Error
-// to drive the exit code. A testers.update 404 is already wrapped as
-// *trackNotFoundError inside the write closure (it carries the
-// `gplay tracks list` hint), so it is passed through untouched rather than
-// being re-classified as a package miss. Everything else is matched on the
-// underlying *api.Error: an edits.insert 404 means the package is unknown
-// (→ `gplay apps list` hint), a 403 means the service account was not
-// invited on the app. Every other failure (5xx, network, edit conflict)
-// propagates verbatim.
 func classifyTrackError(pkg string, err error) error {
 	var tnf *trackNotFoundError
 	if errors.As(err, &tnf) {
@@ -193,11 +130,6 @@ func classifyTrackError(pkg string, err error) error {
 	return apihint.ForPackage(pkg, err)
 }
 
-// targetGroups resolves the audience to write from the validated flags.
-// --clear yields an empty (non-nil) set; otherwise the trimmed, non-empty
-// entries of --group. The caller has already run the footgun and conflict
-// guards, so this only normalizes: it does not re-validate that a set was
-// requested.
 func targetGroups(in Input) []string {
 	if in.Clear {
 		return []string{}
@@ -211,19 +143,12 @@ func targetGroups(in Input) []string {
 	return groups
 }
 
-// Run is the business function the kernel invokes. It validates the flag
-// combination (notably the footgun guard), resolves the package, and,
-// unless --dry-run short-circuits before any network: opens an Edit,
-// replaces the track's testers, and commits.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	in.Track = strings.TrimSpace(in.Track)
 	if in.Track == "" {
 		return nil, exit.Usagef("missing --track: pass --track <name> (any closed-track name, e.g. alpha)")
 	}
 
-	// Footgun guard: a bare `set` with neither --group nor --clear must
-	// never reach the API: a forgotten --group would otherwise silently
-	// wipe the list. Emptying on purpose is the explicit --clear.
 	if !in.GroupsSet && !in.Clear {
 		return nil, &exit.UsageError{Msg: "refusing to change testers without --group or --clear (a forgotten --group must not silently wipe the list); pass --group a@googlegroups.com[,…] to declare the set, or --clear to empty it"}
 	}
@@ -232,9 +157,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 
 	groups := targetGroups(in)
-	// --group was given but every entry blanked out after trimming: don't
-	// send an empty set under the guise of --group (that's what --clear is
-	// for).
 	if in.GroupsSet && len(groups) == 0 {
 		return nil, &exit.UsageError{Msg: "--group was passed but lists no non-empty group; pass --group a@googlegroups.com[,…], or --clear to empty the list"}
 	}
@@ -244,9 +166,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Dry-run skips auth entirely: nothing hits the network, so a missing
-	// Account is not a problem here. We preview the exact audience that
-	// would be written (empty for --clear) without opening an Edit.
 	if in.DryRun {
 		return Payload{
 			Track:  in.Track,
@@ -260,8 +179,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-set Edit.
 	explicitEditID, err := rc.ExplicitEditID(pkg)
 	if err != nil {
 		return nil, err
@@ -285,8 +202,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, classifyTrackError(pkg, err)
 	}
 
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr. The
-	// --dry-run path returned above, so this only runs after a real update.
 	rc.ConfirmMutation(explicitEditID, "testers set on track %q (%d group(s))", in.Track, len(parsed.GoogleGroups))
 	return Payload{
 		Track:  in.Track,
@@ -295,7 +210,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay testers set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -47,8 +47,6 @@ func TestRegister_parsesBothFlags(t *testing.T) {
 	}
 }
 
-// A bad value fails at parse time, which the root's FlagErrorFunc turns into
-// exit 2 before auth or any HTTP.
 func TestRegister_rejectsUnknownValue(t *testing.T) {
 	_, err := parse(t, "--changes-in-review", "ERROR_IF_IN_REVIEW")
 	if err == nil || !strings.Contains(err.Error(), "must be cancel or error") {
@@ -83,7 +81,6 @@ func TestFor_implicitModeIsSilent(t *testing.T) {
 	}
 }
 
-// Pinned but no flag passed: nothing to warn about.
 func TestFor_pinnedWithoutFlagsIsSilent(t *testing.T) {
 	var stderr bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{Stderr: &stderr}, kernel.Inputs{})

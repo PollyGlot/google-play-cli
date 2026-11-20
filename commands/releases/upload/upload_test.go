@@ -1,8 +1,3 @@
-// Package upload_test exercises `gplay releases upload` at the kernel
-// level: a RunContext built by hand, a RoundTripper injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. The
-// RoundTripper sees both the /token exchange and the androidpublisher
-// API calls, so a single seam proves the auth + Edit lifecycle wiring.
 package upload_test
 
 import (
@@ -28,38 +23,17 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// uploadAPI configures the fake androidpublisher calls the orchestrator
-// makes: edits.insert, bundles/apks.upload, deobfuscationfiles.upload,
-// tracks.update, edits.commit, edits.delete. The fake response bodies are the
-// minimum the orchestrator's response parsers accept.
 type uploadAPI struct {
 	editID             string
 	versionCode        int
 	trackUpdateRawResp string
-	// trackUpdateStatus, when >= 400, makes the tracks.update PUT fail with
-	// that status (carrying a Google error envelope) so tests can exercise
-	// the track-not-found hint path. 0 (the default) means a 200 success.
-	trackUpdateStatus int
-	// versionCodes, when set, answers the successive artifact uploads with
-	// these codes in order (a multi-artifact release, #666); empty answers
-	// every upload with versionCode.
-	versionCodes []int
-	// failArtifact, when >= 1, refuses the resumable initiate of that
-	// (1-based) artifact upload with a Google 400, so the all-or-nothing
-	// path can be driven. 0 (the default) lets every upload succeed.
-	failArtifact int
-	// hostedVersionCode answers edits.apks.addexternallyhosted (#546).
-	hostedVersionCode int
+	trackUpdateStatus  int
+	versionCodes       []int
+	failArtifact       int
+	hostedVersionCode  int
 }
 
-// newUploadTransport returns the Fake that records every call (so tests can
-// assert that, e.g., a confirm-guarded production publish never hits the
-// wire at all) and the transport to inject. The wrapper only adds the
-// session URI (Location) to each resumable initiate, which a responder
-// cannot express; the chunk PUT on the same path carries the bytes.
 func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
-	// The counters number the artifact initiates and chunk PUTs, so each
-	// artifact of a multi-artifact upload gets its own answer.
 	var (
 		mu                 sync.Mutex
 		initiates, uploads int
@@ -113,7 +87,6 @@ func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 		}
 		return 0, "", false
 	}, "Location", func(c testkit.Call, status int) string {
-		// Resumable initiate: the session URI goes in Location.
 		if status == http.StatusOK && isResumableInitiate(c.Method, c.Path) {
 			return "https://" + c.Host + c.Path + "?upload_id=session-" + a.editID
 		}
@@ -122,14 +95,11 @@ func newUploadTransport(a uploadAPI) (*testkit.Fake, http.RoundTripper) {
 	return f, f
 }
 
-// isResumableInitiate reports whether a request opens a resumable upload
-// session: bundles, apks or a deobfuscation file.
 func isResumableInitiate(method, path string) bool {
 	return method == http.MethodPost && (strings.HasSuffix(path, "/bundles") ||
 		strings.HasSuffix(path, "/apks") || strings.Contains(path, "/deobfuscationFiles/"))
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -138,8 +108,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// assertSequence pins the recorded API calls, in order, behind exactly one
-// token exchange.
 func assertSequence(t *testing.T, f *testkit.Fake, wantSequence []string) {
 	t.Helper()
 	calls := apiCalls(f)
@@ -156,12 +124,8 @@ func assertSequence(t *testing.T, f *testkit.Fake, wantSequence []string) {
 	}
 }
 
-// touched reports whether anything reached the transport, token exchange
-// included.
 func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
-// trackUpdateReq returns the body of the last tracks.update PUT, nil when
-// none was sent.
 func trackUpdateReq(f *testkit.Fake) []byte {
 	var body []byte
 	for _, c := range f.Calls() {
@@ -172,8 +136,6 @@ func trackUpdateReq(f *testkit.Fake) []byte {
 	return body
 }
 
-// bundlesInitQuery returns the raw query of the bundles.upload resumable
-// initiate: where the method's query parameters travel.
 func bundlesInitQuery(f *testkit.Fake) string {
 	for _, c := range f.Calls() {
 		if c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/bundles") {
@@ -183,22 +145,11 @@ func bundlesInitQuery(f *testkit.Fake) string {
 	return ""
 }
 
-// writeFakeAAB creates a non-empty file with a .aab extension. The
-// RoundTripper does not validate the bytes: bundles.Upload just needs
-// os.Open to succeed.
 func writeFakeAAB(t *testing.T) string {
 	t.Helper()
-	// A real (if minimal) AAB container declaring the package these suites
-	// upload to: the artifact preflight (PRD #448) reads the container and
-	// the manifest before any request is issued, so a placeholder byte string
-	// would be refused offline and never reach the RoundTripper.
 	return artifacttest.AAB(t, t.TempDir(), "app.aab", "com.example.app")
 }
 
-// newRC builds a RunContext with the injected RoundTripper installed as
-// the oauth2.HTTPClient seam and a parsed Account loaded from
-// testkit.ServiceAccountJSON. The kernel-level Run is invoked directly so the test
-// covers the full Run → orchestrator → play/* round trip.
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))
@@ -213,10 +164,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
-// TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher exercises
-// the full vertical slice. Asserts both that the orchestrator returned
-// a usable Renderable and that the injected RoundTripper saw the
-// /token exchange in front of the androidpublisher calls.
 func TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{
@@ -241,7 +188,6 @@ func TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher(t *testing.T) 
 	if rt.TokenExchanges() == 0 {
 		t.Errorf("RoundTripper saw no /token exchange; calls=%v", apiCalls(rt))
 	}
-	// One /token exchange, then the androidpublisher calls in order.
 	wantSequence := []string{
 		"POST /androidpublisher/v3/applications/com.example.app/edits",
 		"POST /upload/androidpublisher/v3/applications/com.example.app/edits/edit-xyz/bundles",
@@ -252,10 +198,6 @@ func TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher(t *testing.T) 
 	assertSequence(t, rt, wantSequence)
 }
 
-// TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP asserts the
-// CLI-misuse guard fires before any HTTP. The RoundTripper must record
-// zero calls so a buggy fix that defers the check past auth setup is
-// caught here.
 func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -278,10 +220,6 @@ func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_stagedOne_exit2PointingAtComplete_noHTTP asserts #733: Play
-// refuses a fraction of 1.0, so --staged 1 is a usage error before any
-// upload byte or token exchange, and the message sends the operator to
-// --complete.
 func TestRun_stagedOne_exit2PointingAtComplete_noHTTP(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{})
@@ -306,12 +244,6 @@ func TestRun_stagedOne_exit2PointingAtComplete_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_productionPublishWithoutConfirm_exit3_noHTTP asserts that a
-// production --complete without --confirm hits the orchestrator's confirm
-// guard before any HTTP: including the /token exchange. The oauth2 library
-// is lazy, so a buggy refactor that pre-mints a token would show up as a
-// non-zero call count here. The refusal is exit 3 (safety flag required,
-// docs/DESIGN.md §9), not the generic usage exit 2 (#408).
 func TestRun_productionPublishWithoutConfirm_exit3_noHTTP(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{})
@@ -339,10 +271,6 @@ func TestRun_productionPublishWithoutConfirm_exit3_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_productionPublishWithConfirm_succeedsAndHitsAPI asserts that
-// --confirm unblocks the production publish and the RoundTripper sees
-// the full Edit lifecycle on the production track. The tracks.update
-// payload must carry status=completed and no userFraction.
 func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{
@@ -380,11 +308,6 @@ func TestRun_productionPublishWithConfirm_succeedsAndHitsAPI(t *testing.T) {
 	}
 }
 
-// TestRun_uploadToMissingClosedTrack_hintsTracksCreate asserts that an
-// upload whose --track has not been created yet (tracks.update 404) fails
-// with a `gplay tracks create <name>` hint, preserves the underlying exit
-// code (30, not rewritten by the hint), and never auto-creates the track:
-// gplay only ever PUTs tracks.update, never POSTs a fresh track on upload.
 func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{
@@ -408,8 +331,6 @@ func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	if code := exit.For(err); code != 30 {
 		t.Errorf("exit.For(err) = %d, want 30 (underlying *api.Error preserved); err=%v", code, err)
 	}
-	// No auto-create: gplay must never POST a fresh track as a side effect of
-	// an upload: only PUT tracks.update against the (expected-to-exist) track.
 	for _, c := range apiCalls(rt) {
 		if c == "POST /androidpublisher/v3/applications/com.example.app/edits/edit-miss/tracks" {
 			t.Errorf("upload auto-created a track (saw %q); it must only PUT tracks.update", c)
@@ -417,11 +338,6 @@ func TestRun_uploadToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersExpectedFlags is a thin smoke test for the
-// cobra wiring. It does not exercise Run end-to-end (the kernel-level
-// tests above do that): its job is to catch a flag-plumbing regression
-// where a future refactor of NewCommand drops or renames a flag and
-// the Input struct silently goes unwired.
 func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	cmd := upload.NewCommand(kernel.Boot{})
 	for _, name := range []string{
@@ -449,9 +365,6 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	}
 }
 
-// TestRun_happyPath_emitsConfirmationOnStderr asserts a committed upload
-// prints a single ✓ success line on stderr (DESIGN §8) carrying the
-// versionCode, track, and status: in addition to the stdout payload.
 func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newUploadTransport(uploadAPI{
@@ -477,8 +390,6 @@ func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓:
-// the marker means committed, and a dry-run only previews to stdout.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newUploadTransport(uploadAPI{})
@@ -494,9 +405,6 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_inProgressRollout_confirmationShowsUserFractionPercent asserts the
-// ✓ line renders userFraction as a percentage when status is inProgress:
-// the one status where the fraction informs (DESIGN §8).
 func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T) {
 	aab := writeFakeAAB(t)
 	_, transport := newUploadTransport(uploadAPI{
@@ -516,8 +424,6 @@ func TestRun_inProgressRollout_confirmationShowsUserFractionPercent(t *testing.T
 	}
 }
 
-// writeFakeMapping creates a non-empty mapping.txt. The RoundTripper does
-// not validate the bytes: mappings.Upload just needs os.Open to succeed.
 func writeFakeMapping(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "mapping.txt")
@@ -527,10 +433,6 @@ func writeFakeMapping(t *testing.T) string {
 	return p
 }
 
-// TestRun_withMapping_uploadsMappingInSameEditAndConfirms asserts that
-// `releases upload --mapping <file>` uploads the ProGuard mapping inside
-// the same Edit (keyed by the bundle's versionCode) and that the ✓
-// confirmation line reflects the mapping (#250).
 func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 	aab := writeFakeAAB(t)
 	mapping := writeFakeMapping(t)
@@ -567,18 +469,11 @@ func TestRun_withMapping_uploadsMappingInSameEditAndConfirms(t *testing.T) {
 	}
 }
 
-// writeFakeAPK creates a non-empty .apk file. The RoundTripper does not
-// validate the bytes: apks.Upload just needs os.Open to succeed.
 func writeFakeAPK(t *testing.T) string {
 	t.Helper()
 	return artifacttest.APK(t, t.TempDir(), "app.apk", "com.example.app")
 }
 
-// TestRun_apkExtension_ridesApksUploadEndpoint asserts a .apk artifact is
-// auto-detected and uploaded via edits.apks.upload (resumable POST-initiate
-// + PUT to .../apks?uploadType=resumable)
-// instead of bundles.upload, while the rest of the Edit lifecycle: insert,
-// tracks.update, commit: is byte-for-byte the AAB pipeline (ADR-0036).
 func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
 	apk := writeFakeAPK(t)
 	rt, transport := newUploadTransport(uploadAPI{
@@ -606,12 +501,7 @@ func TestRun_apkExtension_ridesApksUploadEndpoint(t *testing.T) {
 	assertSequence(t, rt, wantSequence)
 }
 
-// TestRun_formatApkOverride_forcesApkPathForNonApkFilename asserts that
-// --format apk routes a file whose extension is NOT .apk through the APK
-// endpoint: the override wins over extension auto-detect (ADR-0030 parity).
 func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
-	// A file with a .bin extension the auto-detect could not classify, but a
-	// real APK container underneath so the preflight agrees with --format.
 	p := artifacttest.APK(t, t.TempDir(), "build.bin", "com.example.app")
 	rt, transport := newUploadTransport(uploadAPI{
 		editID:             "edit-fmt",
@@ -642,9 +532,6 @@ func TestRun_formatApkOverride_forcesApkPathForNonApkFilename(t *testing.T) {
 	}
 }
 
-// TestRun_unknownExtension_noFormat_exit2_noHTTP asserts that an artifact
-// with an unrecognized extension and no --format is a usage error (exit 2)
-// before any HTTP: mirroring the `releases sharing upload` message.
 func TestRun_unknownExtension_noFormat_exit2_noHTTP(t *testing.T) {
 	p := artifacttest.WriteFile(t, t.TempDir(), "build.bin", []byte("x"))
 	rt, transport := newUploadTransport(uploadAPI{})
@@ -669,9 +556,6 @@ func TestRun_unknownExtension_noFormat_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_apkWithMapping_uploadsMappingAgainstApkVersionCode asserts
-// --mapping works for an APK unchanged: the deobfuscation file is POSTed
-// against the APK's versionCode in the same Edit (ADR-0036).
 func TestRun_apkWithMapping_uploadsMappingAgainstApkVersionCode(t *testing.T) {
 	apk := writeFakeAPK(t)
 	mapping := writeFakeMapping(t)

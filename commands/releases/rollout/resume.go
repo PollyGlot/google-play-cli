@@ -8,13 +8,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// RunResume drives orchestrator.Resume: flip a halted release back to
-// inProgress, leaving its userFraction unchanged.
 func RunResume(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return runState(rc, in, 0, "resumed", orchestrator.Resume)
 }
 
-// NewResumeCommand returns the cobra command for `gplay releases resume`.
 func NewResumeCommand(boot kernel.Boot) *cobra.Command {
 	cmd := newStateCommand(boot, "resume",
 		"Resume a halted rollout on the latest release of a track",

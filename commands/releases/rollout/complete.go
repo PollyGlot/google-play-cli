@@ -8,13 +8,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// RunComplete drives orchestrator.Complete: ramp the latest release to a
-// full rollout (status=completed, which carries no userFraction).
 func RunComplete(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return runState(rc, in, 0, "completed", orchestrator.Complete)
 }
 
-// NewCompleteCommand returns the cobra command for `gplay releases complete`.
 func NewCompleteCommand(boot kernel.Boot) *cobra.Command {
 	cmd := newStateCommand(boot, "complete",
 		"Complete the rollout on the latest release of a track (ramp to 100%)",

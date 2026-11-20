@@ -57,9 +57,12 @@ cannot zip-bomb the check that exists to make uploads fast to fail.
 **Refusal is exit 20, not exit 2.** `docs/DESIGN.md` §9 defines 20 as
 client-side validation and names "malformed AAB" as its example: a preflight
 refusal is exactly that, and by construction the API was never reached. The
-sibling checks these commands already ran (`cannot tell APK from AAB by
-extension`, `not a regular file`) exit 20 too, so this keeps one code for
-"gplay refused your artifact locally" rather than splitting it in two. Exit 2
+sibling check these commands already ran (`not a regular file`) exits 20 too, so this keeps one code for
+"gplay refused your artifact locally" rather than splitting it in two. (An
+artifact whose extension names neither format, `cannot tell APK from AAB by
+extension: pass --format apk|bundle`, exits 20 on `releases sharing upload`
+but 2 on `releases upload`, which treats it as a usage error since the fix is
+a flag; the two are not yet aligned.) Exit 2
 stays what an automated caller needs it to mean: you typed the command wrong.
 
 **A parser gap never becomes a false refusal.** Whenever gplay cannot answer,

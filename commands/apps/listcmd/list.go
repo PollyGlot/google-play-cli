@@ -1,11 +1,3 @@
-// Package listcmd implements `gplay apps list`: print every Android
-// package registered under the active Account, marking the one pinned
-// by the current repo's .gplay/config.json. The active Account is the
-// resolver's choice (rc.AccountName from --account / GPLAY_ACCOUNT /
-// cascade), falling back to rc.Resolved.ConfigAccount when no resolver
-// layer materialised a credential (read-only listing doesn't need one).
-// The registry is read via internal/apps/registry against
-// rc.Resolved.Accounts. See Run's doc for the full precedence rules.
 package listcmd
 
 import (
@@ -22,95 +14,36 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// pinMarker is the glyph the table and markdown renderers print for the
-// row matching .gplay/config.json's pin. The check mark renders in every
-// modern terminal and is conventional in CLI status output.
 const pinMarker = "✓"
 
-// Input has no command-specific flags; everything list needs comes from
-// rc.Resolved.
 type Input struct{}
 
-// Payload is the rendered data. The kernel calls Renderers() and
-// dispatches against the resolved Format.
 type Payload struct {
 	Apps []AppRow `json:"apps"`
 }
 
-// AppRow is one row of the list.
 type AppRow struct {
 	Package string `json:"package"`
 	Pinned  bool   `json:"pinned"`
 }
 
-// authError signals an Account that resolved by name but is unusable here
-// (not in the global config); ExitCode()=10 per docs/DESIGN.md §9. The
-// no-Account case is kernel.NoAccountError, the wording every command shares.
 type authError struct{ msg string }
 
 func (e *authError) Error() string { return e.msg }
 func (e *authError) ExitCode() int { return 10 }
 
-// Run resolves the Account to list (per the precedence rules below),
-// reads its packages from the registry, marks the row matching
-// rc.Resolved.Pin (if any), and returns a Renderable payload.
-//
-// Account precedence: must mirror the resolver's so `--account altname`
-// and `GPLAY_ACCOUNT=altname` are honored exactly as for write-side
-// commands (this is the bug addcmd.go:65-90 explicitly warns against
-// when picking ConfigAccount over AccountName):
-//
-//  1. rc.AccountName when non-empty: populated by the resolver from
-//     --account, GPLAY_ACCOUNT, or the cascade. This is the post-
-//     resolution truth and beats ConfigAccount whenever both are set.
-//  2. rc.Resolved.ConfigAccount when rc.Account == nil AND
-//     rc.AccountName == "": happens when the keystore could not
-//     materialise a credential for the cascade's Active layer (common in
-//     tests, also in CI before `auth login`). Listing is read-only so we
-//     don't need a working credential to surface packages from the
-//     registry: fall back to the cascade name and continue.
-//  3. rc.Account != nil with rc.AccountName == "": the inline-credential
-//     case (--service-account / GPLAY_SERVICE_ACCOUNT). Inline creds have
-//     no local Account name so the registry cannot be scoped to them; we
-//     return a usage error (exit 2) telling the user this limitation.
-//  4. Neither name nor credential resolved: kernel.NoAccountError (exit 10).
-//
-// Once Account is chosen, we also assert it exists in
-// rc.Resolved.Accounts: a stale local override or a logged-out Account
-// would otherwise produce the same "no packages" hint as a fresh
-// Account, while `apps add` would immediately fail with
-// ErrUnknownAccount. Distinct error → distinct user action.
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	if rc.Resolved == nil {
-		// Defensive: production buildRunContext always populates Resolved,
-		// but a hand-built RunContext (e.g. a future test, a partial-init
-		// refactor) could leave it nil: fail with a clear authError
-		// instead of nil-derefing.
 		return nil, &authError{msg: "apps list: no resolved config; run `gplay auth login` to register an Account"}
 	}
 	account := rc.AccountName
 	if account == "" {
-		// Empty name ⟹ only an inline or no-source layer is reachable,
-		// so resolving the credential here never probes the keyring; the
-		// common stored-Account path keeps `apps list` keystore-free.
 		if err := rc.EnsureAccount(); err != nil {
-			// A malformed inline credential (--service-account /
-			// GPLAY_SERVICE_ACCOUNT) fails loudly (exit 10, the real cause)
-			// instead of silently falling back to ConfigAccount below and
-			// listing another Account's packages (ADR-0020).
 			return nil, err
 		}
 		if rc.Account != nil {
-			// Inline credential supplied via --service-account or
-			// GPLAY_SERVICE_ACCOUNT: a real credential resolved, but it
-			// has no local name so the per-Account registry cannot be
-			// scoped to it. Mirror addcmd.go:85-87's clearer message
-			// rather than misdirecting the user to `auth login`.
 			return nil, &exit.UsageError{Msg: "apps list: cannot list under an inline credential (--service-account / GPLAY_SERVICE_ACCOUNT); first `gplay auth login` then re-run with --account <name>"}
 		}
-		// Fall back to the cascade name when no resolver layer chose one.
-		// Listing is read-only so a credentialless cascade Account is
-		// still useful (registry is local).
 		account = rc.Resolved.ConfigAccount
 	}
 	if account == "" {
@@ -123,11 +56,6 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 		)}
 	}
 	pkgs := registry.List(rc.Resolved.Accounts, account)
-	// Empty registry: return an empty Payload and let the renderer own
-	// the empty-state UX. Previously a stderr hint here duplicated the
-	// markdown renderer's own placeholder (`--output markdown 2>&1` saw
-	// the message twice); pushing the placeholder into each renderer
-	// keeps stderr quiet and gives every format its own contextual notice.
 	rows := make([]AppRow, 0, len(pkgs))
 	for _, p := range pkgs {
 		rows = append(rows, AppRow{Package: p, Pinned: p == rc.Resolved.Pin})
@@ -135,10 +63,6 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	return Payload{Apps: rows}, nil
 }
 
-// accountInResolved reports whether name is registered in the global
-// config's Accounts slice. Mirror of addcmd's accountInGlobal: kept
-// private to listcmd because the cascade snapshot lives on
-// rc.Resolved.Accounts here rather than a freshly-loaded *config.Global.
 func accountInResolved(accounts []config.Account, name string) bool {
 	for _, a := range accounts {
 		if a.Name == name {
@@ -148,7 +72,6 @@ func accountInResolved(accounts []config.Account, name string) bool {
 	return false
 }
 
-// Renderers satisfies output.Renderable.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Apps) },
@@ -157,15 +80,8 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// emptyHint is the user-facing line every renderer emits for an empty
-// registry. Keeping it in one place stops the table and markdown
-// placeholders from drifting apart.
 const emptyHint = "no packages registered. Run `gplay apps add <package>` to register one"
 
-// renderTable writes the Package / Pinned table via tabwriter. An empty
-// list collapses to a single parenthetical line on stdout (matching
-// commands/auth/list/list.go's UX); the JSON renderer keeps the strict
-// `{"apps":[]}` shape so machine consumers stay clean.
 func renderTable(w io.Writer, rows []AppRow) error {
 	if len(rows) == 0 {
 		_, err := fmt.Fprintf(w, "(%s.)\n", emptyHint)
@@ -187,13 +103,8 @@ func renderTable(w io.Writer, rows []AppRow) error {
 	return tw.Flush()
 }
 
-// renderMarkdown emits a GFM table with one row per AppRow, marking the
-// pinned row with the same glyph used by the table renderer. An empty
-// list collapses to a single italic paragraph carrying the same
-// emptyHint as the table path.
 func renderMarkdown(w io.Writer, rows []AppRow) error {
 	if len(rows) == 0 {
-		// Capitalise the first letter for prose-style markdown.
 		_, err := fmt.Fprintf(w, "_No packages registered. Run `gplay apps add <package>` to register one._\n")
 		return err
 	}
@@ -208,7 +119,6 @@ func renderMarkdown(w io.Writer, rows []AppRow) error {
 	return output.MarkdownTable(w, []string{"Package", "Pinned"}, cells)
 }
 
-// NewCommand returns the cobra command for `gplay apps list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var outputFlag string
 	cmd := &cobra.Command{

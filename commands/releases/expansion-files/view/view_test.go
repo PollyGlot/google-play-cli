@@ -16,8 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// newEFFake serves the read-only Edit around expansionfiles.get: insert,
-// GET, discard.
 func newEFFake() *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
@@ -32,7 +30,6 @@ func newEFFake() *testkit.Fake {
 	})
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -53,8 +50,6 @@ func newRC(t *testing.T, transport http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_readOnlyEditSequence asserts insert → get → discard and the parsed
-// referencesVersion surfaces in the table while JSON is verbatim.
 func TestRun_readOnlyEditSequence(t *testing.T) {
 	r := newEFFake()
 	rc := newRC(t, r)

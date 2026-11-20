@@ -1,10 +1,5 @@
 package upload_test
 
-// Multi-artifact releases and retained versionCodes (#666): one Edit, every
-// artifact uploaded, one tracks.update listing every code, one commit, or
-// nothing at all. Every scenario runs through the suite's testkit fake, so
-// the recorded requests are the proof.
-
 import (
 	"bytes"
 	"encoding/json"
@@ -23,14 +18,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// writeNamedAAB writes a valid AAB for com.example.app under name, so two
-// artifacts of one call never share a path.
 func writeNamedAAB(t *testing.T, name string) string {
 	t.Helper()
 	return artifacttest.AAB(t, t.TempDir(), name, "com.example.app")
 }
 
-// trackRelease decodes the single release of the last tracks.update body.
 func trackRelease(t *testing.T, f *testkit.Fake) (name string, codes []string) {
 	t.Helper()
 	body := trackUpdateReq(f)
@@ -52,10 +44,6 @@ func trackRelease(t *testing.T, f *testkit.Fake) (name string, codes []string) {
 	return track.Releases[0].Name, track.Releases[0].VersionCodes
 }
 
-// TestRun_twoAABs_oneEditTwoUploadsOneTrackUpdateOneCommit is the core
-// acceptance criterion: two bundles ride one Edit, each through its own
-// bundles.upload, and a single tracks.update lists both codes before a single
-// commit. The release is named after the highest uploaded code.
 func TestRun_twoAABs_oneEditTwoUploadsOneTrackUpdateOneCommit(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-multi", versionCodes: []int{142, 143}})
 	rc, _ := newRC(t, transport)
@@ -91,9 +79,6 @@ func TestRun_twoAABs_oneEditTwoUploadsOneTrackUpdateOneCommit(t *testing.T) {
 	}
 }
 
-// TestRun_releaseName_defaultsToHighestCode_notTheLast asserts the default
-// name follows the highest uploaded versionCode even when it is not the last
-// artifact passed.
 func TestRun_releaseName_defaultsToHighestCode_notTheLast(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-order", versionCodes: []int{150, 149}})
 	rc, _ := newRC(t, transport)
@@ -111,10 +96,6 @@ func TestRun_releaseName_defaultsToHighestCode_notTheLast(t *testing.T) {
 	}
 }
 
-// TestRun_retainVersionCodes_appendedWithoutExtraRead asserts
-// --retain-version-code appends the codes to the release verbatim, after the
-// uploaded one, and that no read call (tracks.get or similar) validates them:
-// an unknown code is Google's to refuse.
 func TestRun_retainVersionCodes_appendedWithoutExtraRead(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-keep", versionCode: 142})
 	rc, _ := newRC(t, transport)
@@ -149,10 +130,6 @@ func TestRun_retainVersionCodes_appendedWithoutExtraRead(t *testing.T) {
 	}
 }
 
-// TestRun_secondUploadFails_discardsEdit_noTrackUpdateNoCommit is the
-// all-or-nothing contract: when the second artifact's upload fails, the
-// implicit Edit is discarded, no tracks.update or commit is ever sent, and
-// the exit code is the one a single failed upload returns.
 func TestRun_secondUploadFails_discardsEdit_noTrackUpdateNoCommit(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-half", versionCodes: []int{142, 143}, failArtifact: 2})
 	rc, _ := newRC(t, transport)
@@ -173,7 +150,6 @@ func TestRun_secondUploadFails_discardsEdit_noTrackUpdateNoCommit(t *testing.T) 
 		"DELETE /androidpublisher/v3/applications/com.example.app/edits/edit-half",
 	})
 
-	// The same refusal on a single-artifact upload: the exit code must match.
 	_, single := newUploadTransport(uploadAPI{editID: "edit-one", failArtifact: 1})
 	rc1, _ := newRC(t, single)
 	_, singleErr := upload.Run(rc1, upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}})
@@ -185,10 +161,6 @@ func TestRun_secondUploadFails_discardsEdit_noTrackUpdateNoCommit(t *testing.T) 
 	}
 }
 
-// TestRun_preflightMismatchOnSecondArtifact_failsBeforeEditsInsert asserts
-// the preflight checks every artifact before the Edit is opened: a mismatch
-// on the second one fails the whole call with nothing on the wire, not even
-// the token exchange.
 func TestRun_preflightMismatchOnSecondArtifact_failsBeforeEditsInsert(t *testing.T) {
 	other := artifacttest.AAB(t, t.TempDir(), "other.aab", "com.other.app")
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-never"})
@@ -210,9 +182,6 @@ func TestRun_preflightMismatchOnSecondArtifact_failsBeforeEditsInsert(t *testing
 	}
 }
 
-// TestRun_mappingWithTwoArtifacts_exit2_noNetwork asserts --mapping is a
-// usage error with several artifacts: a mapping belongs to one versionCode,
-// and guessing which would symbolicate the wrong build's crashes.
 func TestRun_mappingWithTwoArtifacts_exit2_noNetwork(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -236,9 +205,6 @@ func TestRun_mappingWithTwoArtifacts_exit2_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_formatDisagreesWithAnExtension_multi_exit2 asserts one --format
-// covering several artifacts is refused when an artifact's extension names
-// the other container, before any network call.
 func TestRun_formatDisagreesWithAnExtension_multi_exit2(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -260,8 +226,6 @@ func TestRun_formatDisagreesWithAnExtension_multi_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_formatOverride_multi_appliesToEveryArtifact asserts --format covers
-// artifacts whose extension says nothing (.bin): both ride the APK endpoint.
 func TestRun_formatOverride_multi_appliesToEveryArtifact(t *testing.T) {
 	a := artifacttest.APK(t, t.TempDir(), "arm64.bin", "com.example.app")
 	b := artifacttest.APK(t, t.TempDir(), "x86.apk", "com.example.app")
@@ -290,9 +254,6 @@ func TestRun_formatOverride_multi_appliesToEveryArtifact(t *testing.T) {
 	}
 }
 
-// TestRun_mixedAABAndAPK_deviceTierConfigOnTheBundleOnly asserts AAB/APK
-// detection stays per file (a mixed set is Google's to accept or refuse)
-// and --device-tier-config reaches the bundle upload, never the APK one.
 func TestRun_mixedAABAndAPK_deviceTierConfigOnTheBundleOnly(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{editID: "edit-mix", versionCodes: []int{10, 11}})
 	rc, _ := newRC(t, transport)
@@ -325,9 +286,6 @@ func TestRun_mixedAABAndAPK_deviceTierConfigOnTheBundleOnly(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_multi_reportsPlannedUploadsWithoutNetwork asserts the
-// --dry-run preview of several artifacts lists each planned upload and the
-// retained codes, with nothing on the wire, and freezes its JSON shape.
 func TestRun_dryRun_multi_reportsPlannedUploadsWithoutNetwork(t *testing.T) {
 	dir := t.TempDir()
 	a := artifacttest.AAB(t, dir, "phone.aab", "com.example.app")
@@ -348,14 +306,10 @@ func TestRun_dryRun_multi_reportsPlannedUploadsWithoutNetwork(t *testing.T) {
 	if touched(rt) {
 		t.Errorf("dry-run made network calls: %v", apiCalls(rt))
 	}
-	// The temp dir differs per run: pin the paths to stable names for the golden.
 	got := strings.ReplaceAll(string(outputtest.RenderJSON(t, r)), dir+"/", "")
 	testkit.Golden(t, "dry_run_multi.json.golden", []byte(got))
 }
 
-// TestRender_multi_listsEveryCodeInEveryFormat asserts the human formats
-// and the gplay-authored JSON fallback show every uploaded and retained
-// code for a multi-artifact release.
 func TestRender_multi_listsEveryCodeInEveryFormat(t *testing.T) {
 	p := upload.Payload{Result: &orchestrator.Result{
 		VersionCode:          143,
@@ -385,8 +339,6 @@ func TestRender_multi_listsEveryCodeInEveryFormat(t *testing.T) {
 	}
 }
 
-// TestNewCommand_documentsBothShapes asserts --help teaches both shapes: the
-// variadic usage line, an example per shape, and the retained-code flag.
 func TestNewCommand_documentsBothShapes(t *testing.T) {
 	cmd := upload.NewCommand(kernel.Boot{})
 	if cmd.Use != "upload <artifact>..." {
@@ -410,8 +362,6 @@ func TestNewCommand_documentsBothShapes(t *testing.T) {
 	}
 }
 
-// TestRender_single_tableAndMarkdownUnchanged pins the single-artifact human
-// shapes byte for byte: the multi-artifact lines must not leak into them.
 func TestRender_single_tableAndMarkdownUnchanged(t *testing.T) {
 	p := upload.Payload{Result: &orchestrator.Result{
 		VersionCode:          142,
@@ -434,7 +384,6 @@ func TestRender_single_tableAndMarkdownUnchanged(t *testing.T) {
 	if want := "- **versionCode**: 142\n- **track**: internal\n- **status**: completed\n- **userFraction**: 1\n- **releaseName**: 142\n"; md.String() != want {
 		t.Errorf("markdown =\n%q\nwant\n%q", md.String(), want)
 	}
-	// The JSON fallback of one artifact keeps the historical shape too.
 	if got := string(outputtest.RenderJSON(t, p)); strings.Contains(got, "uploadedVersionCodes") {
 		t.Errorf("single-artifact JSON grew the multi-artifact field:\n%s", got)
 	}

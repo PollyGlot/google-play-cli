@@ -9,9 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// trackUpdateBody is a tracks.update response as Google shapes it, with the
-// characters an encoder would rewrite (&, <, >) and a layout gplay would not
-// produce itself: passthrough means these exact bytes reach stdout.
 const trackUpdateBody = `{
  "track": "internal",
  "releases": [
@@ -24,9 +21,6 @@ const trackUpdateBody = `{
  ]
 }`
 
-// TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim drives Run against
-// the fake API and asserts `--output json` prints the tracks.update body
-// byte for byte (ADR-0003): the contract agents and storedeck parse.
 func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 	_, transport := newUploadTransport(uploadAPI{editID: "edit-xyz", versionCode: 142, trackUpdateRawResp: trackUpdateBody})
 	rc, _ := newRC(t, transport)
@@ -40,8 +34,6 @@ func TestRenderJSON_passthrough_isTheTracksUpdateBodyVerbatim(t *testing.T) {
 	}
 }
 
-// TestRenderJSON_dryRun_golden freezes the gplay-authored shape --dry-run
-// prints: no request ran, so there is no API body to pass through.
 func TestRenderJSON_dryRun_golden(t *testing.T) {
 	_, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -53,10 +45,6 @@ func TestRenderJSON_dryRun_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run.json.golden", r)
 }
 
-// TestRenderJSON_emptyRawResponse_fallsBackToResultShape pins the silent
-// fallback: a Result that lost its raw tracks.update body renders the gplay
-// Result shape rather than nothing, through output.WriteJSON (no HTML
-// escaping of the release name).
 func TestRenderJSON_emptyRawResponse_fallsBackToResultShape(t *testing.T) {
 	p := upload.Payload{Result: &orchestrator.Result{
 		VersionCode:     142,

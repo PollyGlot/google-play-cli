@@ -107,6 +107,8 @@ JSON wire fidelity (int64 strings, explicit zeros) the implementation notes of
 - **The `Unprotected*` lists appear only when the app uses automatic
   protection**, and their artifacts are downloadable all the same, so the
   flattened listing includes them.
+- **A variant id of zero means unset**, so the table leaves the column empty
+  rather than print a `0` that reads like a real variant.
 
 ### Listings and Store images
 

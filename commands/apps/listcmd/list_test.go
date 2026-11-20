@@ -1,7 +1,3 @@
-// Package listcmd_test exercises `gplay apps list` at two levels: the
-// pure business function (Run with a hand-built RunContext) and the
-// cobra wrapper (NewCommand wired through kernel.RunCobra). Mirrors
-// commands/auth/list and commands/apps/addcmd.
 package listcmd_test
 
 import (
@@ -23,12 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// newRC seeds a RunContext with one Account named "playci" (active) and
-// the given packages registered under it, with rc.AccountName populated
-// to mirror the post-resolver state (the production resolver populates
-// AccountName from the credential that actually resolved: list reads
-// it as the source of truth for which Account to scope to). Pin defaults
-// to empty unless the test overrides rc.Resolved.Pin after the call.
 func newRC(t *testing.T, stdout, stderr *bytes.Buffer, packages []string) *kernel.RunContext {
 	t.Helper()
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{
@@ -43,13 +33,6 @@ func newRC(t *testing.T, stdout, stderr *bytes.Buffer, packages []string) *kerne
 	return rc
 }
 
-// TestRun_emptyActiveAccount_returnsEmptyPayload is the tracer bullet:
-// when the active Account has no registered packages, Run returns an
-// empty Payload. The empty-state UX (placeholder message) is owned by
-// each renderer rather than Run itself: see
-// TestPayload_table_empty_rendersPlaceholderOnStdout and the markdown
-// equivalent, so `gplay apps list --output markdown 2>&1` no longer
-// double-prints the empty notice.
 func TestRun_emptyActiveAccount_returnsEmptyPayload(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := newRC(t, &stdout, &stderr, nil)
@@ -67,10 +50,6 @@ func TestRun_emptyActiveAccount_returnsEmptyPayload(t *testing.T) {
 	}
 }
 
-// TestRun_withPackages_returnsRowsUnpinned exercises the happy path
-// without any project pin: every row should carry Pinned=false. The
-// row order mirrors the registry's insertion order so the user-visible
-// list is stable.
 func TestRun_withPackages_returnsRowsUnpinned(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := newRC(t, &stdout, &stderr, []string{"com.example.alpha", "com.example.beta"})
@@ -97,9 +76,6 @@ func TestRun_withPackages_returnsRowsUnpinned(t *testing.T) {
 	}
 }
 
-// TestRun_marksPinnedRow asserts the central display feature: the row
-// whose package matches rc.Resolved.Pin (the repo's
-// .gplay/config.json pin) is marked Pinned=true; siblings stay false.
 func TestRun_marksPinnedRow(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := newRC(t, &stdout, &stderr, []string{"com.example.alpha", "com.example.beta"})
@@ -118,21 +94,12 @@ func TestRun_marksPinnedRow(t *testing.T) {
 	}
 }
 
-// TestRun_accountFlagOverride_listsAccountThatActuallyResolved asserts
-// the central account-resolution invariant: when --account / GPLAY_ACCOUNT
-// pick a credential other than the cascade's active, list MUST scope to
-// the resolver's choice (rc.AccountName), not to rc.Resolved.ConfigAccount.
-// Mirrors addcmd's TestRun_persistsUnderAccountThatActuallyRanProbe: the
-// same pattern that locked addcmd's fix in place.
 func TestRun_accountFlagOverride_listsAccountThatActuallyResolved(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}, kernel.Inputs{Format: output.FormatJSON})
-	// Simulate --account altname overriding the cascade: AccountName is
-	// the resolver's choice; ConfigAccount stays "playci" (the global
-	// Active flag, which the user did NOT switch).
 	rc.AccountName = "altname"
 	rc.Resolved = &config.Resolved{
 		Accounts: []config.Account{
@@ -152,22 +119,15 @@ func TestRun_accountFlagOverride_listsAccountThatActuallyResolved(t *testing.T) 
 	}
 }
 
-// TestRun_inlineCredential_returnsClearError asserts the
-// --service-account / GPLAY_SERVICE_ACCOUNT branch: when a credential
-// resolved but no local Account name is attached (inline credentials are
-// per-invocation and have no name to scope the registry to), list MUST
-// return a clear error telling the user the limitation, NOT a misleading
-// "run gplay auth login" hint that ignores the credential they just
-// supplied. Mirrors addcmd.go:85-87.
 func TestRun_inlineCredential_returnsClearError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}, kernel.Inputs{Format: output.FormatJSON})
-	rc.Account = &serviceaccount.ServiceAccount{} // non-nil → a credential resolved
-	rc.AccountName = ""                           // inline: no local name
-	rc.Resolved = &config.Resolved{}              // ConfigAccount empty
+	rc.Account = &serviceaccount.ServiceAccount{}
+	rc.AccountName = ""
+	rc.Resolved = &config.Resolved{}
 
 	_, err := listcmd.Run(rc, listcmd.Input{})
 	if err == nil {
@@ -181,13 +141,6 @@ func TestRun_inlineCredential_returnsClearError(t *testing.T) {
 	}
 }
 
-// TestRun_accountNotInGlobal_returnsDistinctError asserts the
-// missing-account branch: when the resolved Account name is not present
-// in rc.Resolved.Accounts (race with `gplay auth logout`, or a stale
-// .gplay/config.local.json pointing at a removed Account), list MUST
-// return a distinct error telling the user the Account itself is gone,
-// NOT the empty-registry hint that points at `gplay apps add` (which
-// would itself fail with ErrUnknownAccount).
 func TestRun_accountNotInGlobal_returnsDistinctError(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{
@@ -196,7 +149,7 @@ func TestRun_accountNotInGlobal_returnsDistinctError(t *testing.T) {
 	}, kernel.Inputs{Format: output.FormatJSON})
 	rc.AccountName = "ghost"
 	rc.Resolved = &config.Resolved{
-		Accounts:      []config.Account{{Name: "playci", Active: true}}, // ghost not in Accounts
+		Accounts:      []config.Account{{Name: "playci", Active: true}},
 		ConfigAccount: "playci",
 	}
 
@@ -212,12 +165,6 @@ func TestRun_accountNotInGlobal_returnsDistinctError(t *testing.T) {
 	}
 }
 
-// TestRun_accountScope_ignoresPackagesUnderOtherAccounts asserts the
-// per-Account isolation that makes the registry useful for multi-app
-// maintainers: switching the active Account changes the visible
-// packages even when other Accounts have their own. A bug here (e.g.
-// flattening across Accounts) would silently leak one Account's
-// inventory into another's display.
 func TestRun_accountScope_ignoresPackagesUnderOtherAccounts(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{
@@ -243,19 +190,13 @@ func TestRun_accountScope_ignoresPackagesUnderOtherAccounts(t *testing.T) {
 	}
 }
 
-// TestRun_noCredentialAtAll_returnsAuthErrorWithHint asserts the
-// nothing-resolved case: no --account, no --service-account, no env,
-// no cascade active: Run returns an error carrying exit code 10 (no
-// credential resolved) and the message points at `gplay auth login`.
-// Distinct from the inline-credential case (rc.Account != nil, exit 2)
-// and the missing-account case (Account name set but not in registry).
 func TestRun_noCredentialAtAll_returnsAuthErrorWithHint(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{
 		Stdout: &stdout,
 		Stderr: &stderr,
 	}, kernel.Inputs{Format: output.FormatJSON})
-	rc.Resolved = &config.Resolved{} // no Accounts, no ConfigAccount, no rc.AccountName, no rc.Account
+	rc.Resolved = &config.Resolved{}
 
 	_, err := listcmd.Run(rc, listcmd.Input{})
 	if err == nil {
@@ -269,10 +210,6 @@ func TestRun_noCredentialAtAll_returnsAuthErrorWithHint(t *testing.T) {
 	}
 }
 
-// TestPayload_jsonShape asserts the wire shape consumers depend on:
-// `{"apps":[{"package":"...","pinned":true}]}`. Renaming a field or
-// changing the case here is a breaking change for scripts piping
-// `gplay apps list --output json` into jq.
 func TestPayload_jsonShape(t *testing.T) {
 	p := listcmd.Payload{Apps: []listcmd.AppRow{
 		{Package: "com.example.alpha", Pinned: true},
@@ -302,11 +239,6 @@ func TestPayload_jsonShape(t *testing.T) {
 	}
 }
 
-// TestPayload_table_empty_rendersPlaceholderOnStdout asserts the empty-
-// state UX contract: when there are no rows, the table renderer prints
-// a visible placeholder on stdout (matching commands/auth/list/list.go).
-// The previous behavior (render nothing) left a TTY user staring at a
-// blank screen when stderr was redirected.
 func TestPayload_table_empty_rendersPlaceholderOnStdout(t *testing.T) {
 	p := listcmd.Payload{Apps: []listcmd.AppRow{}}
 	var buf bytes.Buffer
@@ -318,12 +250,6 @@ func TestPayload_table_empty_rendersPlaceholderOnStdout(t *testing.T) {
 	}
 }
 
-// TestRun_emptyActiveAccount_writesPlaceholderViaRenderer_notStderr
-// asserts that the empty-list hint moves from stderr into the renderer
-// itself. The previous shape (stderr hint + markdown placeholder)
-// duplicated the message in `gplay apps list --output markdown 2>&1`;
-// the new shape funnels the empty notice through whichever renderer is
-// active, so each format owns its own empty-state UX.
 func TestRun_emptyActiveAccount_writesPlaceholderViaRenderer_notStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	rc := newRC(t, &stdout, &stderr, nil)
@@ -336,11 +262,6 @@ func TestRun_emptyActiveAccount_writesPlaceholderViaRenderer_notStderr(t *testin
 	}
 }
 
-// TestPayload_tableHeadersAndPinMarker asserts that the table renderer
-// emits the PACKAGE / PINNED columns and that the pinned row carries a
-// visible marker (the body of every other row in the same column stays
-// empty). Asserting on individual cells rather than exact alignment
-// makes the test resilient to tabwriter spacing tweaks.
 func TestPayload_tableHeadersAndPinMarker(t *testing.T) {
 	p := listcmd.Payload{Apps: []listcmd.AppRow{
 		{Package: "com.example.alpha", Pinned: false},
@@ -356,8 +277,6 @@ func TestPayload_tableHeadersAndPinMarker(t *testing.T) {
 			t.Errorf("table missing %q; got:\n%s", want, out)
 		}
 	}
-	// The pinned row must carry a non-empty marker in the PINNED column;
-	// the unpinned row must NOT carry that same marker.
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(lines) != 3 {
 		t.Fatalf("table should be header + 2 rows; got %d lines:\n%s", len(lines), out)
@@ -372,10 +291,6 @@ func TestPayload_tableHeadersAndPinMarker(t *testing.T) {
 	}
 }
 
-// runCmd executes a fresh `gplay apps list` cobra tree with stdout/
-// stderr piped into the caller's buffers. The boot points at a fresh
-// tempdir-backed config.json (cfgPath) so seed() can write a global
-// config the kernel will discover during buildRunContext.
 func runCmd(t *testing.T, cfgPath string, stdout, stderr *bytes.Buffer, args ...string) error {
 	t.Helper()
 	boot := kernel.Boot{
@@ -392,9 +307,6 @@ func runCmd(t *testing.T, cfgPath string, stdout, stderr *bytes.Buffer, args ...
 	return root.Execute()
 }
 
-// seedGlobal writes a global config.json with one active Account named
-// "playci" carrying the given packages. Returns the path the test
-// should hand to runCmd via boot.ConfigPath.
 func seedGlobal(t *testing.T, packages []string) string {
 	t.Helper()
 	cfgPath := filepath.Join(t.TempDir(), "config.json")
@@ -405,12 +317,6 @@ func seedGlobal(t *testing.T, packages []string) string {
 	return cfgPath
 }
 
-// TestList_cobra_extraArg_rejectedByNoArgs asserts that positional
-// arguments are explicitly rejected: `gplay apps list com.example.foo`
-// (typo for `apps add`, or a stale --filter expectation) must NOT be
-// silently accepted. Without Args: cobra.NoArgs the default is
-// ArbitraryArgs and the typo would print a normal listing: making the
-// user believe their argument took effect.
 func TestList_cobra_extraArg_rejectedByNoArgs(t *testing.T) {
 	cfgPath := seedGlobal(t, nil)
 	var stdout, stderr bytes.Buffer
@@ -423,14 +329,8 @@ func TestList_cobra_extraArg_rejectedByNoArgs(t *testing.T) {
 	}
 }
 
-// TestList_cobra_emptyRegistry_jsonStaysParseable asserts the pipe-
-// friendliness invariant: the empty-list path produces a valid `{"apps":
-// []}` on stdout and writes nothing to stderr: scripts doing
-// `gplay apps list --output json | jq '.apps | length'` get 0, not an
-// error. The empty-state hint lives in the table/markdown renderers, not
-// in the JSON path, so machine-readable output stays pristine.
 func TestList_cobra_emptyRegistry_jsonStaysParseable(t *testing.T) {
-	cfgPath := seedGlobal(t, nil) // empty registry
+	cfgPath := seedGlobal(t, nil)
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, cfgPath, &stdout, &stderr, "--output", "json"); err != nil {
 		t.Fatalf("Execute: %v", err)
@@ -449,12 +349,6 @@ func TestList_cobra_emptyRegistry_jsonStaysParseable(t *testing.T) {
 	}
 }
 
-// TestList_cobra_jsonOutput_passThroughShape is the cobra-level wiring
-// test: a real `gplay apps list --output json` against a seeded global
-// config. It proves NewCommand binds --output, that the kernel resolves
-// it, and that the JSON renderer is reached with a Payload populated
-// from the registry. Skipping this test would let a broken cobra wire
-// pass every Run unit test.
 func TestList_cobra_jsonOutput_passThroughShape(t *testing.T) {
 	cfgPath := seedGlobal(t, []string{"com.example.alpha", "com.example.beta"})
 	var stdout, stderr bytes.Buffer
@@ -478,10 +372,6 @@ func TestList_cobra_jsonOutput_passThroughShape(t *testing.T) {
 	}
 }
 
-// TestPayload_markdownTable asserts the markdown renderer produces a
-// GFM-style table with the same Package / Pinned columns. Asserting on
-// header line + separator + a pinned + unpinned row keeps the test
-// resilient to cosmetic spacing while pinning the wire shape.
 func TestPayload_markdownTable(t *testing.T) {
 	p := listcmd.Payload{Apps: []listcmd.AppRow{
 		{Package: "com.example.alpha", Pinned: false},
@@ -504,12 +394,6 @@ func TestPayload_markdownTable(t *testing.T) {
 	}
 }
 
-// TestList_cobra_malformedInlineCredential_exits10NotFallback drives the
-// real cobra command through the production lazy path with a malformed
-// inline GPLAY_SERVICE_ACCOUNT. The AccountName == "" branch must surface
-// the invalid-credential error (exit 10, the real cause) instead of
-// silently falling back to ConfigAccount and listing the cascade Account's
-// packages (#180, ADR-0020).
 func TestList_cobra_malformedInlineCredential_exits10NotFallback(t *testing.T) {
 	t.Setenv(resolver.EnvAccount, "")
 	t.Setenv(resolver.EnvServiceAccount, "{ not valid json")
@@ -526,18 +410,12 @@ func TestList_cobra_malformedInlineCredential_exits10NotFallback(t *testing.T) {
 	if !strings.Contains(err.Error(), "could not read credential") {
 		t.Errorf("error should name the real cause; got %q", err.Error())
 	}
-	// Lock in the cause-preservation contract (%w): the wrapped JSON parse
-	// error survives, not just the wrapper prefix.
 	if !strings.Contains(err.Error(), "invalid character") {
 		t.Errorf("error should preserve the underlying JSON parse cause; got %q", err.Error())
 	}
 	if strings.Contains(stdout.String(), "com.cascade.app") {
 		t.Errorf("a malformed inline credential must not list the cascade Account's packages; got %q", stdout.String())
 	}
-	// Under --output json a failure emits the structured error envelope on
-	// stdout (ADR-0023). It carries only the error (exit 10 + the real cause)
-	// (never a data payload) so the cascade leak guarded above still cannot
-	// appear here; assert the envelope rather than an empty stdout.
 	if out := stdout.String(); !strings.Contains(out, `"exitCode": 10`) {
 		t.Errorf("json hard-error path should emit the exit-10 error envelope; got %q", out)
 	}

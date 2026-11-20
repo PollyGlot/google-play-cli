@@ -44,10 +44,20 @@ there: Listing limits and locales in
 - **An externally hosted APK is checked for what gplay owns only** (#546):
   the file must be a JSON object, and its `packageName`, when present, must
   be the target package. The URL, hashes, certificates and versionCode are
-  Google's to accept or refuse, and the bytes are sent untouched.
+  Google's to accept or refuse, and the bytes are sent untouched. The command
+  checks the file before it loads credentials, even though the orchestrator
+  checks it again, so an invalid file is refused offline (exit 20) instead of
+  surfacing as a missing-Account error.
 - **`--mapping` with several artifacts is refused.** A mapping deobfuscates
   one versionCode and nothing says which artifact it belongs to; `releases
   mappings upload --version-code` attaches it to the right one afterwards.
+
+### Usage before state
+
+- **A usage refusal runs before the pinned package is read.** `apps details
+  set` with no field flag is refused before `--package` and the Project pin
+  are resolved, so the misuse is reported the same way whatever the pin
+  state.
 
 ### `--dry-run`
 

@@ -1,7 +1,3 @@
-// Package view implements `gplay releases expansion-files view`: read an APK's
-// expansion file configuration (fileSize XOR referencesVersion) for a given
-// versionCode and type. Read-only: it opens a read-only Edit, gets, and discards
-// (insert → get → discard). LEGACY (OBB). Ships [experimental].
 package view
 
 import (
@@ -18,14 +14,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/expansionfiles"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
 	VersionCode int
 	Type        string
 }
 
-// Payload renders the expansion file config / verbatim JSON.
 type Payload struct {
 	VersionCode int
 	Type        string
@@ -45,7 +39,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
 		return nil, exit.Usagef("missing or invalid --version-code: the APK versionCode to read is required")
@@ -77,7 +70,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{VersionCode: in.VersionCode, Type: ft, File: ef, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases expansion-files view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

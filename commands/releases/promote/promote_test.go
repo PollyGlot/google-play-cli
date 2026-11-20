@@ -1,8 +1,3 @@
-// Package promote_test exercises `gplay releases promote` at the kernel
-// level: a RunContext built by hand, a RoundTripper injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// upload command's test harness so a single seam proves the auth +
-// Edit lifecycle wiring for promote too.
 package promote_test
 
 import (
@@ -25,9 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// promoteAPI configures the fake androidpublisher calls the promote
-// orchestrator makes: edits.insert, tracks.get, tracks.update, edits.commit,
-// edits.delete.
 type promoteAPI struct {
 	editID             string
 	sourceTrackGetResp string
@@ -35,10 +27,7 @@ type promoteAPI struct {
 	destTrackGetResp   string
 	destTrackGetStatus int
 	trackUpdateRawResp string
-	// trackUpdateStatus, when >= 400, makes the destination tracks.update PUT
-	// fail with that status (carrying a Google error envelope) so tests can
-	// exercise the track-not-found hint. 0 (the default) means a 200 success.
-	trackUpdateStatus int
+	trackUpdateStatus  int
 }
 
 func newPromoteFake(a promoteAPI) *testkit.Fake {
@@ -70,7 +59,6 @@ func newPromoteFake(a promoteAPI) *testkit.Fake {
 	})
 }
 
-// apiCalls lists the recorded API calls as "METHOD path".
 func apiCalls(f *testkit.Fake) []string {
 	var out []string
 	for _, c := range f.Calls() {
@@ -79,8 +67,6 @@ func apiCalls(f *testkit.Fake) []string {
 	return out
 }
 
-// touched reports whether anything reached the transport, token exchange
-// included.
 func touched(f *testkit.Fake) bool { return len(f.Calls()) != 0 || f.TokenExchanges() != 0 }
 
 func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffer) {
@@ -97,11 +83,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
-// TestRenderTable_includesDefaultLanguage asserts that promote's
-// table renderer prints the resolved DefaultLanguage when set, so the
-// operator sees which locale a --release-notes override was attached
-// to. Mirrors upload's behavior (upload.go:101-105): without this
-// row, the operator has no visibility into the locale resolution.
 func TestRenderTable_includesDefaultLanguage(t *testing.T) {
 	p := promote.Payload{Result: &orchestrator.Result{
 		VersionCode:     142,
@@ -123,10 +104,6 @@ func TestRenderTable_includesDefaultLanguage(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_includesDefaultLanguageAndLocales asserts that
-// the markdown renderer surfaces the same notes-resolution fields
-// (DefaultLanguage, Locales) that the table renderer prints, so
-// `--output markdown` and `--output table` don't diverge.
 func TestRenderMarkdown_includesDefaultLanguageAndLocales(t *testing.T) {
 	p := promote.Payload{Result: &orchestrator.Result{
 		VersionCode:     142,
@@ -196,8 +173,6 @@ func TestRun_internalToBeta_happyPath(t *testing.T) {
 		}
 	}
 
-	// ADR-0003: --output json must be API pass-through: the raw
-	// tracks.update response body, not a gplay-shaped re-serialization.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -207,11 +182,6 @@ func TestRun_internalToBeta_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_promoteToMissingClosedTrack_hintsTracksCreate asserts that a
-// promote whose --to track has not been created yet (destination
-// tracks.update 404) fails with a `gplay tracks create <name>` hint and
-// preserves the underlying exit code (30, not rewritten by the hint). The
-// source track read succeeds; only the destination is missing.
 func TestRun_promoteToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-miss",
@@ -236,9 +206,6 @@ func TestRun_promoteToMissingClosedTrack_hintsTracksCreate(t *testing.T) {
 	}
 }
 
-// TestRun_missingFromOrTo_returnsExit2 asserts that --from and --to are
-// required: the CLI must short-circuit with a usage error before any
-// HTTP call when either is empty.
 func TestRun_missingFromOrTo_returnsExit2(t *testing.T) {
 	cases := []struct {
 		name string
@@ -269,9 +236,6 @@ func TestRun_missingFromOrTo_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestRun_mutuallyExclusiveStatusFlags_returnsExit2 asserts that
-// passing more than one of --draft / --complete / --staged is a CLI
-// misuse caught before any HTTP.
 func TestRun_mutuallyExclusiveStatusFlags_returnsExit2(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	rc, _ := newRC(t, rt)
@@ -299,9 +263,6 @@ func TestRun_mutuallyExclusiveStatusFlags_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestRun_stagedOne_returnsExit2PointingAtComplete asserts #733: Play
-// refuses a fraction of 1.0, so --staged 1 is a usage error before any HTTP
-// that sends the operator to --complete.
 func TestRun_stagedOne_returnsExit2PointingAtComplete(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	rc, _ := newRC(t, rt)
@@ -325,9 +286,6 @@ func TestRun_stagedOne_returnsExit2PointingAtComplete(t *testing.T) {
 	}
 }
 
-// TestRun_happyPath_emitsConfirmationOnStderr asserts a committed promote
-// prints a single ✓ line on stderr (DESIGN §8) carrying the versionCode and
-// both tracks, alongside the stdout payload.
 func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{
 		editID:             "edit-promote-cli",
@@ -352,7 +310,6 @@ func TestRun_happyPath_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	rt := newPromoteFake(promoteAPI{})
 	rc, _ := newRC(t, rt)

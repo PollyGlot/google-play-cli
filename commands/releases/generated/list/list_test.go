@@ -43,8 +43,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_happyPath_versionScoped_noEdit asserts the GET addresses the version
-// code on the package axis (no Edit) and passes the response through verbatim.
 func TestRun_happyPath_versionScoped_noEdit(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, generatedBody))
 	rc := newRC(t, fake)
@@ -72,7 +70,6 @@ func TestRun_happyPath_versionScoped_noEdit(t *testing.T) {
 	}
 }
 
-// TestRun_missingVersionCode_exit2_noNetwork asserts --version-code is required.
 func TestRun_missingVersionCode_exit2_noNetwork(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, generatedBody))
 	rc := newRC(t, fake)

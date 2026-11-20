@@ -1,9 +1,3 @@
-// Package rollout implements the staged-rollout state machine as four
-// sibling commands: `gplay releases rollout / halt / resume / complete`.
-// Each is thin glue: it resolves --package, validates flags, builds an
-// authenticated HTTP client from the active Account, and hands a StateOpts
-// to internal/releases/orchestrator. The four share this file's Input,
-// renderers, and run helper; one file per verb carries the cobra wiring.
 package rollout
 
 import (
@@ -25,11 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// Input is the request-shaped struct cobra builds from flags. All four
-// verbs share it; StagedFraction / StagedFractionSet are read only by rollout.
-// The fraction is --staged, the name `releases upload` and `releases promote`
-// give the same userFraction (#597); a non-numeric value fails flag parsing,
-// which is already a CLI-misuse exit 2.
 type Input struct {
 	Package           string
 	Track             string
@@ -44,8 +33,6 @@ type Input struct {
 	Plan              bool
 }
 
-// Payload satisfies output.Renderable for the resulting state-transition
-// Result. JSON is API pass-through (the raw tracks.update body, ADR-0003).
 type Payload struct {
 	Result *orchestrator.Result
 	DryRun bool
@@ -66,11 +53,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// showsUserFraction reports whether userFraction is worth printing. A live
-// inProgress / halted release always carries a non-zero fraction, so a
-// positive value is the signal: that also hides the synthetic zero a
-// halt / resume --dry-run preview leaves behind (those preserve the live
-// fraction, which is unknown without an API call) rather than implying 0%.
 func showsUserFraction(userFraction float64) bool {
 	return userFraction > 0
 }
@@ -98,15 +80,11 @@ func renderTable(w io.Writer, r *orchestrator.Result) error {
 	return nil
 }
 
-// planJSON is the --plan JSON shape: gplay-authored, never a tracks.update
-// body, and marked "plan": true so a script cannot mistake it for a result.
 type planJSON struct {
 	Plan bool `json:"plan"`
 	*orchestrator.TransitionPlan
 }
 
-// renderPlan writes one labelled line per plan field through line, a format
-// given the label, the table padding after its colon, and the value.
 func renderPlan(w io.Writer, p *orchestrator.TransitionPlan, line string) error {
 	becomes := p.Status
 	if showsUserFraction(p.UserFraction) {
@@ -128,8 +106,6 @@ func renderPlan(w io.Writer, p *orchestrator.TransitionPlan, line string) error 
 	return nil
 }
 
-// describeRelease renders a release as "2.4.0 [versionCodes 143], inProgress,
-// userFraction 0.2".
 func describeRelease(r tracks.Release) string {
 	name := r.Name
 	if name == "" {
@@ -153,7 +129,6 @@ func describeReleases(rs []tracks.Release) string {
 	return strings.Join(s, "; ")
 }
 
-// joinCodes renders versionCodes as "140, 141".
 func joinCodes(codes []int) string {
 	s := make([]string, len(codes))
 	for i, c := range codes {
@@ -170,7 +145,6 @@ type dryRunJSON struct {
 
 func renderJSON(w io.Writer, p Payload) error {
 	r := p.Result
-	// API pass-through: emit the raw tracks.update body (ADR-0003).
 	if len(r.RawTrackResponse) > 0 {
 		_, err := w.Write(r.RawTrackResponse)
 		return err
@@ -204,17 +178,8 @@ func renderMarkdown(w io.Writer, r *orchestrator.Result) error {
 	return nil
 }
 
-// stateFunc is the orchestrator entry point shape shared by Rollout / Halt
-// / Resume / Complete, so runState can drive any of the four uniformly.
 type stateFunc func(ctx context.Context, hc *http.Client, opts orchestrator.StateOpts) (*orchestrator.Result, error)
 
-// runState is the glue common to every verb: resolve the package, require
-// a track, build the authenticated client (skipped in dry-run), and invoke
-// the chosen orchestrator function. userFraction is meaningful only for
-// rollout (0 for halt / resume / complete, which the orchestrator ignores).
-// Per-verb validation (rollout's --staged) runs in the verb's own Run before this.
-// action is the past-tense transition word ("set" / "halted" / "resumed" /
-// "completed") for the ✓ confirmation line.
 func runState(rc *kernel.RunContext, in Input, userFraction float64, action string, call stateFunc) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -227,12 +192,6 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		return nil, exit.Usagef("missing --track: pass --track <name> (internal, alpha, beta, production, or any closed-track name)")
 	}
 
-	// Dry-run skips auth entirely: nothing hits the network, so a missing
-	// Account is not a problem. The orchestrator handles the dry-run path
-	// before any HTTP would happen.
-	// Dry-run skips auth AND the explicit-Edit pin: nothing hits the network and
-	// the dry-run path never reuses a pinned Edit, so a corrupt pin must not
-	// fail a preview. Both are resolved only on the live path.
 	var (
 		httpClient     *http.Client
 		explicitEditID string
@@ -242,15 +201,11 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		if httpClient, err = rc.AuthedClient(); err != nil {
 			return nil, err
 		}
-		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
-		// "" keeps the implicit per-transition Edit.
 		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
 			return nil, err
 		}
 	}
 
-	// A plan commits nothing, so the commit flags have nothing to apply to:
-	// resolving them would warn that the change is staged in the pinned Edit.
 	var commit edits.CommitOptions
 	if !in.Plan {
 		commit = in.Commit.For(rc, explicitEditID)
@@ -275,8 +230,6 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 		rc.Notef("plan only: nothing was sent; run again without --plan to apply")
 		return Payload{Result: result}, nil
 	}
-	// DESIGN §8: a committed transition prints one ✓ line on stderr (never on a
-	// --dry-run or a --plan). userFraction is shown only when status is inProgress.
 	if !in.DryRun {
 		extra := ""
 		if result.Status == tracks.StatusInProgress {
@@ -291,9 +244,6 @@ func runState(rc *kernel.RunContext, in Input, userFraction float64, action stri
 	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
-// RunRollout validates the --staged fraction (AC6: required, strictly between
-// 0 and 1: every misuse is exit 2 with a range hint) then drives
-// orchestrator.Rollout. A full rollout is `gplay releases complete`.
 func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if !in.StagedFractionSet {
 		return nil, exit.Usagef("missing --staged: pass --staged <fraction> (0 < f < 1, e.g. 0.05)")
@@ -304,9 +254,6 @@ func RunRollout(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return runState(rc, in, in.StagedFraction, "set", orchestrator.Rollout)
 }
 
-// bindCommonFlags registers the flags every verb shares (output, package,
-// track, the two disambiguators, keep-edit-on-failure, the commit opt-ins,
-// dry-run).
 func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	output.RegisterFlag(cmd, outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
@@ -321,8 +268,6 @@ func bindCommonFlags(cmd *cobra.Command, in *Input, outputFlag *string) {
 	kernel.ExperimentalFlag(cmd, "plan")
 }
 
-// newStateCommand builds a cobra command for a no-extra-flags verb (halt /
-// resume / complete). rollout has its own constructor because of --staged.
 func newStateCommand(boot kernel.Boot, use, short, long string, run func(*kernel.RunContext, Input) (output.Renderable, error)) *cobra.Command {
 	var (
 		outputFlag string
@@ -348,7 +293,6 @@ func newStateCommand(boot kernel.Boot, use, short, long string, run func(*kernel
 	return cmd
 }
 
-// NewRolloutCommand returns the cobra command for `gplay releases rollout`.
 func NewRolloutCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

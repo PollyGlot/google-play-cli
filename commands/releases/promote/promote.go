@@ -1,8 +1,3 @@
-// Package promote implements `gplay releases promote`: the CLI glue
-// that parses --from/--to plus the status overrides (per ADR-0002),
-// resolves --package, and hands a PromoteOpts payload to
-// internal/releases/orchestrator. All the HTTP / Edit-lifecycle work
-// lives in the orchestrator and its internal/play/* dependencies.
 package promote
 
 import (
@@ -25,7 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package           string
 	FromTrack         string
@@ -33,14 +27,12 @@ type Input struct {
 	VersionCode       int
 	ReleaseName       string
 	ReleaseNotes      string
-	ReleaseNotesSet   bool // explicit `--release-notes ""` is an empty note, refused (#786)
+	ReleaseNotesSet   bool
 	ReleaseNotesDir   string
 	Draft             bool
 	Complete          bool
 	StagedFraction    float64
 	StagedFractionSet bool
-	// UpdatePriority is --update-priority (0..5); UpdatePrioritySet tells an
-	// explicit 0 (lowest priority) apart from "not passed".
 	UpdatePriority    int
 	UpdatePrioritySet bool
 	KeepEditOnFailure bool
@@ -50,9 +42,6 @@ type Input struct {
 	Plan              bool
 }
 
-// Payload satisfies output.Renderable for the resulting promote Result.
-// Reuses the orchestrator's Result so JSON pass-through (ADR-0003) and
-// the table renderer match upload's shape.
 type Payload struct {
 	Result *orchestrator.Result
 	DryRun bool
@@ -122,9 +111,6 @@ func replacesNote(track string) string {
 	return "every release on " + track + " (unread: --plan lists them)"
 }
 
-// showsUserFraction mirrors upload's helper: inProgress always shows
-// userFraction (the fraction IS the rollout percentage); completed
-// only shows it when non-zero; draft / unspecified hide it.
 func showsUserFraction(status string, userFraction float64) bool {
 	if status == tracks.StatusInProgress {
 		return true
@@ -222,9 +208,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 	return nil
 }
 
-// Run is the business function the kernel invokes. Validates the flag
-// combination, resolves the package, builds an authenticated HTTP
-// client from the active Account, then hands off to the orchestrator.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if (in.ReleaseNotesSet || in.ReleaseNotes != "") && in.ReleaseNotesDir != "" {
 		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
@@ -259,9 +242,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Dry-run skips auth AND the explicit-Edit pin: nothing hits the network and
-	// the dry-run path never reuses a pinned Edit, so a corrupt pin must not
-	// fail a preview. Both are resolved only on the live path.
 	var (
 		httpClient     *http.Client
 		explicitEditID string
@@ -271,8 +251,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if httpClient, err = rc.AuthedClient(); err != nil {
 			return nil, err
 		}
-		// Reuse an open explicit Edit when one is pinned (`gplay edits begin`);
-		// "" keeps the implicit per-promote Edit.
 		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
 			return nil, err
 		}
@@ -300,16 +278,12 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Plan:              in.Plan,
 	})
 	if err != nil {
-		// A 404 on --to means it does not exist yet: attach the
-		// `gplay tracks create <name>` hint.
 		return nil, trackhint.Classify(in.ToTrack, err)
 	}
 	if in.Plan {
 		rc.Notef("plan only: nothing was sent; run again without --plan to apply")
 		return Payload{Result: result}, nil
 	}
-	// DESIGN §8: a committed mutation prints one ✓ line on stderr (never on a
-	// --dry-run). userFraction is shown only when status is inProgress.
 	if !in.DryRun {
 		extra := ""
 		if result.Status == tracks.StatusInProgress {
@@ -324,7 +298,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Result: result, DryRun: in.DryRun}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases promote`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag        string
@@ -406,9 +379,6 @@ func joinCodes(codes []int) string {
 	return strings.Join(s, ", ")
 }
 
-// updatePriority maps the flag pair to the orchestrator's optional priority:
-// nil when --update-priority was not passed, so the field stays off the wire and
-// the source release's priority carries over.
 func updatePriority(in Input) *int {
 	if !in.UpdatePrioritySet {
 		return nil

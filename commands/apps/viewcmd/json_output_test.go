@@ -7,12 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRenderJSON_envelope_golden freezes the {"details","listing","icon"}
-// envelope: gplay-authored (an explicit ADR-0003 exception, several endpoints
-// merged), so its key order and the icon key are ours to keep stable. It is
-// built inside details.Get, hence the drive through Run on the fake API.
-// The title carries &, < and >: the envelope is built with output.Marshal, so
-// the listing bytes reach stdout unescaped.
 func TestRenderJSON_envelope_golden(t *testing.T) {
 	api := &viewAPI{
 		editID:  "edit-view",
@@ -29,9 +23,6 @@ func TestRenderJSON_envelope_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "envelope.json.golden", r)
 }
 
-// TestRenderJSON_emptyRawResponse_fallsBackToPayloadShape pins the silent
-// fallback: a Payload that lost its envelope renders the typed trio rather
-// than nothing, through output.WriteJSON (no HTML escaping of the title).
 func TestRenderJSON_emptyRawResponse_fallsBackToPayloadShape(t *testing.T) {
 	p := viewcmd.Payload{
 		Package:         "com.example.app",

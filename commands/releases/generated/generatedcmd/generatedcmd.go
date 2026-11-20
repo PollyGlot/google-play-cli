@@ -1,7 +1,3 @@
-// Package generatedcmd holds the wiring shared by the `gplay releases generated`
-// leaves (list/download): the ADR-0018 list-table machinery that flattens the
-// grouped-by-signing-key GeneratedApksListResponse to one row per artifact, and
-// 404/403 hint classification. Mirrors commands/recovery/recoverycmd.
 package generatedcmd
 
 import (
@@ -15,7 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
 )
 
-// Artifact type labels (the `type` column). Stable, lower-case, hyphenated.
 const (
 	typeSplit      = "split"
 	typeStandalone = "standalone"
@@ -24,14 +19,8 @@ const (
 	typeRecovery   = "recovery"
 )
 
-// shortHashLen is how many leading hex chars of certificateSha256Hash the table
-// shows: enough to tell two signing keys apart without a 64-char column.
 const shortHashLen = 12
 
-// Row is the synthesized one-line-per-artifact view of the grouped response.
-// ID carries the artifact's natural secondary identifier (split→splitId,
-// standalone→variantId, asset-slice→sliceId, recovery→recoveryId; universal has
-// none). The verbatim grouping is always available via --output json (ADR-0003).
 type Row struct {
 	Type       string
 	Module     string
@@ -40,9 +29,6 @@ type Row struct {
 	Cert       string
 }
 
-// BuildRows flattens every signing-key group into one row per downloadable
-// artifact, preserving the API's order. Unprotected split/standalone APKs are
-// included (they carry downloadIds too) under their base type.
 func BuildRows(lr generatedapks.ListResponse) []Row {
 	var rows []Row
 	for _, g := range lr.GeneratedApks {
@@ -74,8 +60,6 @@ func BuildRows(lr generatedapks.ListResponse) []Row {
 	return rows
 }
 
-// variantID renders a standalone/split variant index, "" for the zero value so
-// the column stays blank rather than a misleading "0".
 func variantID(v int) string {
 	if v == 0 {
 		return ""
@@ -83,8 +67,6 @@ func variantID(v int) string {
 	return strconv.Itoa(v)
 }
 
-// shortHash truncates a cert hash to its leading chars (with an ellipsis when
-// truncated), leaving "" untouched.
 func shortHash(h string) string {
 	if len(h) <= shortHashLen {
 		return h
@@ -92,8 +74,6 @@ func shortHash(h string) string {
 	return h[:shortHashLen] + "…"
 }
 
-// Columns is the single source of truth for the generated-APK table (ADR-0018).
-// Keys mirror the artifact axes; the downloadId is what `download` consumes.
 var Columns = output.NewColumnSet(
 	output.Column[Row]{Key: "type", Header: "TYPE", Value: func(r Row) string { return r.Type }},
 	output.Column[Row]{Key: "module", Header: "MODULE", Value: func(r Row) string { return r.Module }},
@@ -105,9 +85,6 @@ var Columns = output.NewColumnSet(
 func ResolveColumns(spec string) ([]output.Column[Row], error) { return Columns.Resolve(spec) }
 func DefaultColumns() string                                   { return strings.Join(Columns.DefaultKeys(), ",") }
 
-// packageNotFoundError attaches the generated-APK 404 hint (a 403 gets
-// apihint.ForbiddenError), leaving the wrapped *api.Error to drive the exit
-// code (404→30, 403→11).
 type packageNotFoundError struct {
 	pkg   string
 	cause error
@@ -118,7 +95,6 @@ func (e *packageNotFoundError) Error() string {
 }
 func (e *packageNotFoundError) Unwrap() error { return e.cause }
 
-// Classify adds 404/403 hints, leaving the *api.Error to drive the exit code.
 func Classify(pkg string, err error) error {
 	if apihint.Status(err) == http.StatusNotFound {
 		return &packageNotFoundError{pkg: pkg, cause: err}
