@@ -203,6 +203,8 @@ Three realities shape the design:
   key (`basePlanId` for subscriptions, `purchaseOptionId` for one-time
   products), only one of which is ever set. A migrating product create is
   shown as its own `migrate` op in every view, so the one-way door is visible.
+- **`dryRun` reports the invocation, not the branch taken**: a real apply
+  with nothing to change still answers `"dryRun": false`.
 - **A change carries a typed identity** (product, middle level, offer), never
   a composite string split again later, and a patch's changed fields are both
   the summary shown and the exact `updateMask` sent.

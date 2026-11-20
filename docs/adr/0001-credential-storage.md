@@ -36,10 +36,12 @@ amended (2026-11-20): implementation decisions moved from code comments
   emits them in its JSON and `-v` logs `keystore: using <label> backend`, so
   they are frozen like any Public field
   ([ADR-0010](./0010-versioning-public-contract-and-ga.md)).
-- **`auth logout` saves the config before it deletes the key.** If the
-  delete then fails, the registry still names the Account and the next run can
-  retry the cleanup; the reverse order would leave the config pointing at a
-  credential whose bytes are gone.
+- **`auth logout` saves the config before it deletes the key.** A save that
+  fails leaves both the registry and the key untouched; the reverse order would
+  leave the config pointing at a credential whose bytes are gone. The cost:
+  when the key delete fails after the save, the Account is already gone from
+  the registry, so a second `auth logout` answers "unknown account" and the
+  stray key has to be removed by hand (`auth doctor` reports stray files).
 - **`auth logout` selects the backend after its `--confirm` gate**, so a
   refused logout never probes the keyring.
 - **`auth logout` deletes from the selected backend and from the file

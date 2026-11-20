@@ -26,13 +26,13 @@ func fetchPinned(ctx context.Context, run RunFunc, git string, p Pin, dest strin
 	}
 	for _, args := range steps {
 		if out, err := run(ctx, git, args, dest); err != nil {
-			return "", fmt.Errorf("git %s: %v%s", subcommandOf(args), err, indentOutput(out)) //nolint:errorlint // see above: wrapping leaks git's exit code
+			return "", fmt.Errorf("git %s: %v%s", subcommandOf(args), err, indentOutput(out)) //nolint:errorlint // wrapping leaks git's exit code (ADR-0045 §5)
 		}
 	}
 
 	out, err := run(ctx, git, hardenedGit("rev-parse", "HEAD"), dest)
 	if err != nil {
-		return "", fmt.Errorf("git rev-parse: %v%s", err, indentOutput(out)) //nolint:errorlint // see above: wrapping leaks git's exit code
+		return "", fmt.Errorf("git rev-parse: %v%s", err, indentOutput(out)) //nolint:errorlint // wrapping leaks git's exit code (ADR-0045 §5)
 	}
 	if got := strings.TrimSpace(out); got != p.Commit {
 		return "", fmt.Errorf("checkout is at %s, want the pinned commit %s", got, p.Commit)
