@@ -1,7 +1,3 @@
-// Package imageorchestrator_test exercises the Edit-lifecycle guarantees of
-// `images apply`: the atomic single-Edit commit, auto-discard on a per-slot
-// failure (0 published), and the no-op discard (no empty commit). It drives
-// orchestrator.Apply directly with a testkit.Fake: no kernel/auth needed.
 package imageorchestrator_test
 
 import (
@@ -24,9 +20,6 @@ import (
 
 func sha(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 
-// stage writes each blob of tr to its own file, raw (these tests skip the
-// pre-check, so a blob need not be an image), and returns the tree of paths
-// Apply takes, with the directory they live in (Opts.Dir).
 func stage(t *testing.T, tr imagetree.Tree) (string, imagetree.Staged) {
 	t.Helper()
 	dir := t.TempDir()
@@ -46,18 +39,13 @@ func stage(t *testing.T, tr imagetree.Tree) (string, imagetree.Staged) {
 	return dir, st
 }
 
-// orchRT configures a testkit.Fake with a per-slot live body and a toggle to
-// fail uploads. What the Edit went through (committed, discarded, uploads,
-// deletes) is read back from the recorded calls.
 type orchRT struct {
 	editID     string
-	liveBody   string // images.list body for every slot
+	liveBody   string
 	failUpload bool
-	failCommit bool // Play rejects the commit (e.g. a required slot dropped)
+	failCommit bool
 }
 
-// orchFake is the Fake plus the one setting the call log cannot tell: whether
-// the commit it answered was accepted.
 type orchFake struct {
 	*testkit.Fake
 	failCommit bool
@@ -121,9 +109,6 @@ func (f orchFake) uploads() int {
 	})
 }
 
-// listingDeletes counts the image DELETEs under /listings/ of one kind:
-// .../listings/<locale>/<type> is a deleteall,
-// .../listings/<locale>/<type>/<id> a single image delete.
 func (f orchFake) listingDeletes(single bool) int {
 	return f.count(func(c testkit.Call) bool {
 		i := strings.Index(c.Path, "/listings/")
@@ -137,9 +122,6 @@ func (f orchFake) listingDeletes(single bool) int {
 func (f orchFake) deleteAll() int     { return f.listingDeletes(false) }
 func (f orchFake) singleDeletes() int { return f.listingDeletes(true) }
 
-// TestApply_perSlotFailure_discardsEdit asserts a failed upload aborts the
-// whole apply: the Edit is discarded (auto-rollback), never committed: 0 slots
-// published (atomic).
 func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
 	rt := newOrch(t, orchRT{editID: "e", failUpload: true})
 	hc := &http.Client{Transport: rt}
@@ -160,9 +142,6 @@ func TestApply_perSlotFailure_discardsEdit(t *testing.T) {
 	}
 }
 
-// TestApply_noOp_discardsWithoutCommit asserts that when the live slot already
-// matches local, the real apply discards the Edit instead of committing an
-// empty one (Google quota conservation).
 func TestApply_noOp_discardsWithoutCommit(t *testing.T) {
 	iconBytes := []byte("icon-bytes")
 	live := fmt.Sprintf(`{"images":[{"id":"x","sha256":%q}]}`, sha(iconBytes))
@@ -188,14 +167,12 @@ func TestApply_noOp_discardsWithoutCommit(t *testing.T) {
 	}
 }
 
-// TestApply_prune_deletesOnlineOnly asserts --prune removes a managed slot's
-// online-only image by id (a single delete, no deleteall) and commits.
 func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	a := []byte("shot-a")
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
 	rt := newOrch(t, orchRT{editID: "e", liveBody: live})
 	hc := &http.Client{Transport: rt}
-	dir, local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}}) // keep only a; b is online-only
+	dir, local := stage(t, imagetree.Tree{"en-US": {images.PhoneScreenshots: {a}}})
 
 	res, err := imageorchestrator.Apply(context.Background(), hc, local, imageorchestrator.Opts{
 		Dir:     dir,
@@ -218,8 +195,6 @@ func TestApply_prune_deletesOnlineOnly(t *testing.T) {
 	}
 }
 
-// TestApply_prune_offWithoutFlag_keepsOnlineOnly asserts the same tree WITHOUT
-// --prune deletes nothing and commits no change (additive no-op).
 func TestApply_prune_offWithoutFlag_keepsOnlineOnly(t *testing.T) {
 	a := []byte("shot-a")
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))
@@ -242,9 +217,6 @@ func TestApply_prune_offWithoutFlag_keepsOnlineOnly(t *testing.T) {
 	}
 }
 
-// TestApply_prune_belowRequiredMinimum_rejectedAtCommit asserts the
-// required-slot safety: a prune Play rejects at commit (e.g. dropping below the
-// minimum screenshot count) leaves the Edit auto-discarded, store untouched.
 func TestApply_prune_belowRequiredMinimum_rejectedAtCommit(t *testing.T) {
 	a := []byte("shot-a")
 	live := fmt.Sprintf(`{"images":[{"id":"id-a","sha256":%q},{"id":"id-b","sha256":%q}]}`, sha(a), sha([]byte("shot-b")))

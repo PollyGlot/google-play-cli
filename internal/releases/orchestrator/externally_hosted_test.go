@@ -14,10 +14,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// hostedAPK is a well-formed ExternallyHostedApk resource for com.example.app.
 const hostedAPK = `{"packageName":"com.example.app","externallyHostedUrl":"https://cdn.example.com/app-310.apk","versionCode":310,"fileSize":"1048576"}`
 
-// writeHosted writes body as an externally hosted APK resource file.
 func writeHosted(t *testing.T, body string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "ext.json")
@@ -27,10 +25,6 @@ func writeHosted(t *testing.T, body string) string {
 	return p
 }
 
-// TestUpload_externallyHosted_callSequenceAndRelease asserts the #546 flow:
-// edits.insert → apks.addexternallyhosted → tracks.update → edits.commit,
-// the resource sent verbatim, and the release carrying the versionCode Google
-// returned.
 func TestUpload_externallyHosted_callSequenceAndRelease(t *testing.T) {
 	rt, transport := newPlay(playAPI{editID: "edit-h", hostedVersionCode: 310})
 
@@ -65,10 +59,6 @@ func TestUpload_externallyHosted_callSequenceAndRelease(t *testing.T) {
 	}
 }
 
-// TestUpload_externallyHostedWithBundle_releaseHoldsBoth asserts an
-// externally hosted APK combines with an uploaded AAB (#666): one Edit, one
-// tracks.update, and the release listing both versionCodes, then the
-// retained one.
 func TestUpload_externallyHostedWithBundle_releaseHoldsBoth(t *testing.T) {
 	rt, transport := newPlay(playAPI{editID: "edit-m", versionCode: 311, hostedVersionCode: 310})
 
@@ -101,9 +91,6 @@ func TestUpload_externallyHostedWithBundle_releaseHoldsBoth(t *testing.T) {
 	}
 }
 
-// TestUpload_externallyHosted_badResource_exit20_beforeInsert asserts the two
-// local checks gplay owns fail before edits.insert (no request at all, token
-// exchange included), live and on --dry-run alike.
 func TestUpload_externallyHosted_badResource_exit20_beforeInsert(t *testing.T) {
 	cases := map[string]string{
 		"malformed JSON":   `{"packageName":"com.example.app",`,
@@ -138,9 +125,6 @@ func TestUpload_externallyHosted_badResource_exit20_beforeInsert(t *testing.T) {
 	}
 }
 
-// TestUpload_externallyHosted_noPackageName_isGooglesCall asserts a resource
-// without packageName is not refused locally: only a present, different
-// package is gplay's to catch.
 func TestUpload_externallyHosted_noPackageName_isGooglesCall(t *testing.T) {
 	rt, transport := newPlay(playAPI{editID: "edit-n", hostedVersionCode: 7})
 

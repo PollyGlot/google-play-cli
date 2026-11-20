@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// The exfiltration the PRD names (#459 story 5): a repo ships a notes directory
-// where fr-FR.txt is a symlink to a private file. Uploaded with the operator's
-// credentials, it would land in a public store listing.
 func TestLoadRefusesEscapingSymlink(t *testing.T) {
 	secretDir := t.TempDir()
 	secret := filepath.Join(secretDir, "id_rsa")
@@ -24,7 +21,6 @@ func TestLoadRefusesEscapingSymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	// Zero reads outside the root: record every path the loader actually opens.
 	var read []string
 	restore := spyReads(t, &read)
 	defer restore()
@@ -41,7 +37,6 @@ func TestLoadRefusesEscapingSymlink(t *testing.T) {
 			t.Errorf("the loader read outside the root: %s", p)
 		}
 	}
-	// And the secret must not have reached the payload either way.
 	for _, n := range out {
 		if strings.Contains(n.Text, secretBody) {
 			t.Fatalf("secret material reached the release notes: %+v", n)
@@ -49,9 +44,6 @@ func TestLoadRefusesEscapingSymlink(t *testing.T) {
 	}
 }
 
-// A symlink that stays INSIDE the directory is legitimate (a repo may point
-// pt-PT.txt at pt-BR.txt) and must keep working: containment is about escape,
-// not about symlinks.
 func TestLoadAllowsInternalSymlink(t *testing.T) {
 	dir := t.TempDir()
 	writeNote(t, dir, "pt-BR.txt", "notas")
@@ -68,8 +60,6 @@ func TestLoadAllowsInternalSymlink(t *testing.T) {
 	}
 }
 
-// The whole tree reached through a symlink: the "legitimate symlinked
-// checkout" case of story 7.
 func TestLoadFullySymlinkedRootPasses(t *testing.T) {
 	real := t.TempDir()
 	writeNote(t, real, "en-US.txt", "notes")
@@ -95,8 +85,6 @@ func writeNote(t *testing.T, dir, name, body string) {
 	}
 }
 
-// spyReads swaps the package's filesystem seam for one that records every path
-// read, so a test can assert not just "refused" but "never touched".
 func spyReads(t *testing.T, into *[]string) func() {
 	t.Helper()
 	origStat, origRead := osStat, osReadFile

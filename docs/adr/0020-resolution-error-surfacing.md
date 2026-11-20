@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 The lazy-probe change (PR #172, commit `ca77148`) deferred the OS-keyring
@@ -137,3 +139,23 @@ than *absent*, see Considered options.
 - This ADR is the canonical answer to *"why does `EnsureAccount` return an
   error now, when the comment used to say best-effort swallow?"* — it is a
   deliberate consistency fix, not a regression to revert.
+
+## Implementation notes
+
+- **The Account name is resolved at boot, the credential on demand.** The
+  name needs no keystore, so registry scoping (`apps add/list/remove`) and the
+  `--dry-run` preview get it for free, while the keyring probe, the macOS
+  "keychain locked" dialog included, waits for a command that asks for a
+  token. A pre-auth failure (a bad `--package`, a missing `--confirm`),
+  `--help` and an offline `--dry-run` (the `releases` verbs) never touch the
+  keyring; an online dry-run (`metadata apply`, `images apply`) reads the API
+  and loads the credential.
+- **The lazy fields are read through their accessors.** The resolved
+  Account and the selected keystore stay zero until the first call that needs
+  them, so a direct field read on the production path sees nothing. The
+  verbose `keystore: using <label>` line is printed at that first use, which
+  keeps `-v` on a pre-auth command quiet.
+- **Registry writes use the resolved name, never `ConfigAccount`**, which
+  ignores `--account`, `--service-account` and their environment variables
+  ([ADR-0004](./0004-cascading-config.md)). An inline credential has no
+  name, which is the `AccountName == ""` branch of decision 3.

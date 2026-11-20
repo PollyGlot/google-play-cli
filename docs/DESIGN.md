@@ -150,7 +150,10 @@ In order, first match wins:
 
 If nothing resolves: exit code `10` with one message, the same on every command
 (`kernel.NoAccountError`), that names each way to fix it: `gplay auth login`,
-`--account` or `GPLAY_ACCOUNT`, `--service-account` or `GPLAY_SERVICE_ACCOUNT`.
+`--account` or `GPLAY_ACCOUNT`, `--service-account` or `GPLAY_SERVICE_ACCOUNT`,
+stored Account first since that is what `auth login` produces. The registry
+commands (`apps add/list/remove`), which cannot scope to an inline credential,
+say so in a follow-up error of their own rather than in a variant of this one.
 A command that also needs a developer-id (`team`, `customapps create`, `reviews
 history`) reports a missing Account before a missing developer-id: a
 developer-id set first would only lead to the no-Account error one step later.
@@ -299,6 +302,32 @@ inside the Edit and before any artifact upload.
 Whether Play serves a locale stays Play's call: gplay checks length, not a
 locale registry.
 
+**Locale file names are checked before the Edit opens** (#452). In
+`--release-notes-dir` mode the locale is a file name, and a typo (`en_US.txt`,
+the underscore form other tools use) used to fail at `tracks.update`, after
+`edits.insert` and the artifact upload, naming only the first bad tag. Every
+`<locale>.txt` is now checked offline for a well-formed BCP-47 tag, on
+`releases upload` and `releases promote` alike, and one exit `2` lists every
+offending file. The check is syntactic: `xy-ZZ` passes and is Play's to
+refuse, while `en_US`, `en-`, `klingon` and `e` do not. It ignores case (RFC
+5646 tags are case-insensitive), and the primary subtag is 2 or 3 letters
+although RFC 5646 reserves longer ones, which no Play locale uses and which
+would let `klingon` through. Singleton extension and private-use subtags (RFC
+5646 §2.2.6-7) are refused for the same reason: no Play locale carries one,
+and accepting them would admit arbitrary one-letter subtags. It uses no locale registry, which would reject a
+locale Google added last week, and no `golang.org/x/text`, whose tables would
+weigh on a single static binary (ADR-0007). An unreadable directory is
+refused at the same point, and `default.txt` is exempt: it is a fallback
+marker, not a locale. A notes file over 1 MiB is refused before it is read:
+exit `2` on a live upload and on `promote`, exit `20` under `--dry-run`, which
+reports every local artifact problem as a client-side error ([ADR-0063](./adr/0063-offline-validation-before-the-api.md)).
+
+**`releases promote` carries the source's notes over verbatim** unless
+`--release-notes` or `--release-notes-dir` is passed. An override that lacks a
+locale the source release carries is refused (exit `2`): it would delete that
+locale's notes on the destination, a loss nothing shows afterwards. Add the
+missing locales to the override, or drop it to carry the source's notes over.
+
 ### Targeting a release
 
 - `releases upload <aab>` → versionCode is read from the AAB; never a flag.
@@ -318,6 +347,12 @@ Each transition is its own verb:
 - `gplay releases resume`
 - `gplay releases complete` — status → `completed`, userFraction removed (a
   completed release carries none)
+
+On `production`, a transition that leaves the release in front of users
+(`rollout`, `resume`, `complete`: status `inProgress` or `completed`) needs
+`--confirm` (exit `3` without it), like a non-draft `upload` or `promote`.
+`halt` does not: it reduces exposure. `--dry-run` runs before that check and
+lists the flag in `requires` (ADR-0017).
 
 Every verb rewrites the target release inside the raw `tracks.get` body, so
 the other releases and the fields gplay does not model (`countryTargeting`)
@@ -495,6 +530,11 @@ reports the error the serial walk would have hit first.
 
 - **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
   Google does not document concurrent writes to an Edit.
+- **A fan-out worker never resolves credentials or writes output through the
+  `RunContext`.** One cobra invocation owns one `RunContext`, whose lazy
+  credential resolution and output counters are unguarded: the HTTP client is
+  taken from it before the fan-out starts, and results are written after it
+  ends. Reading its context (`rc.Ctx`) from a worker is fine.
 - **`images apply` and `images validate` hold one image at a time**: the tree
   is scanned for paths, validation reads each file's size and header, the diff
   hashes each file as a stream, and an upload reads its image just before
@@ -787,6 +827,9 @@ piping (where stdout is machine data and the table view is absent).
   `inProgress` (a partial rollout — the one case where the fraction informs).
 - `--dry-run` never emits it: `✓` means *committed*. A dry-run already prints
   its plan to stdout.
+- A write staged into a pinned explicit Edit is not committed either, so it
+  prints a distinct `• staged in open edit <id>` line pointing at
+  `gplay edits commit`, never a `✓`.
 - It is written through a single helper (`rc.Confirmf`), so a quiet mode, if
   one is ever added, can suppress every `✓` in one place.
 - Wording is **not** part of the Public contract (§7) — it is free to evolve.
@@ -838,6 +881,23 @@ A deadline-exceeded failure is a transport-level error and maps to **exit 50**
 (network), the retry-safe bucket, so the same CI wrapper that retries a DNS
 blip retries a timeout. The exception is a timeout on an Edit commit, whose
 outcome is then unknown (`COMMIT_OUTCOME_UNKNOWN`, §4 and §9).
+
+How the bound is wired, since the OAuth2 library fights it in two places:
+
+- **The token exchange carries the same deadline.** The JWT token source
+  captures the HTTP client of the context it is given, so the kernel threads
+  a deadline-bound copy of the base client into that context, never mutating
+  the shared base or `http.DefaultClient`. One injected `RoundTripper`
+  therefore serves both the `/token` exchange and the API calls, which is the
+  seam command tests use.
+- **`oauth2.NewClient` copies the context client's `Timeout` onto the client
+  it returns.** Left in place, that copy would bound a media transfer after
+  all, or cap a whole `--retry` sequence at one attempt's deadline. Where the
+  deadline belongs to a middleware (the per-request one that skips media, or
+  `--retry`'s per-attempt one), the returned client's `Timeout` is cleared.
+- **Without `--retry` or a media exemption, the deadline sits on the
+  client**: the OAuth2 client's base is the unwrapped transport, so it
+  cannot live there.
 
 ### Opt-in retry (`--retry`)
 
@@ -971,6 +1031,11 @@ type — the helper also feeds `requires: ["<flag>"]` into the `--output json`
 error envelope (§7 / ADR-0023), which is how an agent recovers without scraping
 the message.
 
+The converse holds: a refusal no flag can lift is misuse, `2`, not `3`.
+`metadata apply --prune` against an empty tree, or a prune that would delete
+the default language's Listing, is fixed by another `--dir` or by dropping
+`--prune`, not by acknowledging anything.
+
 **Exit 2 owns the argument count.** A wrong number of positional arguments —
 missing *or* surplus — is CLI misuse (`2`), the same bucket as an unknown flag
 or an unknown subcommand. All four doors are closed centrally, never per
@@ -985,6 +1050,12 @@ the exit-3 harmonisation above, the fix *restores* this documented table rather
 than changing the frozen contract (ADR-0010), which is why it shipped as a
 `fix`. Never hand-roll an argument-count check in a command — declare the cobra
 validator (`Args: cobra.ExactArgs(1)`, …) and let the kernel own the exit code.
+
+**A mistyped subcommand gets suggestions.** The matching is cobra's own
+(Levenshtein distance 2, prefixes, a command's `SuggestFor`), so gplay's typo
+behaviour tracks the toolkit; the `Did you mean this?` block is appended below
+a first line that stays exactly `unknown command "x" for "gplay ..."`, so
+anything matching that line keeps working.
 
 **A removed verb or flag names its replacement.** A verb or flag gplay removed
 without an alias (the ADR-0019 renames, the 2.0.0 vocabulary pass of ADR-0048)

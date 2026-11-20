@@ -47,6 +47,9 @@ The `table` output (TTY default) is **not** pass-through — we pick the columns
 - **A field whose zero is meaningful is a pointer.** `omitempty` drops a zero
   `int` but keeps a non-nil pointer to 0, so an explicit `--point-value 0` or
   `--steps-to-unlock 0` reaches the wire while an unset field stays absent.
+  gplay-authored shapes follow the same rule: a diff record's
+  `liveChars`/`localChars` are pointers, so a create's `liveChars: 0` and a
+  clear's `localChars: 0` are emitted while a locale-level record omits both.
 - **A wire golden recorded before a refactor is a pin.** A test that pins every
   request a package sends, byte for byte, against a golden recorded before the
   move onto the shared executor (#586), is never regenerated to make a wire

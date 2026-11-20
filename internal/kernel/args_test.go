@@ -12,10 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// codedError is a stand-in for any application error that already knows its own
-// exit code (exit.SafetyFlag, a client-side validation error, ...). Used to
-// assert WrapArgErrors demotes nothing: exit 2 is the fallback for cobra's
-// untyped rejections, not a blanket override.
 type codedError struct {
 	msg  string
 	code int
@@ -24,8 +20,6 @@ type codedError struct {
 func (e *codedError) Error() string { return e.msg }
 func (e *codedError) ExitCode() int { return e.code }
 
-// newLeaf builds a runnable leaf with the given validator, shaped like a real
-// gplay command (silent so cobra prints nothing during the test).
 func newLeaf(use string, args cobra.PositionalArgs) *cobra.Command {
 	return &cobra.Command{
 		Use:           use,
@@ -36,11 +30,6 @@ func newLeaf(use string, args cobra.PositionalArgs) *cobra.Command {
 	}
 }
 
-// TestWrapArgErrors_argCountRejectionIsUsage is the core of #426: a validator
-// rejection (missing argument or surplus argument) comes back as CLI misuse
-// (exit 2 per docs/DESIGN.md §9) instead of the untyped error exit.For could
-// only map to the generic exit 1. Since #593 the message names the fix: the
-// missing placeholder from Use, or the stray argument, then the usage line.
 func TestWrapArgErrors_argCountRejectionIsUsage(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -81,8 +70,6 @@ func TestWrapArgErrors_argCountRejectionIsUsage(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_acceptedArgsStayAccepted asserts the wrapper is invisible on
-// the happy path: a valid argument count still validates, so the command runs.
 func TestWrapArgErrors_acceptedArgsStayAccepted(t *testing.T) {
 	cmd := kernel.WrapArgErrors(newLeaf("view", cobra.ExactArgs(1)))
 	if err := cmd.Args(cmd, []string{"GPA.1234-5678-9012-34567"}); err != nil {
@@ -90,12 +77,6 @@ func TestWrapArgErrors_acceptedArgsStayAccepted(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_keepsTypedExitCodes asserts the wrapper only supplies a code
-// where there is none. A validator that returns an error carrying its own
-// exit.Coder: a missing safety flag (exit 3), a client-side validation failure
-// (exit 20): keeps it, verbatim error and all. Exit 3 in particular "has no
-// exceptions" (docs/DESIGN.md §9), so silently demoting it to 2 here would break
-// the one distinction an automated caller most needs.
 func TestWrapArgErrors_keepsTypedExitCodes(t *testing.T) {
 	for _, code := range []int{3, 20} {
 		want := &codedError{msg: "typed rejection", code: code}
@@ -111,12 +92,6 @@ func TestWrapArgErrors_keepsTypedExitCodes(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_isIdempotent asserts a second pass over an already-wrapped
-// tree changes nothing observable: no doubled message, no re-typed code. The
-// property holds by construction: the inner wrapper's *exit.UsageError already
-// carries a Coder, so the outer asUsageError passes it through untouched. This
-// test pins that contract for a tree assembled from shared constructors, where
-// a subtree can legitimately be walked twice.
 func TestWrapArgErrors_isIdempotent(t *testing.T) {
 	cmd := kernel.WrapArgErrors(newLeaf("view", cobra.ExactArgs(1)))
 	once := cmd.Args(cmd, nil)
@@ -132,9 +107,6 @@ func TestWrapArgErrors_isIdempotent(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_walksTheWholeSubtree asserts the walk reaches every depth:
-// the property that makes one call at the root cover `gplay games achievements
-// view` as surely as `gplay version`.
 func TestWrapArgErrors_walksTheWholeSubtree(t *testing.T) {
 	leaf := newLeaf("view", cobra.ExactArgs(1))
 	mid := &cobra.Command{Use: "achievements", RunE: kernel.GroupRunE}
@@ -151,18 +123,6 @@ func TestWrapArgErrors_walksTheWholeSubtree(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_leavesGroupingNounsAlone asserts the wrapper does not touch
-// a nil Args. A grouping noun keeps Args nil so cobra passes leftover tokens to
-// GroupRunE, which owns both halves of that contract: bare → help (exit 0),
-// unknown subcommand → misuse (exit 2). Installing a validator there would
-// break the help half, since cobra validates args before it ever reaches RunE.
-//
-// The group is mounted under a root here because that is the only shape gplay
-// ever ships: cobra applies legacyArgs to a nil-Args command from Find (BEFORE
-// execute, so out of reach of any Args wrapper), and legacyArgs raises its own
-// untyped "unknown command" only for a command with subcommands and NO parent.
-// That is precisely the case the root neutralises with an explicit
-// Args:ArbitraryArgs (cmd/gplay/main.go); every group below it is exempt.
 func TestWrapArgErrors_leavesGroupingNounsAlone(t *testing.T) {
 	group := &cobra.Command{
 		Use:           "achievements",
@@ -187,7 +147,6 @@ func TestWrapArgErrors_leavesGroupingNounsAlone(t *testing.T) {
 		t.Fatal("grouping noun got an Args validator, want nil (GroupRunE owns its leftover tokens)")
 	}
 
-	// Bare invocation still prints help and succeeds.
 	var help strings.Builder
 	root.SetArgs([]string{"achievements"})
 	root.SetOut(&help)
@@ -199,7 +158,6 @@ func TestWrapArgErrors_leavesGroupingNounsAlone(t *testing.T) {
 		t.Error("bare group printed no help")
 	}
 
-	// An unknown subcommand is still the exit-2 misuse GroupRunE raises.
 	root.SetArgs([]string{"achievements", "nonesuch"})
 	root.SetOut(io.Discard)
 	err := root.Execute()
@@ -211,8 +169,6 @@ func TestWrapArgErrors_leavesGroupingNounsAlone(t *testing.T) {
 	}
 }
 
-// TestWrapArgErrors_nilCommand asserts the nil guard, so a caller can compose it
-// around a constructor that may return nil without a panic at boot.
 func TestWrapArgErrors_nilCommand(t *testing.T) {
 	if got := kernel.WrapArgErrors(nil); got != nil {
 		t.Errorf("WrapArgErrors(nil) = %v, want nil", got)

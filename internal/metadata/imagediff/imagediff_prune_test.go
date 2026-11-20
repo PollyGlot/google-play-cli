@@ -17,9 +17,6 @@ func deleteShas(changes []imagediff.SlotChange) []string {
 	return out
 }
 
-// TestPrune_pureDelete_deletesOnlineOnlyByID: local omits a live image, same
-// relative order, nothing new → delete the online-only image by id (no
-// deleteall, no reorder).
 func TestPrune_pureDelete_deletesOnlineOnlyByID(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -41,9 +38,6 @@ func TestPrune_pureDelete_deletesOnlineOnlyByID(t *testing.T) {
 	}
 }
 
-// TestPrune_replaceAndDelete_rewrites: local adds a new image and drops a live
-// one (content differs) → rewrite (deleteall + reupload local) with delete +
-// upload records.
 func TestPrune_replaceAndDelete_rewrites(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -62,9 +56,6 @@ func TestPrune_replaceAndDelete_rewrites(t *testing.T) {
 	}
 }
 
-// TestPrune_neverTouchesUnmanagedSlot: a slot empty on disk but live on Play is
-// left untouched even under --prune (missing == empty; full-slot clear is out
-// of scope, ADR-0013 §3).
 func TestPrune_neverTouchesUnmanagedSlot(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,
@@ -82,9 +73,6 @@ func TestPrune_neverTouchesUnmanagedSlot(t *testing.T) {
 	}
 }
 
-// TestPrune_offByDefault_keepsOnlineOnly: the same slot WITHOUT prune keeps the
-// online-only image (additive): the #134 guarantee, re-asserted via the new
-// signature.
 func TestPrune_offByDefault_keepsOnlineOnly(t *testing.T) {
 	in := imagediff.SlotInput{
 		Locale: "en-US", Type: images.PhoneScreenshots,

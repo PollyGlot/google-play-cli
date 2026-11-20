@@ -4,6 +4,8 @@
 
 accepted; amended 2026-10-12 (per-flag label, see the amendment at the end)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 [ADR-0010](./0010-versioning-public-contract-and-ga.md) settled the *policy* of
@@ -154,3 +156,14 @@ cannot freeze a flag silently. Moving an existing frozen flag to experimental
 rewrites a frozen golden line, which the gate still treats as a break: the
 label only loosens what is born under it.
 
+## Implementation notes
+
+- **`kernel.Experimental` runs after the group's children are added.** It
+  tags every command already in the subtree, so each child shows the tag in
+  its own help. A child added later is still experimental, since
+  `IsExperimental` walks up the parents, but it misses the visible tag:
+  registration order matters for the display, not for the contract. Labelling
+  a child and then its parent does not stack two tags.
+- **The experimental notice is hard-wrapped.** cobra prints `Long` verbatim,
+  so an unwrapped paragraph would be the one ragged block on a help page of
+  hand-wrapped text.

@@ -10,22 +10,19 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 )
 
-// TestValidBCP47 is the grammar table for PRD #446 / #452: well-formedness,
-// not registration. `xy-ZZ` is shaped like a tag and is Play's to refuse; the
-// rejected column is what a human or an agent actually typos.
 func TestValidBCP47(t *testing.T) {
 	valid := []string{
-		"en", "fr", "ar", "fil", // bare language, 2 and 3 letters
-		"en-US", "pt-BR", "fr-CA", "zh-CN", // language-REGION
-		"es-419",         // UN M.49 numeric region
-		"zh-Hant-TW",     // script + region
-		"zh-Hant",        // script only
-		"sr-Latn-RS",     // the other classic script case
-		"de-CH-1901",     // digit-led variant
-		"sl-rozaj",       // alphabetic variant
-		"xy-ZZ",          // well-formed but unregistered: Play's call, not ours
-		"EN-us",          // tags are case-insensitive per RFC 5646 §2.1
-		"zh-yue-Hant-CN", // extlang
+		"en", "fr", "ar", "fil",
+		"en-US", "pt-BR", "fr-CA", "zh-CN",
+		"es-419",
+		"zh-Hant-TW",
+		"zh-Hant",
+		"sr-Latn-RS",
+		"de-CH-1901",
+		"sl-rozaj",
+		"xy-ZZ",
+		"EN-us",
+		"zh-yue-Hant-CN",
 	}
 	for _, s := range valid {
 		if !notes.ValidBCP47(s) {
@@ -34,21 +31,18 @@ func TestValidBCP47(t *testing.T) {
 	}
 
 	invalid := []string{
-		"",         // no tag at all
-		"en_US",    // THE typo this gate exists for: underscore, not hyphen
-		"en-",      // trailing separator
-		"-US",      // missing primary subtag
-		"e",        // 1-letter primary
-		"klingon",  // 7-letter primary: not a language subtag in practice
-		"en--US",   // empty subtag
-		"en US",    // space
-		"en.US",    // dot
-		"123",      // digits where a language belongs
-		"en-US-",   // trailing separator after a full tag
-		"français", // non-ASCII
-		// Singleton extension / private-use subtags (RFC 5646 §2.2.6-7). No
-		// Play store locale carries one, and accepting them would open the
-		// grammar to arbitrary 1-letter subtags for nothing.
+		"",
+		"en_US",
+		"en-",
+		"-US",
+		"e",
+		"klingon",
+		"en--US",
+		"en US",
+		"en.US",
+		"123",
+		"en-US-",
+		"français",
 		"en-US-u-co-phonebk",
 		"en-x-private",
 	}
@@ -59,10 +53,6 @@ func TestValidBCP47(t *testing.T) {
 	}
 }
 
-// TestValidateDirLocales_listsEveryOffendingFile is the acceptance criterion
-// that saves a round-trip per typo: a directory with three malformed names
-// fails ONCE, naming all three, instead of failing on the first and making the
-// user re-run to discover the next.
 func TestValidateDirLocales_listsEveryOffendingFile(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "en_US.txt", "underscore typo")
@@ -88,9 +78,6 @@ func TestValidateDirLocales_listsEveryOffendingFile(t *testing.T) {
 	}
 }
 
-// TestValidateDirLocales_acceptsValidTree asserts the gate stays out of the way
-// of the shapes people really ship, including a script/region variant and the
-// `default.txt` marker (which is a fallback flag, not a locale).
 func TestValidateDirLocales_acceptsValidTree(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "en-US.txt", "a")
@@ -107,20 +94,12 @@ func TestValidateDirLocales_acceptsValidTree(t *testing.T) {
 	}
 }
 
-// TestValidateDirLocales_emptyDirIsNoop pins the "no --release-notes-dir" case:
-// the gate is called unconditionally from the orchestrator's validateOpts, so
-// it must be silent when there is nothing to validate.
 func TestValidateDirLocales_emptyDirIsNoop(t *testing.T) {
 	if err := notes.ValidateDirLocales(""); err != nil {
 		t.Errorf("ValidateDirLocales(\"\") = %v, want nil", err)
 	}
 }
 
-// TestValidateDirLocales_missingDirIsRejectedHere is the timing half of the
-// gate. A misspelt `--release-notes-dir` is knowable offline exactly like a
-// misspelt locale file, so it must fail HERE, in validateOpts; swallowing the
-// read error deferred it to notes.Load, which runs inside WithEdit, so the typo
-// only surfaced after edits.insert had burnt an Edit.
 func TestValidateDirLocales_missingDirIsRejectedHere(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 	err := notes.ValidateDirLocales(missing)
@@ -136,9 +115,6 @@ func TestValidateDirLocales_missingDirIsRejectedHere(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_invalidLocale_returnsExit2 pins the defence in depth: even a
-// caller that skips the orchestrator's pre-Edit gate cannot get a malformed
-// locale past Load and onto the wire.
 func TestLoad_dirMode_invalidLocale_returnsExit2(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "en_US.txt", "underscore typo")

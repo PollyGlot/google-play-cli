@@ -20,8 +20,6 @@ import (
 
 var concurrentLocales = []string{"de-DE", "en-US", "fr-FR"}
 
-// slotBytes is the local image of a slot; an even slot index is also live on
-// Play (unchanged), an odd one is not (upload), so the plan mixes both.
 func slotBytes(loc string, ty images.Type) []byte { return []byte(loc + "/" + string(ty)) }
 
 func liveFor(i int, loc string, ty images.Type) []images.Image {
@@ -31,10 +29,6 @@ func liveFor(i int, loc string, ty images.Type) []images.Image {
 	return []images.Image{{ID: loc + string(ty), Sha256: sha(slotBytes(loc, ty))}}
 }
 
-// TestApply_planningReadsInParallel_planUnchanged: the 8 x L images.list reads
-// run fanout.Limit at a time and answer in a scrambled order, yet the diff is
-// the one a serial walk of (sorted locale, canonical type) gives, and the
-// uploads of the real apply still go out one at a time in that order.
 func TestApply_planningReadsInParallel_planUnchanged(t *testing.T) {
 	tr := imagetree.Tree{}
 	var serial []imagediff.SlotInput
@@ -75,7 +69,6 @@ func TestApply_planningReadsInParallel_planUnchanged(t *testing.T) {
 			t.Errorf("unexpected: %s %s", c.Method, c.Path)
 			return 0, "", false
 		})
-		// A per-slot pseudo-random latency scrambles the completion order.
 		rt := testkit.NewDelayed(fake, func(r *http.Request) time.Duration {
 			h := fnv.New32a()
 			_, _ = h.Write([]byte(r.URL.Path))

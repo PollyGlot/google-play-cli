@@ -11,9 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 )
 
-// sharedTranslations builds the monorepo layout the hatch exists for: a
-// metadata tree whose `en-US/title.txt` is a symlink at a translation file
-// kept in a shared directory outside the tree. It returns the tree root.
 func sharedTranslations(t *testing.T) string {
 	t.Helper()
 	shared := t.TempDir()
@@ -32,9 +29,6 @@ func sharedTranslations(t *testing.T) string {
 	return dir
 }
 
-// Default: the layout is refused, and the message says which environment
-// variable brings it back. Without that sentence a monorepo operator reads
-// only that gplay broke.
 func TestReadRefusesSharedLocaleAndNamesTheHatch(t *testing.T) {
 	dir := sharedTranslations(t)
 
@@ -47,8 +41,6 @@ func TestReadRefusesSharedLocaleAndNamesTheHatch(t *testing.T) {
 	}
 }
 
-// Under the opt-in the pre-hardening behaviour is back: the shared translation
-// is read, and stderr carries a NOTE naming what left the tree.
 func TestReadFollowsSharedLocaleUnderTheHatch(t *testing.T) {
 	dir := sharedTranslations(t)
 	var notes bytes.Buffer
@@ -71,18 +63,12 @@ func TestReadFollowsSharedLocaleUnderTheHatch(t *testing.T) {
 	}
 }
 
-// The hatch covers the operator's own tree, never the API's data: on the write
-// side the locale is a string the Play API returned, so it stays contained
-// even with the variable set. This is the line that keeps the hatch from
-// reopening the traversal the hardening closed.
 func TestWriteStaysContainedUnderTheHatch(t *testing.T) {
 	dir := t.TempDir()
 	var notes bytes.Buffer
 	t.Cleanup(pathguard.SetNoteWriter(&notes))
 	t.Setenv(pathguard.EnvAllowExternalSymlinks, "1")
 
-	// A locale directory pre-placed as a symlink out of the tree: exactly the
-	// shape the hatch forgives on the read side.
 	outside := t.TempDir()
 	if err := os.Symlink(outside, filepath.Join(dir, "en-US")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
@@ -103,8 +89,6 @@ func TestWriteStaysContainedUnderTheHatch(t *testing.T) {
 	}
 }
 
-// A locale name the API returned that traverses is refused whatever the
-// environment says: Segment runs before any containment decision.
 func TestWriteRefusesTraversingAPILocaleUnderTheHatch(t *testing.T) {
 	dir := t.TempDir()
 	t.Cleanup(pathguard.SetNoteWriter(&bytes.Buffer{}))
