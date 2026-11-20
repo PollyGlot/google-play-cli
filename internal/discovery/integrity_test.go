@@ -9,21 +9,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/discovery"
 )
 
-// docsDir is docs/discovery/ relative to this package (go test runs with the
-// package directory as the working directory).
 var docsDir = filepath.Join("..", "..", "docs", "discovery")
 
-// sentinelMethods are known method ids that must survive any regeneration:
-// a cheap guard against a truncated or wrong-service snapshot.
 var sentinelMethods = []string{
 	"androidpublisher.edits.commit",
 	"androidpublisher.edits.insert",
 	"androidpublisher.reviews.list",
 }
 
-// TestSnapshotIsSelfNormalized asserts each committed snapshot is byte-equal to
-// its own re-normalization. This catches a hand-edit or an un-normalized commit
-// without any network call: the integrity gate runs inside `go test ./...`.
 func TestSnapshotIsSelfNormalized(t *testing.T) {
 	for _, svc := range discovery.Services {
 		path := filepath.Join(docsDir, svc.SnapshotFilename())
@@ -41,9 +34,6 @@ func TestSnapshotIsSelfNormalized(t *testing.T) {
 	}
 }
 
-// TestPathsIndexMatchesSnapshot asserts the committed paths.txt is byte-equal to
-// a re-derivation from the committed snapshots. This catches a stale index left
-// behind after a snapshot refresh.
 func TestPathsIndexMatchesSnapshot(t *testing.T) {
 	var snapshots [][]byte
 	for _, svc := range discovery.Services {
@@ -69,8 +59,6 @@ func TestPathsIndexMatchesSnapshot(t *testing.T) {
 	}
 }
 
-// TestSnapshotContainsSentinelMethods is the sanity check from #52: the snapshot
-// must carry known methods, guarding against a truncated or wrong-service doc.
 func TestSnapshotContainsSentinelMethods(t *testing.T) {
 	path := filepath.Join(docsDir, discovery.Service{Name: "androidpublisher", Version: "v3"}.SnapshotFilename())
 	snap, err := os.ReadFile(path)

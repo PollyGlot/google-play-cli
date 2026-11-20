@@ -12,8 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// customCoder is a local stand-in proving that exit.For delegates to any
-// error that implements Coder, not just the ones shipped with gplay.
 type customCoder struct{ code int }
 
 func (c *customCoder) Error() string { return "custom" }

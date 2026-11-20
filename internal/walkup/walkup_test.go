@@ -62,10 +62,6 @@ func TestFindFile_notFound_returnsErrNotExist(t *testing.T) {
 	}
 }
 
-// FindFileExcluding refuses to consider dirToExclude (and its ancestors) as
-// candidates. Practical use: prevent walk-up from picking up a config that
-// happens to live in $HOME, which would let a rogue ~/.gplay/config.json
-// hijack every repo on the machine.
 func TestFindFileExcluding_refusesMatchAtExcludedDir(t *testing.T) {
 	root := t.TempDir()
 	excluded := mustMkdir(t, filepath.Join(root, "home"))
@@ -80,7 +76,7 @@ func TestFindFileExcluding_refusesMatchAtExcludedDir(t *testing.T) {
 func TestFindFileExcluding_refusesMatchAboveExcludedDir(t *testing.T) {
 	root := t.TempDir()
 	excluded := mustMkdir(t, filepath.Join(root, "home"))
-	mustWriteFile(t, filepath.Join(root, "marker"), "x") // candidate sits ABOVE excluded
+	mustWriteFile(t, filepath.Join(root, "marker"), "x")
 	startInsideExcluded := mustMkdir(t, filepath.Join(excluded, "deeper"))
 
 	_, err := walkup.FindFileExcluding(startInsideExcluded, "marker", excluded)

@@ -1,69 +1,17 @@
-// Package apiregistry declares, in one place, every Google Developer API
-// method a shipped `gplay` command calls, mapped to the command that calls it.
-//
-// The CLI hand-rolls its HTTP calls package by package (ADR-0007), so before
-// this registry existed there was no single answer to "which API methods does
-// gplay depend on?". The Monday Discovery refresh could therefore delete or
-// deprecate a method under a shipped command and CI would stay green.
-//
-// The registry closes that hole: registry_test.go anchors every entry to the
-// offline Discovery artefacts (the embedded Schema index, `docs/discovery/
-// paths.txt` and the snapshots), so a removed or deprecated method turns the
-// refresh PR red, naming the method id AND the command that breaks. That is the
-// deterministic evidence the Discovery triage bot cites before any model is
-// involved (PRD #501).
-//
-// The list itself stays declarative: adding a command that calls a new method
-// means adding one line here; docs/COVERAGE.md is then rendered from this file
-// plus the exclusion list (`make coverage-update`, slice #514), so an
-// unregistered method shows up there as an uncovered gap. Since #516 the
-// package ALSO resolves a registered id to the verb and URL of the request
-// (resolve.go), so call sites stop hand-writing paths and the registry becomes
-// complete by construction rather than by good faith.
-//
-// The completeness invariant, stated plainly: every request a shipped command
-// sends resolves through this package. Nothing else can build a URL, so a
-// method that is called is necessarily registered, and docs/COVERAGE.md, which
-// is rendered from Entries() plus Exclusions() by `make coverage-update`,
-// cannot omit a method the CLI calls. The invariant is enforced, not merely
-// asserted: archgate_test.go parses internal/play/ and commands/ and fails on
-// any hand-written API base URL or resource path, naming file and line
-// (#520).
-//
-// Scope: Google Discovery-documented APIs only, and `internal/play/gcs` is the
-// single exception to the "no hand-written path outside this package" rule.
-// `gplay reviews history` reads the Cloud Storage JSON API
-// (`storage.objects.list`/`get`), which has no snapshot under docs/discovery/:
-// there is nothing to anchor an entry to and nothing for Resolve to derive a
-// URL from, so that package keeps building its own paths and is deliberately
-// left out of the migration batches (#517, #518, #519). Every other package
-// under internal/play/ resolves through here.
 package apiregistry
 
-// Entry is one API method the CLI calls, with the leaf commands that call it.
-// MethodID is Google's native RPC id as keyed by the Schema index and
-// paths.txt (service prefix included, e.g.
-// `androidpublisher.edits.tracks.update`); Commands are `gplay` command paths
-// without the binary name (e.g. "tracks list").
 type Entry struct {
 	MethodID string
 	Commands []string
-	// Note carries the non-obvious "why" of an entry (a method shared by
-	// several flows, a custom verb, an upload host). Empty when the mapping
-	// speaks for itself.
-	Note string
+	Note     string
 }
 
-// Entries returns the registry. It is a function rather than an exported slice
-// so no caller can mutate the shared backing array.
 func Entries() []Entry {
 	out := make([]Entry, len(entries))
 	copy(out, entries)
 	return out
 }
 
-// entries is the registry itself, ordered by service then by method id so a
-// diff on this file reads like a diff on paths.txt.
 var entries = []Entry{
 	{
 		MethodID: "androidpublisher.edits.insert",
@@ -212,9 +160,6 @@ var entries = []Entry{
 	{MethodID: "playdeveloperreporting.anomalies.list", Commands: []string{"vitals anomalies"}},
 	{MethodID: "playdeveloperreporting.apps.fetchReleaseFilterOptions", Commands: []string{"vitals releases"}, Note: "also backs the --version-code completion of the vitals presets and `vitals errors counts`"},
 	{MethodID: "playdeveloperreporting.apps.search", Commands: []string{"apps accessible list"}, Note: "server-authoritative discovery, distinct from the local registry (ADR-0039)"},
-	// Each metric set pairs a `.query` (the timeline) with a `.get` (the
-	// descriptor: freshnessInfo, i.e. up to when the data is complete). The
-	// `.get` is reached with `--describe` on the same command (#545).
 	{MethodID: "playdeveloperreporting.vitals.anonrssandswapmemoryusage.get", Commands: []string{"vitals query anonrssandswapmemoryusage --describe"}},
 	{MethodID: "playdeveloperreporting.vitals.anonrssandswapmemoryusage.query", Commands: []string{"vitals query anonrssandswapmemoryusage"}},
 	{MethodID: "playdeveloperreporting.vitals.anrrate.get", Commands: []string{"vitals anr --describe", "vitals query anrrate --describe"}},

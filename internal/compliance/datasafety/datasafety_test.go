@@ -8,9 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/compliance/datasafety"
 )
 
-// referenceLine rebuilds a CSV header line that exactly matches the bundled
-// reference template, so the "no warning when the header matches" case is
-// robust to whatever the reference content happens to be.
 func referenceLine(t *testing.T) string {
 	t.Helper()
 	h := datasafety.ReferenceHeader()
@@ -20,9 +17,6 @@ func referenceLine(t *testing.T) string {
 	return strings.Join(h, ",")
 }
 
-// TestValidate_wellFormed asserts a CSV whose header matches the reference
-// and whose rows are rectangular passes with zero problems, zero warnings,
-// and an accurate row/column tally. The canonical Payload echoes the input.
 func TestValidate_wellFormed(t *testing.T) {
 	hdr := referenceLine(t)
 	n := len(datasafety.ReferenceHeader())
@@ -50,8 +44,6 @@ func TestValidate_wellFormed(t *testing.T) {
 	}
 }
 
-// TestValidate_emptyFile asserts an empty document is a structural problem
-// (the declaration must be non-empty).
 func TestValidate_emptyFile(t *testing.T) {
 	rep, probs := datasafety.Validate([]byte{})
 	if len(probs) == 0 {
@@ -65,8 +57,6 @@ func TestValidate_emptyFile(t *testing.T) {
 	}
 }
 
-// TestValidate_raggedRows asserts a non-rectangular CSV (a row with a
-// different column count than the header) is a structural problem.
 func TestValidate_raggedRows(t *testing.T) {
 	hdr := referenceLine(t)
 	raw := []byte(hdr + "\nonly,two\n")
@@ -77,8 +67,6 @@ func TestValidate_raggedRows(t *testing.T) {
 	}
 }
 
-// TestValidate_brokenQuoting asserts an unbalanced quote is a structural
-// problem (the CSV does not parse).
 func TestValidate_brokenQuoting(t *testing.T) {
 	hdr := referenceLine(t)
 	raw := []byte(hdr + "\n\"unterminated,quote\n")
@@ -89,9 +77,6 @@ func TestValidate_brokenQuoting(t *testing.T) {
 	}
 }
 
-// TestValidate_headerMismatch asserts a header that diverges from the
-// bundled reference template is a NON-FATAL warning, not a problem: the
-// command still succeeds (exit 0), but the operator is hinted.
 func TestValidate_headerMismatch(t *testing.T) {
 	raw := []byte("totally,different,header\na,b,c\n")
 
@@ -107,9 +92,6 @@ func TestValidate_headerMismatch(t *testing.T) {
 	}
 }
 
-// TestValidate_stripsLeadingBOM asserts a leading UTF-8 BOM is repaired
-// (stripped) rather than rejected, and the canonical Payload that set would
-// POST carries no BOM.
 func TestValidate_stripsLeadingBOM(t *testing.T) {
 	hdr := referenceLine(t)
 	n := len(datasafety.ReferenceHeader())
@@ -132,8 +114,6 @@ func TestValidate_stripsLeadingBOM(t *testing.T) {
 	}
 }
 
-// TestValidate_invalidUTF8 asserts non-UTF-8 bytes are a structural problem
-// (the declaration is expected to be UTF-8).
 func TestValidate_invalidUTF8(t *testing.T) {
 	raw := []byte{0xff, 0xfe, 0x00, 0x01}
 
@@ -143,9 +123,6 @@ func TestValidate_invalidUTF8(t *testing.T) {
 	}
 }
 
-// TestValidate_headerOnly asserts a header with zero data rows is
-// structurally valid (Rows == 0). validate is structural only: whether an
-// empty declaration is acceptable is Google's call at POST time.
 func TestValidate_headerOnly(t *testing.T) {
 	raw := []byte(referenceLine(t) + "\n")
 

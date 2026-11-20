@@ -1,10 +1,3 @@
-// Command discovery-update regenerates the offline Discovery snapshots under
-// docs/discovery/ (issue #52). It is a thin wrapper over the importable
-// internal/discovery package: the same fetch/normalize/derive logic the
-// offline integrity test re-runs. Invoke via `make discovery-update`.
-//
-// This command is NOT part of the shipped gplay binary; it is maintenance
-// tooling run by a human on demand (no per-PR network gate: see #52).
 package main
 
 import (
@@ -60,7 +53,7 @@ func run(outDir string, timeout time.Duration) error {
 
 		rev := revision(norm)
 		fmt.Fprintf(os.Stderr, "wrote %s (revision %s)\n", snapPath, rev)
-		fmt.Printf("%s revision %s\n", svc.SnapshotFilename(), rev) // stdout: cite in regen commit
+		fmt.Printf("%s revision %s\n", svc.SnapshotFilename(), rev)
 	}
 
 	paths, err := discovery.RenderPaths(snapshots)
@@ -75,8 +68,6 @@ func run(outDir string, timeout time.Duration) error {
 	return nil
 }
 
-// revision extracts the pinned-version stamp from a normalized snapshot for the
-// regen commit message. Best-effort: "unknown" if absent.
 func revision(norm []byte) string {
 	var doc struct {
 		Revision string `json:"revision"`

@@ -101,7 +101,6 @@ func TestRender_NilRenderer_ReturnsUniformError(t *testing.T) {
 	rs := output.Renderers{
 		Table: func(w io.Writer) error { return nil },
 		JSON:  func(w io.Writer) error { return nil },
-		// Markdown intentionally nil
 	}
 	err := output.Render(&stdout, output.FormatMarkdown, rs)
 	if err == nil {
@@ -170,9 +169,6 @@ func TestMarkdownTable_RowWidthMismatch_ReturnsError(t *testing.T) {
 	}
 }
 
-// The next four tests pin the precedence contract of #465:
-// --output flag > $GPLAY_DEFAULT_OUTPUT > TTY/CI auto-detection.
-
 func TestResolve_DefaultOutputEnv_WinsOverTTYDefault(t *testing.T) {
 	t.Setenv("CI", "")
 	t.Setenv(output.EnvDefaultOutput, "json")
@@ -187,8 +183,6 @@ func TestResolve_DefaultOutputEnv_WinsOverTTYDefault(t *testing.T) {
 	}
 }
 
-// CI and TTY state are guesses about intent; the env var is a value the
-// user typed, so it outranks them both.
 func TestResolve_DefaultOutputEnv_WinsOverCIEnv(t *testing.T) {
 	t.Setenv("CI", "true")
 	t.Setenv(output.EnvDefaultOutput, "table")

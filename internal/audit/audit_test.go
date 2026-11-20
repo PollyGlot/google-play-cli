@@ -1,7 +1,3 @@
-// Package audit_test exercises the check evaluators against fixture
-// resources. The engine is HTTP-free by design, so these tests need no
-// transport at all: they are the table-driven half of PRD #449's testing
-// decisions, and the command's RoundTripper tests cover the sweep.
 package audit_test
 
 import (
@@ -13,7 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
 
-// checkIDs collapses findings to their check IDs, in order, for assertion.
 func checkIDs(fs []audit.Finding) []string {
 	out := make([]string, 0, len(fs))
 	for _, f := range fs {
@@ -22,8 +17,6 @@ func checkIDs(fs []audit.Finding) []string {
 	return out
 }
 
-// one runs a single named check over a snapshot, so a table case asserts one
-// evaluator rather than the whole registry.
 func one(t *testing.T, id string, s audit.Snapshot, ctx audit.Context) []audit.Finding {
 	t.Helper()
 	checks, err := audit.Select([]string{id}, nil)
@@ -33,9 +26,6 @@ func one(t *testing.T, id string, s audit.Snapshot, ctx audit.Context) []audit.F
 	return audit.Evaluate(s, checks, ctx)
 }
 
-// TestLingeringDrafts covers the first check: one finding per TRACK holding
-// drafts (not per release), silence for a track whose releases are all live,
-// and a draft that carries no name still being nameable in the evidence.
 func TestLingeringDrafts(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -110,8 +100,6 @@ func TestLingeringDrafts(t *testing.T) {
 	}
 }
 
-// TestLocaleDrift covers the cross-app check, including its two silences: a
-// complete locale set, and a sweep too small for the union to mean anything.
 func TestLocaleDrift(t *testing.T) {
 	full := audit.Snapshot{Package: "com.full", Listings: []listings.Listing{
 		{Language: "en-US"}, {Language: "fr-FR"}, {Language: "de-DE"},
@@ -147,8 +135,6 @@ func TestLocaleDrift(t *testing.T) {
 	})
 }
 
-// TestEmptyReleaseNotes covers the notes check: absent notes, blank text, and
-// the two silences (notes present, and a draft, which the drafts check owns).
 func TestEmptyReleaseNotes(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -203,9 +189,6 @@ func TestEmptyReleaseNotes(t *testing.T) {
 	}
 }
 
-// TestNoProductionRelease covers the three states of the production track:
-// present with a release (clean), present but empty, and absent entirely. The
-// last two are one check told apart by the evidence.
 func TestNoProductionRelease(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -250,9 +233,6 @@ func TestNoProductionRelease(t *testing.T) {
 	}
 }
 
-// TestSelect pins the enable/disable semantics: default is every check, an
-// unknown ID on either side is an error (a typo'd --skip-check must never
-// silently leave the check running), and exclude is applied after include.
 func TestSelect(t *testing.T) {
 	all, err := audit.Select(nil, nil)
 	if err != nil {
@@ -280,8 +260,6 @@ func TestSelect(t *testing.T) {
 	}
 }
 
-// TestIDsAreFrozen guards the vocabulary a CI filter is written against: an ID
-// may be retired, never renamed, so this test names the exact strings.
 func TestIDsAreFrozen(t *testing.T) {
 	want := []string{"lingering-drafts", "locale-drift", "empty-release-notes", "no-production-release"}
 	got := audit.IDs()
@@ -295,8 +273,6 @@ func TestIDsAreFrozen(t *testing.T) {
 	}
 }
 
-// TestEvaluateRunsEveryCheck asserts the full registry over one drifted app,
-// so a check silently dropped from the registry fails here.
 func TestEvaluateRunsEveryCheck(t *testing.T) {
 	drifted := audit.Snapshot{
 		Package: "com.drift",

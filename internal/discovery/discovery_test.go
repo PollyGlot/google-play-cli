@@ -12,10 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// TestNormalize_sortsStripsEtagAndIsIdempotent feeds a deliberately
-// un-normalized document: keys out of order, a transport "etag", an HTML char
-// in a description, and asserts Normalize sorts keys, drops "etag", and is
-// idempotent. Idempotence is the property the offline integrity gate leans on.
 func TestNormalize_sortsStripsEtagAndIsIdempotent(t *testing.T) {
 	raw := []byte(`{
 	  "revision": "20260608",
@@ -34,11 +30,9 @@ func TestNormalize_sortsStripsEtagAndIsIdempotent(t *testing.T) {
 	if strings.Contains(s, "etag") {
 		t.Errorf("etag not stripped:\n%s", s)
 	}
-	// Top-level keys must be sorted: description < id < resources < revision.
 	if got := keyOrder(s); !isSorted(got) {
 		t.Errorf("top-level keys not sorted: %v", got)
 	}
-	// HTML must not be escaped (readable descriptions).
 	if !strings.Contains(s, "<Edit>") {
 		t.Errorf("HTML was escaped, want literal <Edit>:\n%s", s)
 	}
@@ -46,7 +40,6 @@ func TestNormalize_sortsStripsEtagAndIsIdempotent(t *testing.T) {
 		t.Error("normalized output must end with a trailing newline")
 	}
 
-	// Idempotent: re-normalizing yields byte-identical output.
 	again, err := discovery.Normalize(out)
 	if err != nil {
 		t.Fatalf("re-Normalize: %v", err)
@@ -56,9 +49,6 @@ func TestNormalize_sortsStripsEtagAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestRenderPaths_walksNestedResourcesSortedByID asserts RenderPaths recurses
-// into nested resources, emits one tab-separated line per method, and sorts the
-// whole index by method id.
 func TestRenderPaths_walksNestedResourcesSortedByID(t *testing.T) {
 	snap := []byte(`{
 	  "resources": {
@@ -95,8 +85,6 @@ func TestRenderPaths_walksNestedResourcesSortedByID(t *testing.T) {
 	}
 }
 
-// TestFetch_hitsDiscoveryURLAndReturnsBody exercises Fetch against a loopback
-// httptest server (no outbound network, per CLAUDE.md).
 func TestFetch_hitsDiscoveryURLAndReturnsBody(t *testing.T) {
 	var gotPath, gotQuery string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,8 +95,6 @@ func TestFetch_hitsDiscoveryURLAndReturnsBody(t *testing.T) {
 	defer srv.Close()
 
 	host := strings.TrimPrefix(srv.URL, "http://")
-	// DiscoveryURL hardcodes https; test the request shape via a custom client
-	// that rewrites the scheme/host to the loopback server.
 	svc := discovery.Service{Name: "androidpublisher", Host: host, Version: "v3"}
 	client := &http.Client{Transport: schemeRewriter(srv.URL)}
 
@@ -148,9 +134,6 @@ func TestSnapshotFilename(t *testing.T) {
 	}
 }
 
-// schemeRewriter sends every request to base (the loopback server) regardless
-// of the request URL's host, so Fetch's https://<host>/... URL is exercised
-// without real DNS or TLS.
 func schemeRewriter(base string) http.RoundTripper {
 	return testkit.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		r.URL.Scheme = "http"
@@ -163,7 +146,6 @@ func keyOrder(jsonObj string) []string {
 	var keys []string
 	depth := 0
 	for _, line := range strings.Split(jsonObj, "\n") {
-		// count indentation: top-level keys sit at exactly two spaces.
 		trimmed := strings.TrimLeft(line, " ")
 		indent := len(line) - len(trimmed)
 		_ = depth

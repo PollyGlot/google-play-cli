@@ -14,10 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/schemaindex"
 )
 
-// coincidental lists the Discovery enum values that shipped code spells as a
-// string literal outside any anchored list, each with why no row is needed.
-// Like the ratchet allowlists it can only shrink: an entry the code no longer
-// uses fails the test.
 var coincidental = map[string]string{
 	"CURRENCY":                   "a table column header in prices convert",
 	"DAILY":                      "vitals default period, validated against the index by vitals.SupportedPeriods",
@@ -27,12 +23,6 @@ var coincidental = map[string]string{
 	"APPLICATION_NOT_RESPONDING": "vitals error-type label; unknown types pass through verbatim",
 }
 
-// TestEnumLiteralsAreAnchored closes the gap the table leaves: a list copied
-// from Discovery after the table was written. Every string literal in shipped
-// Go code that equals a Discovery enum value must be a value of an anchored
-// row or an entry of coincidental. Like the table, it sees the scalar and
-// parameter enums of the Schema index only; array-item enums such as the team
-// permissions have their own anchor in internal/team/vocab.
 func TestEnumLiteralsAreAnchored(t *testing.T) {
 	idx, err := schemaindex.Embedded()
 	if err != nil {
