@@ -1,8 +1,3 @@
-// Package list implements `gplay recovery list`: list the recovery actions for a
-// given (bad) versionCode. Read-only. The API marks versionCode required, so
-// gplay requires --version-code (a list with no version is semantically empty);
-// missing it is CLI misuse (exit 2) caught before any network. There is no
-// `recovery view`: the apprecovery resource exposes only list.
 package list
 
 import (
@@ -18,14 +13,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package     string
 	VersionCode int64
 	Columns     string
 }
 
-// Payload renders the recoveries as a table / verbatim JSON.
 type Payload struct {
 	Rows []recoverycmd.Row
 	Cols []output.Column[recoverycmd.Row]
@@ -40,7 +33,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
 		return nil, exit.Usagef("missing or invalid --version-code: recovery actions are listed per versionCode")
@@ -64,7 +56,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Rows: recoverycmd.BuildRows(lr.RecoveryActions), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay recovery list`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

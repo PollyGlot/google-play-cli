@@ -1,15 +1,3 @@
-// Package refund implements `gplay orders refund <orderId> --confirm [--revoke]`:
-// the money-moving, irreversible refund of a single Google Play order
-// (orders.refund, POST, no body). DESTRUCTIVE tier (ADR-0017): it refuses
-// without --confirm, exiting 3 with a message naming the flag; CI=true never
-// auto-confirms; MarkMutating so GPLAY_READONLY refuses it (exit 4); --dry-run
-// previews the target with no HTTP and lists the gate in the `requires` array.
-// --revoke (the API `revoke` query parameter) defaults false: refund the money
-// but keep the entitlement; revoking access is the larger hammer, opt-in. There
-// is deliberately no bulk/fan-out refund verb (ADR-0031). Refunding requires the
-// service account to hold CAN_MANAGE_ORDERS (never part of a Role bundle); a 403
-// names it, and orders older than 3 years surface a specific refusal. Ships
-// [experimental] (ADR-0010).
 package refund
 
 import (
@@ -28,7 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/orders"
 )
 
-// Input is the request-shaped struct cobra builds from flags + the orderId arg.
 type Input struct {
 	Package string
 	OrderID string
@@ -37,10 +24,6 @@ type Input struct {
 	DryRun  bool
 }
 
-// Payload renders what refund did (or, on --dry-run, would do). Requires is the
-// safety gate surfaced under --dry-run --output json (ADR-0017 §4); Raw carries
-// any verbatim body (orders.refund returns none on success, so it is usually
-// empty and a gplay-shaped success object is emitted instead).
 type Payload struct {
 	OrderID  string
 	Revoke   bool
@@ -64,7 +47,6 @@ func (p Payload) verb() string {
 	return "refunded"
 }
 
-// revokeNote describes the entitlement outcome for the human views.
 func (p Payload) revokeNote() string {
 	if p.Revoke {
 		return "revoke entitlement"
@@ -118,10 +100,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, OrderID: p.OrderID, Revoke: p.Revoke, Requires: output.NonNil(p.Requires)})
 	}
-	// orders.refund returns an empty body on success; emit a gplay-shaped
-	// success object so --output json (the CI default) is always parseable
-	// rather than zero bytes (the documented ADR-0003 exception, as in
-	// `team users remove`).
 	if len(bytes.TrimSpace(p.Raw)) > 0 {
 		_, err := w.Write(p.Raw)
 		return err
@@ -133,16 +111,12 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}{OK: true, Refunded: p.OrderID, Revoked: p.Revoke})
 }
 
-// Run is the business function the kernel invokes. It enforces the destructive
-// --confirm gate (unless --dry-run previews offline) and refunds the order.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	orderID := strings.TrimSpace(in.OrderID)
 	if orderID == "" {
 		return nil, exit.Usagef("no order: pass an order ID: gplay orders refund <orderId> --confirm")
 	}
 
-	// refund is unconditionally destructive (money-moving, irreversible), so the
-	// gate is always a single required flag.
 	requires := []string{"confirm"}
 
 	if in.DryRun {
@@ -174,7 +148,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{OrderID: orderID, Revoke: in.Revoke, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay orders refund <orderId>`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

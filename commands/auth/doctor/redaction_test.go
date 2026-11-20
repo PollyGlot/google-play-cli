@@ -12,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/redact"
 )
 
-// leakingKeyring is a keyring that works for the selection probe but fails
-// every read with an error quoting credential material: the shape of a
-// wrapped library error echoing its input.
 type leakingKeyring struct{}
 
 const leakedKeyringError = "keyring read failed: -----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgLEAKEDSECRETBODY\n-----END PRIVATE KEY-----" +
@@ -26,9 +23,6 @@ func (leakingKeyring) Get(string, string) (string, error) {
 	return "", errors.New(leakedKeyringError)
 }
 
-// The checklist hints are gplay-authored text on STDOUT, outside the stderr
-// filter, and check 1's hint quotes the resolution error verbatim. Whatever
-// that error carries must come out masked in every format (#583).
 func TestDoctor_hintsAreRedactedOnStdout(t *testing.T) {
 	for _, format := range []string{"json", "table", "markdown"} {
 		t.Run(format, func(t *testing.T) {
@@ -54,7 +48,6 @@ func TestDoctor_hintsAreRedactedOnStdout(t *testing.T) {
 					t.Errorf("stdout leaks %q:\n%s", marker, out)
 				}
 			}
-			// Masked, not silenced: the diagnostic survives around the mask.
 			for _, want := range []string{"keyring read failed", redact.Mask} {
 				if !strings.Contains(out, want) {
 					t.Errorf("stdout lost %q:\n%s", want, out)

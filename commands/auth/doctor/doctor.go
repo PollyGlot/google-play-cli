@@ -1,9 +1,3 @@
-// Package doctor implements `gplay auth doctor`: ordered diagnostic
-// checks (per docs/DESIGN.md §1) that catch credential misconfiguration
-// before any other command tries to talk to the API.
-//
-// Checks 1–3 always run. For each `--package <name>` passed, the
-// per-package edits.insert/delete round-trip is appended to the chain.
 package doctor
 
 import (
@@ -22,18 +16,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// Input carries doctor-specific flags.
 type Input struct {
 	Packages []string
 }
 
-// Payload wraps the ordered slice of check results so the kernel can
-// dispatch the right Renderer per Format.
 type Payload struct {
 	Results []authdoctor.CheckResult
 }
 
-// Renderers satisfies output.Renderable.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return renderTable(w, p.Results) },
@@ -42,7 +32,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// failedError surfaces the worst check failure to exit.For.
 type failedError struct {
 	first authdoctor.CheckResult
 }
@@ -61,17 +50,9 @@ func (e *failedError) ExitCode() int {
 	return 10
 }
 
-// Run executes the check chain, renders the checklist itself (so a
-// failing check still shows the diagnostic alongside the error), and
-// returns nil + failedError on failure. Returning (nil, err) keeps
-// kernel.Run on the default "errors → stderr only" path; the
-// rendering happens here so doctor's "checklist on stdout even when
-// red" contract stays local to doctor.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	base := doctorBaseHTTP(rc)
 	wrapped, obs := transport.WithScopeObserver(base.Transport)
-	// Clone the base client so injected Timeout/CheckRedirect/Jar
-	// survive: only the Transport is replaced.
 	hc := *base
 	hc.Transport = wrapped
 
@@ -79,13 +60,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	var results []authdoctor.CheckResult
 	var worst *authdoctor.CheckResult
-	// doctor's whole job is to exercise auth, so resolve the credential
-	// now (this is where the keyring probe fires for a stored Account).
-	// EnsureAccount splits absent from invalid (ADR-0020, DESIGN §1): an
-	// invalid credential returns the real resolution error, while an
-	// absent one returns nil + nil Account. Surface the real cause in
-	// check 1 when resolution actually failed; keep the generic synthetic
-	// message only for the genuinely-absent case.
 	if err := rc.EnsureAccount(); err != nil {
 		results, worst = synthFailure(err, checks)
 	} else if rc.Account == nil {
@@ -94,25 +68,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		results = authdoctor.Run(rc.Ctx, rc.Account, &hc, checks...)
 		worst = worstFailure(results)
 	}
-	// KeystoreLabel is set only when a stored Account was loaded, so an
-	// inline credential stays keyring-free. Plaintext keys left behind by an
-	// earlier keyring-less login are a finding doctor should surface.
 	if rc.KeystoreLabel == keystore.BackendKeyring {
 		keystore.WarnStrayFiles(rc.Ctx, rc.Stderr, rc.KeystoreRoot)
 	}
 
-	// Hints are gplay-authored text that quotes wrapped errors (a resolution
-	// failure, an oauth2 token refusal) and go to stdout, outside the stderr
-	// filter. Mask them here, once, so the table, markdown and JSON renderers
-	// all inherit it (#583). worst points into results, so it is covered too.
 	for i := range results {
 		results[i].Hint = redact.String(results[i].Hint)
 	}
 
 	payload := Payload{Results: results}
-	// Render the checklist regardless of pass/fail so the user always
-	// sees an ordered list, then return failedError so exit.For picks
-	// up the worst check's code.
 	if err := output.Render(rc.Stdout, rc.Format, payload.Renderers()); err != nil {
 		return nil, err
 	}
@@ -122,7 +86,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return nil, nil
 }
 
-// NewCommand returns the cobra command for `gplay auth doctor`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
@@ -152,9 +115,6 @@ structured []CheckResult for scripting.`,
 
   # Diagnose a key file before registering it, as JSON for a script
   gplay auth doctor --service-account ./play-sa.json --output json`,
-		// A failing doctor is a normal exit path, not a usage error;
-		// silence cobra's usage banner so it does not collide with the
-		// rendered checklist on stdout.
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
@@ -173,12 +133,6 @@ structured []CheckResult for scripting.`,
 	return cmd
 }
 
-// doctorBaseHTTP returns the underlying http.Client doctor wraps with
-// its scope observer. Tests inject a base via ctx.Value(oauth2.HTTPClient);
-// production falls back to http.DefaultClient (each check minted its
-// own oauth2 client on top via oauth2.NewClient(ctx, ts)). The caller
-// copies the client before swapping its transport, so the shared default
-// is never mutated.
 func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {
 	if v := rc.Ctx.Value(oauth2.HTTPClient); v != nil {
 		if c, ok := v.(*http.Client); ok && c != nil {
@@ -196,8 +150,6 @@ func buildChecks(obs *transport.ScopeObserver, packages []string) []authdoctor.C
 	return checks
 }
 
-// worstFailure returns the highest-exit-code failing check; ties break
-// on order.
 func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 	var worst *authdoctor.CheckResult
 	for i := range results {
@@ -212,8 +164,6 @@ func worstFailure(results []authdoctor.CheckResult) *authdoctor.CheckResult {
 	return worst
 }
 
-// synthFailure builds check #1 as failed + the rest as skipped when
-// resolution itself died (no Account, or an invalid credential).
 func synthFailure(err error, checks []authdoctor.Check) ([]authdoctor.CheckResult, *authdoctor.CheckResult) {
 	failure := authdoctor.ResolutionFailure(err)[0]
 	results := make([]authdoctor.CheckResult, 0, len(checks))

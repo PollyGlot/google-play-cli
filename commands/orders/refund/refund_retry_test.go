@@ -7,10 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
-// TestRun_refund_retryNeverReplaysTheRefund drives the real kernel wiring of
-// --retry (#575): a 503 on orders.refund may come after Google moved the
-// money, so even with --retry 3 the POST is sent exactly once and the 503 is
-// handed back as exit 40 for the operator to check the order, not replayed.
 func TestRun_refund_retryNeverReplaysTheRefund(t *testing.T) {
 	fake := newFake(503, `{"error":{"code":503,"message":"backend unavailable"}}`)
 	rc := newRC(t, fake)

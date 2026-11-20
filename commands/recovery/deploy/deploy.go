@@ -1,8 +1,3 @@
-// Package deploy implements `gplay recovery deploy <appRecoveryId>`: activate a
-// draft recovery action: the production-impacting moment that force-pushes
-// impacted users to a safe app version. DESTRUCTIVE tier (ADR-0017): requires
-// --confirm (missing → exit 3), MarkMutating for GPLAY_READONLY. `deploy` is a
-// domain verb admitted under ADR-0019 §2 (see ADR-0030). Ships [experimental].
 package deploy
 
 import (
@@ -15,7 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	Package string
 	ID      string
@@ -23,7 +17,6 @@ type Input struct {
 	DryRun  bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.ID == "" {
 		return nil, exit.Usagef("missing recovery id: gplay recovery deploy <appRecoveryId>")
@@ -50,7 +43,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return recoverycmd.LifecyclePayload{Verb: "deploy", RecoveryID: in.ID, Package: pkg, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay recovery deploy`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -1,6 +1,3 @@
-// Package status implements `gplay auth status`: print which Account is
-// active, the underlying client_email, the keystore backend in use, and
-// (when applicable) the on-disk credential path.
 package status
 
 import (
@@ -15,10 +12,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// Input has no command-specific flags.
 type Input struct{}
 
-// Payload is the JSON-shaped status snapshot.
 type Payload struct {
 	Active      bool   `json:"active"`
 	Name        string `json:"name,omitempty"`
@@ -27,7 +22,6 @@ type Payload struct {
 	Path        string `json:"path,omitempty"`
 }
 
-// Renderers satisfies output.Renderable.
 func (p Payload) Renderers() output.Renderers {
 	if !p.Active {
 		return output.Renderers{
@@ -49,32 +43,13 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run reads the resolved cascade + Account from rc and shapes the payload.
-// status keeps RequireAccount=false; rc.Account == nil simply maps to
-// the "no active account" payload.
 func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
-	// status reports auth state, so resolving the credential (and probing
-	// the keystore) is exactly its job: do it now rather than at boot.
-	// EnsureAccount splits the two failure shapes (ADR-0020): an *invalid*
-	// credential (malformed JSON, missing field, unreadable file) returns an
-	// exit-10 error, which we surface before rendering so a corrupt active
-	// credential hard-errors rather than masquerading as "no account"; an
-	// *absent* credential returns nil with rc.Account == nil, which maps to
-	// the benign "no active account" payload.
 	if err := rc.EnsureAccount(); err != nil {
 		return nil, err
 	}
 	if rc.Account == nil {
 		return Payload{Active: false}, nil
 	}
-	// rc.AccountName is the credential actually in use: it honours
-	// --account / GPLAY_ACCOUNT overrides, unlike rc.Resolved.ConfigAccount,
-	// which only reflects the cascade. It is empty only for an inline
-	// credential (--service-account / GPLAY_SERVICE_ACCOUNT) that never came
-	// from the keystore, so the backend label is probed only when there IS a
-	// stored Account: keeping the inline/env-override path keyring-free. For
-	// a stored Account EnsureAccount already selected the backend while
-	// loading the credential, so this Backend() call is a memoised no-op.
 	activeName := rc.AccountName
 	if activeName != "" {
 		if _, err := rc.Backend(); err != nil {
@@ -97,7 +72,6 @@ func Run(rc *kernel.RunContext, _ Input) (output.Renderable, error) {
 	return p, nil
 }
 
-// NewCommand returns the cobra command for `gplay auth status`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var outputFlag string
 	cmd := &cobra.Command{
@@ -105,11 +79,6 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		Short: "Print the active Account, the keystore backend, and where the credential lives",
 		Example: `  gplay auth status
   gplay auth status --output json`,
-		// Now that status has a real error path (a corrupt active credential
-		// returns exit 10, #178), silence cobra's usage banner and error echo
-		// so a runtime failure surfaces as main.go's single `gplay: ...` line
-		// on stderr: never a usage dump on stdout. Matches every other leaf
-		// command (doctor, apps, ...).
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,

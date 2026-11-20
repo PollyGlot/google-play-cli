@@ -41,7 +41,6 @@ func newRC(t *testing.T, transport http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_missingConfirm_exit3_noNetwork asserts cancel's irreversible gate.
 func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -55,7 +54,6 @@ func TestRun_missingConfirm_exit3_noNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_confirmed_postsCancel asserts the confirmed path POSTs :cancel + ✓.
 func TestRun_confirmed_postsCancel(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)

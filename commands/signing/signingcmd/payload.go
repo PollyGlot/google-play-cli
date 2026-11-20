@@ -11,17 +11,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
 )
 
-// CertRow is the synthesized one-line-per-certificate view: which certificate
-// the hashes belong to, then the three digests the API returns.
 type CertRow struct {
-	Certificate string // "signing" | "upload" | "rotatedKey"
+	Certificate string
 	MD5         string
 	SHA1        string
 	SHA256      string
 }
 
-// NewCertRow projects a CertificateHashes into a row. A nil pointer yields no
-// row: gplay never fabricates a hash the API did not send (ADR-0003).
 func NewCertRow(certificate string, h *appsigning.CertificateHashes) (CertRow, bool) {
 	if h == nil {
 		return CertRow{}, false
@@ -34,8 +30,6 @@ func NewCertRow(certificate string, h *appsigning.CertificateHashes) (CertRow, b
 	}, true
 }
 
-// Columns is the single source of truth for the signing table (ADR-0018). The
-// hash keys mirror the API field names (ADR-0003).
 var Columns = output.NewColumnSet(
 	output.Column[CertRow]{Key: "certificate", Header: "CERTIFICATE", Value: func(r CertRow) string { return r.Certificate }},
 	output.Column[CertRow]{Key: "certificateHashSha256", Header: "SHA256", Value: func(r CertRow) string { return r.SHA256 }},
@@ -43,20 +37,13 @@ var Columns = output.NewColumnSet(
 	output.Column[CertRow]{Key: "certificateHashMd5", Header: "MD5", Value: func(r CertRow) string { return r.MD5 }},
 )
 
-// defaultCols is Columns in declaration order. Resolve only errors on a
-// non-empty spec, and the signing leaves expose no --columns flag (they return
-// at most two rows), so the error is structurally impossible here.
 func defaultCols() []output.Column[CertRow] {
 	cols, _ := Columns.Resolve("")
 	return cols
 }
 
-// Payload renders a signing write (enroll/rotate). On --dry-run it is the
-// gplay-shaped rehearsal carrying the ADR-0017 `requires` array; on a live write
-// --output json passes the API response through verbatim (ADR-0003) and the
-// human views print the returned certificate hashes.
 type Payload struct {
-	Verb     string // "enroll" | "rotate"
+	Verb     string
 	Package  string
 	Rows     []CertRow
 	Requires []string
@@ -107,7 +94,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Requires: output.NonNil(p.Requires),
 		})
 	}
-	// Live: verbatim API pass-through (ADR-0003).
 	_, err := w.Write(p.Raw)
 	return err
 }

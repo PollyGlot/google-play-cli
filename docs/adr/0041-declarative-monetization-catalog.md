@@ -98,6 +98,9 @@ Three realities shape the design:
    A missing `state:` declares nothing (missing = unmanaged, the
    metadata stance); an unreachable declaration (`DRAFT` from anything,
    `INACTIVE` from `DRAFT`) is a usage error naming the transition.
+   A base plan, offer or purchase option the same plan creates has no live
+   state yet and is treated as `DRAFT`, so a declared `state: ACTIVE` is
+   activated in the same run.
    State changes are listed prominently in every plan view — they move
    buyer availability — but are **not** gated behind `--confirm`:
    activate/deactivate are reversible, deletion is not.

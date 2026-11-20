@@ -1,8 +1,3 @@
-// Package create implements `gplay recovery create`: create a DRAFT app recovery
-// action targeting users on a bad versionCode. A draft is harmless (not yet
-// pushed to any user), so create is the ROUTINE tier (ADR-0017): --dry-run
-// rehearses, no --confirm: the dangerous step is `recovery deploy`, which names
-// itself. MarkMutating gates it under GPLAY_READONLY. Ships [experimental].
 package create
 
 import (
@@ -21,11 +16,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/recovery"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package           string
 	VersionCode       int64
-	VersionRange      string // --version-range START-END, inclusive
+	VersionRange      string
 	AllUsers          bool
 	Regions           []string
 	SdkLevels         []int64
@@ -33,7 +27,6 @@ type Input struct {
 	DryRun            bool
 }
 
-// Payload renders the created draft (live) or the rehearsal (--dry-run).
 type Payload struct {
 	Package string
 	DryRun  bool
@@ -58,8 +51,6 @@ func (p Payload) renderTable(w io.Writer) error {
 	return output.RenderTable(w, p.Cols, []recoverycmd.Row{p.Row})
 }
 
-// dryRunView carries the ADR-0017 `requires` array like its lifecycle
-// siblings: empty, because creating a draft needs no --confirm.
 type dryRunView struct {
 	DryRun   bool     `json:"dryRun"`
 	Package  string   `json:"package"`
@@ -74,7 +65,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return err
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	opts, err := versionTargeting(in)
 	if err != nil {
@@ -110,8 +100,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Row: recoverycmd.BuildRow(a), Cols: cols, Raw: raw}, nil
 }
 
-// versionTargeting refuses --version-code with --version-range: Discovery does
-// not say how Play reads a list and a range sent together.
 func versionTargeting(in Input) (recovery.CreateOpts, error) {
 	switch {
 	case in.VersionRange != "" && in.VersionCode != 0:
@@ -146,7 +134,6 @@ func versionLabel(opts recovery.CreateOpts) string {
 	return fmt.Sprintf("versionCode %d", opts.VersionCodes[0])
 }
 
-// NewCommand returns the cobra command for `gplay recovery create`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

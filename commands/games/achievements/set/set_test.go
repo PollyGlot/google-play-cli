@@ -41,8 +41,6 @@ func TestRun_happyPath_putsToResource(t *testing.T) {
 	}
 }
 
-// TestRun_explicitZeroFlag_reachesBody guards that an explicit --point-value 0
-// survives into the PUT body on update (the *int fix), not dropped by omitempty.
 func TestRun_explicitZeroFlag_reachesBody(t *testing.T) {
 	var gotBody string
 	rc := gamescmdtest.NewRC(t, gamescmdtest.RTFunc(func(r *http.Request) (*http.Response, error) {

@@ -8,10 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRenderJSON_dryRunDestructive_golden freezes the one-time-product plan
-// with every op a CI gate can meet: a legacy promotion rendered as "migrate"
-// (and discounted from the create count), the three state verbs including the
-// irreversible pre-order cancel, and both gates in "requires".
 func TestRenderJSON_dryRunDestructive_golden(t *testing.T) {
 	plan := reconcile.Plan{
 		Creates:      []reconcile.Change{{ProductID: "coins_100"}, {ProductID: "remove_ads"}},
@@ -38,8 +34,6 @@ func TestRenderJSON_dryRunDestructive_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run_destructive.json.golden", p)
 }
 
-// TestRenderJSON_applied_golden freezes the executed plan: dryRun:false, no
-// requires key, and a nil Migrating set rendering a zero migrate count.
 func TestRenderJSON_applied_golden(t *testing.T) {
 	plan := reconcile.Plan{
 		Patches:   []reconcile.Change{{ProductID: "coins_500", Fields: []string{"listings"}}},
@@ -48,8 +42,6 @@ func TestRenderJSON_applied_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "applied.json.golden", apply.Payload{Package: "com.example.app", Dir: "./catalog/iap", Plan: plan})
 }
 
-// TestRenderJSON_noChanges_golden pins an in-sync catalog to "changes": []
-// (never null), the shape a drift check greps for.
 func TestRenderJSON_noChanges_golden(t *testing.T) {
 	p := apply.Payload{Package: "com.example.app", Dir: "./catalog/iap", Plan: reconcile.Plan{Unchanged: []string{"coins_100"}}, DryRun: true}
 	outputtest.GoldenJSON(t, "no_changes.json.golden", p)

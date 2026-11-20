@@ -13,10 +13,6 @@ import (
 	"strings"
 )
 
-// copyTree copies src into dst, creating dst. Only directories and regular
-// files are accepted: a symlink in the pack would resolve at *install* time
-// against the user's filesystem, so it is refused outright rather than followed
-// or silently skipped.
 func copyTree(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -49,8 +45,6 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	// Executable bit is preserved (a skill may ship a helper script), the rest
-	// is normalised so a permissive mode in the pack cannot widen the install.
 	mode := os.FileMode(0o644)
 	if info.Mode()&0o111 != 0 {
 		mode = 0o755
@@ -66,10 +60,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// fileDigests returns every regular file under root, keyed by slash-separated
-// relative path, with its SHA-256. A non-regular entry is an error: the same
-// rule as copyTree, so verification cannot pass on a tree copyTree would have
-// refused.
 func fileDigests(root string) (map[string]string, error) {
 	out := map[string]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -112,10 +102,6 @@ func digest(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// verifyTree asserts dst holds exactly src's files, byte for byte. This is the
-// per-file half of the acceptance criteria: the pack-level check proves the
-// right skills are there, this proves each one arrived intact and complete
-// (a truncated copy, a missing file, or a stray leftover all fail here).
 func verifyTree(src, dst string) error {
 	want, err := fileDigests(src)
 	if err != nil {
@@ -146,21 +132,10 @@ func verifyTree(src, dst string) error {
 	return nil
 }
 
-// swap moves the staged pack into place, one skill at a time, keeping enough
-// state to undo every move it has already made.
-//
-// The unit of replacement is the skill directory, so skills the pack does not
-// name are never touched: whatever else lives in the target directory (a
-// hand-written skill, another tool's pack) survives untouched.
 type swap struct {
-	target string // the agent-skills directory being written to
-	backup string // where displaced skill directories are parked
-	// done records, in order, the skills already swapped in, so a failure
-	// halfway through can be walked back in reverse.
-	done []swapped
-	// incomplete is set when rollback could not put everything back, which makes
-	// the backup directory the last copy of the user's previous skills: the
-	// caller must then keep it rather than clean it up.
+	target     string
+	backup     string
+	done       []swapped
 	incomplete bool
 }
 
@@ -181,8 +156,6 @@ func (s *swap) install(name, staged string) error {
 		return fmt.Errorf("inspect existing %s: %w", name, err)
 	}
 	if err := os.Rename(staged, dst); err != nil {
-		// The displaced original is still in the backup dir; record nothing for
-		// this skill and let rollback put it back.
 		if hadPrevious {
 			_ = os.Rename(filepath.Join(s.backup, name), dst)
 		}
@@ -192,10 +165,6 @@ func (s *swap) install(name, staged string) error {
 	return nil
 }
 
-// rollback undoes every completed swap, newest first, restoring the previous
-// skill directory where there was one and removing ours where there was not.
-// Errors are collected, not returned: rollback runs on an already-failing path
-// and must attempt every entry.
 func (s *swap) rollback() []error {
 	var errs []error
 	for i := len(s.done) - 1; i >= 0; i-- {
@@ -216,35 +185,16 @@ func (s *swap) rollback() []error {
 	return errs
 }
 
-// stagePrefix and backupPrefix name the scaffolding directories created inside
-// the target. They are a namespace as much as a prefix: a run sweeps anything
-// carrying them, so nothing else may use them.
 const (
 	stagePrefix  = ".gplay-stage-"
 	backupPrefix = ".gplay-backup-"
 )
 
-// sweepOrphans repairs the target directory before an install, undoing what a
-// run that was killed mid-flight left behind. Deferred cleanup does not survive
-// a SIGINT or a SIGKILL, and gplay installs no signal handler, so the scaffolding
-// of an interrupted run would otherwise sit in ~/.claude/skills forever, with a
-// skill possibly parked in a backup and absent from the target.
-//
-// A leftover backup is adopted rather than deleted: any skill it holds that is
-// *not* currently installed is moved back into place first, since that backup is
-// the only copy left. A skill that is installed is left alone, because the
-// installed copy is by definition the more recent one. Leftover staging
-// directories carry no user data and are simply removed.
-//
-// Errors are returned rather than raised: a leftover directory that cannot be
-// cleaned up must not be able to block the install it precedes. Two concurrent
-// runs against the same target are not supported, here or anywhere else in this
-// command.
 func sweepOrphans(target string) []error {
 	entries, err := os.ReadDir(target)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil // nothing installed yet, nothing to repair
+			return nil
 		}
 		return []error{fmt.Errorf("scan %s for leftovers: %w", target, err)}
 	}
@@ -267,8 +217,6 @@ func sweepOrphans(target string) []error {
 	return errs
 }
 
-// adoptBackup restores from an interrupted run's backup every skill the target
-// is currently missing, then removes the backup.
 func adoptBackup(dir, target string) []error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -281,7 +229,7 @@ func adoptBackup(dir, target string) []error {
 		}
 		dst := filepath.Join(target, e.Name())
 		if _, err := os.Lstat(dst); err == nil {
-			continue // already installed: the backup copy is the older one
+			continue
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			errs = append(errs, fmt.Errorf("inspect %s: %w", dst, err))
 			continue
@@ -291,7 +239,6 @@ func adoptBackup(dir, target string) []error {
 		}
 	}
 	if len(errs) > 0 {
-		// Something is still in there: keep it rather than delete the only copy.
 		return errs
 	}
 	if err := os.RemoveAll(dir); err != nil {

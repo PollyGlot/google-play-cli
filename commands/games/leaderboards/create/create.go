@@ -1,9 +1,3 @@
-// Package create implements `gplay games leaderboards create --application-id
-// <id>`: insert a new leaderboard configuration (leaderboardConfigurations.insert).
-// Writes affect the editable draft (there is no publish method, ADR-0033).
-// ROUTINE tier (ADR-0017): no --confirm, --dry-run rehearses and previews the
-// request body. MarkMutating gates it under GPLAY_READONLY. The payload is built
-// from field flags or supplied whole with --file.
 package create
 
 import (
@@ -15,14 +9,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	ApplicationID string
 	Write         gamescmd.LeaderboardWrite
 	DryRun        bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	appID, err := gamescmd.ResolveApplicationID(in.ApplicationID)
 	if err != nil {
@@ -52,7 +44,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return gamescmd.LeaderboardWritePayload{Verb: "create leaderboard", Target: target, Row: gamescmd.BuildLeaderboardRow(l), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay games leaderboards create`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -1,10 +1,3 @@
-// Package iapcmd holds the wiring shared by the `gplay iap` leaves: the
-// default catalog directory, 403/404 hint classification, and
-// the shaping helpers between the catalog file schema and the API resources.
-// The catalog unions two surfaces: the v2 `monetization.onetimeproducts`
-// model (all writes) and the read-only legacy `inappproducts` (recognizable by
-// its `sku` field), so nothing is invisible while legacy is never written in
-// place (ADR-0041 §8). Mirrors commands/subscriptions/subscriptionscmd.
 package iapcmd
 
 import (
@@ -21,19 +14,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 )
 
-// DefaultDir is the catalog directory the iap leaves default to: the sibling
-// segment of ./monetization/subscriptions.
 const DefaultDir = "./monetization/iap"
 
-// DefaultRegionsVersion is the regions version pin sent with v2 writes unless
-// --regions-version overrides it: the latest version Google has published
-// (ADR-0041 §7).
 const DefaultRegionsVersion = "2022/02"
 
-// forbiddenError wraps a 403 with an agent-resolvable hint (no specific Play
-// permission is tied to these methods in the Discovery snapshot, so no enum is
-// named). It carries no ExitCode of its own, so the wrapped *api.Error (403 →
-// exit 11) stays authoritative.
 type forbiddenError struct {
 	pkg   string
 	cause error
@@ -44,8 +28,6 @@ func (e *forbiddenError) Error() string {
 }
 func (e *forbiddenError) Unwrap() error { return e.cause }
 
-// notFoundError wraps a 404 on the collection: the package itself is unknown
-// to the credential.
 type notFoundError struct {
 	pkg   string
 	cause error
@@ -56,8 +38,6 @@ func (e *notFoundError) Error() string {
 }
 func (e *notFoundError) Unwrap() error { return e.cause }
 
-// Classify adds 403/404 hints to an API failure, leaving the *api.Error to
-// drive the exit code (403 → 11, 404 → 30). Any other error passes through.
 func Classify(pkg string, err error) error {
 	var apiErr *api.Error
 	if errors.As(err, &apiErr) {
@@ -71,10 +51,6 @@ func Classify(pkg string, err error) error {
 	return err
 }
 
-// ListLegacy reads the live legacy catalog. When Google has retired the
-// legacy API for the app (#741), the whole one-time-product catalog lives in
-// the v2 model, so the legacy inventory is empty: it returns retired=true and
-// no error. Any other failure is classified as usual.
 func ListLegacy(ctx context.Context, hc *http.Client, pkg string) (items []iap.LegacyItem, retired bool, err error) {
 	items, err = iap.ListInAppProducts(ctx, hc, pkg)
 	if errors.Is(err, iap.ErrLegacyRetired) {
@@ -86,14 +62,8 @@ func ListLegacy(ctx context.Context, hc *http.Client, pkg string) (items []iap.L
 	return items, false, nil
 }
 
-// LegacyRetiredNote is the stderr note pull and apply print when ListLegacy
-// reports a retired legacy API.
 const LegacyRetiredNote = "Google retired the legacy inappproducts API for %q: its one-time-product catalog is read from the v2 model only"
 
-// IsLegacy reports whether a catalog file body is a legacy inappproducts
-// resource: recognizable by its `sku` field (the v2 resource carries
-// `productId` instead). The shape is the origin marker; no gplay-invented
-// field is needed.
 func IsLegacy(raw json.RawMessage) bool {
 	var probe struct {
 		SKU string `json:"sku"`
@@ -101,22 +71,16 @@ func IsLegacy(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &probe) == nil && probe.SKU != ""
 }
 
-// OfferKey is the composite identity of one v2 offer in a catalog.
 type OfferKey struct {
 	ProductID        string
 	PurchaseOptionID string
 	OfferID          string
 }
 
-// String renders the key the way plans display it.
 func (k OfferKey) String() string {
 	return k.ProductID + "/" + k.PurchaseOptionID + "/" + k.OfferID
 }
 
-// EmbedOffers nests each live v2 offer under its purchase option's "offers"
-// array inside the product resources, returning the file bodies pull writes.
-// The offers' packageName echo is stripped. An offer whose purchase option
-// does not exist in its parent product is an integrity error.
 func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawMessage, error) {
 	byProduct := map[string]map[string][]any{}
 	for _, o := range offers {
@@ -170,9 +134,6 @@ func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawM
 	return out, nil
 }
 
-// ExtractOffers walks the declared v2 catalog and returns every embedded offer
-// fragment keyed by its composite identity (file position + the fragment's
-// offerId).
 func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessage, error) {
 	out := map[OfferKey]json.RawMessage{}
 	for productID, raw := range local {
@@ -212,8 +173,6 @@ func ExtractOffers(local map[string]json.RawMessage) (map[OfferKey]json.RawMessa
 	return out, nil
 }
 
-// StripOffersFromProduct removes every embedded purchaseOptions[].offers array
-// from a declared product body: offers are not a field of the API resource.
 func StripOffersFromProduct(raw json.RawMessage) (json.RawMessage, error) {
 	var product map[string]any
 	if err := json.Unmarshal(raw, &product); err != nil {
@@ -232,7 +191,6 @@ func StripOffersFromProduct(raw json.RawMessage) (json.RawMessage, error) {
 	return b, nil
 }
 
-// SortedOfferKeys returns the keys in stable display order.
 func SortedOfferKeys[V any](m map[OfferKey]V) []OfferKey {
 	keys := make([]OfferKey, 0, len(m))
 	for k := range m {

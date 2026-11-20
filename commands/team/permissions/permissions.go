@@ -1,15 +1,3 @@
-// Package permissions implements `gplay team permissions`: an OFFLINE leaf (no
-// API, no auth, zero network) that publishes gplay's permission vocabulary:
-// the curated aliases (alias → account `_GLOBAL` enum → app enum → label →
-// including-bundles) and the frozen role bundles. It is the in-terminal
-// discovery surface (US17) and the contract snapshot for the vocabulary module
-// (ADR-0016): the same `internal/team/vocab` package that every `team` write
-// resolves --role / --permissions through.
-//
-// --scope account|app selects which enum family is resolved (account
-// `_GLOBAL` vs bare app-level); --output json marks admin-conferring aliases
-// and bundles for machine consumers (ADR-0017 §5), and deprecated aliases
-// (#559).
 package permissions
 
 import (
@@ -23,20 +11,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
 
-// appEnumNone is the table/markdown placeholder for an account-only alias that
-// has no per-app enum.
 const appEnumNone = "n/a"
 
-// deprecatedNote is appended to a deprecated alias's label in table/markdown.
-// It names no successor on purpose: Google retired the enum without one (#559).
 const deprecatedNote = " [deprecated: no longer supported by Google]"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Scope string
 }
 
-// aliasRow is one rendered alias line (table/markdown).
 type aliasRow struct {
 	alias       string
 	accountEnum string
@@ -45,18 +27,12 @@ type aliasRow struct {
 	label       string
 }
 
-// bundleRow is one rendered role-bundle line (table/markdown).
 type bundleRow struct {
 	role        string
 	permissions string
 	admin       string
 }
 
-// aliasJSON / bundleJSON are the machine-readable views. `enum` is the alias
-// resolved to the selected scope (omitted when an account-only alias is viewed
-// under --scope app); adminConferring marks the all-permissions alias/bundle
-// (ADR-0017 §5); deprecated marks an alias still accepted whose enum Google
-// retired (added for #559, an additive field of the Public contract).
 type aliasJSON struct {
 	Alias           string   `json:"alias"`
 	AccountEnum     string   `json:"accountEnum"`
@@ -81,12 +57,10 @@ type jsonView struct {
 	Bundles []bundleJSON `json:"bundles"`
 }
 
-// Payload is the offline vocabulary snapshot for the selected scope.
 type Payload struct {
 	Scope vocab.Scope
 }
 
-// Renderers satisfies output.Renderable.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return p.renderTable(w) },
@@ -205,8 +179,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	return output.WriteJSON(w, view)
 }
 
-// Run is the business function the kernel invokes. It is fully offline: it
-// parses --scope and returns the vocabulary snapshot. No Account, no network.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	scope, err := vocab.ParseScope(in.Scope)
 	if err != nil {
@@ -215,7 +187,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Scope: scope}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team permissions`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

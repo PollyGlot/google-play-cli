@@ -1,12 +1,3 @@
-// Package convert implements `gplay subscriptions prices convert`: derive
-// per-region prices from one base price via monetization.convertRegionPrices:
-// the pricing helper of the Monetization catalog (ADR-0041 §9), for filling a
-// base plan's regionalConfigs in bulk before an apply. A computation, not a
-// write: it never touches catalog state, so it is not marked mutating. `convert`
-// is a domain verb admitted under ADR-0019 §2 (it is Google's own method name;
-// no canonical verb reads as "compute derived prices"). Edit-free, package
-// axis. --output json passes the ConvertRegionPricesResponse through verbatim
-// (ADR-0003). Ships [experimental] (ADR-0010).
 package convert
 
 import (
@@ -25,21 +16,18 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package  string
 	Price    string
 	Currency string
 }
 
-// regionPrice is one converted region for the human views.
 type regionPrice struct {
 	Region   string
 	Amount   string
 	Currency string
 }
 
-// Payload renders the conversion. Raw is the verbatim response (ADR-0003).
 type Payload struct {
 	Package string
 	Rows    []regionPrice
@@ -74,8 +62,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"REGION", "PRICE", "CURRENCY"}, rows)
 }
 
-// ParseMoney turns a decimal amount string ("4.99") and an ISO-4217 currency
-// into the API Money shape (units + 10^-9 nanos). Exported for the tests.
 func ParseMoney(amount, currency string) (subscriptions.Money, error) {
 	amount = strings.TrimSpace(amount)
 	currency = strings.ToUpper(strings.TrimSpace(currency))
@@ -96,8 +82,6 @@ func ParseMoney(amount, currency string) (subscriptions.Money, error) {
 	return subscriptions.Money{CurrencyCode: currency, Units: units, Nanos: nanos}, nil
 }
 
-// convertedView mirrors the slice of the response the human table reads; the
-// full body always travels verbatim in --output json.
 type convertedView struct {
 	ConvertedRegionPrices map[string]struct {
 		RegionCode string `json:"regionCode"`
@@ -109,7 +93,6 @@ type convertedView struct {
 	} `json:"convertedRegionPrices"`
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	money, err := ParseMoney(in.Price, in.Currency)
 	if err != nil {
@@ -143,7 +126,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Rows: rows, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay subscriptions prices convert`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

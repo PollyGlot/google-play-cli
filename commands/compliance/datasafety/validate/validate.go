@@ -1,17 +1,3 @@
-// Package validatecmd implements `gplay compliance datasafety validate`: an
-// OFFLINE structural check of the canonical Data Safety CSV. Like `metadata
-// validate`, it never authenticates and never makes an HTTP call: it reads
-// the CSV off disk (--file, default ./compliance/data-safety.csv) and runs
-// the pure internal/compliance/datasafety validator, so it is safe in a
-// pre-commit hook or a CI gate with no credentials present.
-//
-// It is STRUCTURAL ONLY (ADR-0014): it checks the CSV is non-empty, valid
-// UTF-8, well-formed, rectangular, and has a header, and warns (non-fatally)
-// when the header diverges from a bundled reference template. It makes NO
-// semantic claim: gplay cannot read Google's Data Safety schema back (the
-// API is write-only), so "valid" here is deliberately weaker than "Google
-// will accept it": only the live POST (`set`) arbitrates that. A structural
-// failure is exit 20 (client-side validation, docs/DESIGN.md §9).
 package validatecmd
 
 import (
@@ -29,19 +15,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// DefaultFile is the conventional on-disk Data Safety CSV path (ADR-0014),
-// shared by the flag default and Run's fallback so a direct caller (a test)
-// gets the same default.
 const DefaultFile = "./compliance/data-safety.csv"
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	File string
 }
 
-// fileError signals the CSV could not be read (missing or unreadable file).
-// It is a client-side validation failure: the operator pointed --file at
-// something gplay cannot lint, so ExitCode() is 20 per docs/DESIGN.md §9.
 type fileError struct {
 	file  string
 	cause error
@@ -53,9 +32,6 @@ func (e *fileError) Error() string {
 func (e *fileError) ExitCode() int { return 20 }
 func (e *fileError) Unwrap() error { return e.cause }
 
-// ValidationError carries every structural Problem found in the CSV. It maps
-// to exit 20 and lists every problem, one actionable line each, so a CI log
-// shows the full picture in one run.
 type ValidationError struct {
 	File     string
 	Problems []datasafety.Problem
@@ -77,10 +53,6 @@ func (e *ValidationError) Error() string {
 	return b.String()
 }
 
-// Payload is the success view: the CSV is structurally sound, here is what
-// was checked. Warnings carries the non-fatal hints (e.g. header divergence).
-// There is no API pass-through to mirror (validate is offline), so JSON is a
-// small gplay-defined object.
 type Payload struct {
 	File     string   `json:"file"`
 	OK       bool     `json:"ok"`
@@ -89,7 +61,6 @@ type Payload struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// Renderers satisfies output.Renderable.
 func (p Payload) Renderers() output.Renderers {
 	return output.Renderers{
 		Table:    func(w io.Writer) error { return p.renderText(w) },
@@ -119,7 +90,6 @@ func (p Payload) renderText(w io.Writer) error {
 			return err
 		}
 	}
-	// Structural-only disclaimer: never let "valid" be read as "accepted".
 	_, err := fmt.Fprintln(w, "note: structural check only: only the live `set` POST tells you whether Google accepts the declaration.")
 	return err
 }
@@ -143,10 +113,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return err
 }
 
-// Run is the business function the kernel invokes. It is OFFLINE: it reads
-// the CSV off disk and runs the pure validator. It NEVER calls
-// rc.AuthedClient and makes no HTTP request, so it works with no credentials
-// and no network (pre-commit / CI).
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	file := in.File
 	if file == "" {
@@ -172,7 +138,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay compliance datasafety validate`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

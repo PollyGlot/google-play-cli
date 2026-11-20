@@ -1,6 +1,3 @@
-// Package remove_test exercises `gplay team grants remove` at the command
-// level: the destructive --confirm gate (exit 3), CI=true not auto-confirming,
-// the --dry-run preview, the delete-by-email+package path, and error mapping.
 package remove_test
 
 import (
@@ -25,8 +22,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRemove_confirm_deletes asserts a confirmed remove issues grants.delete by
-// email+package path.
 func TestRemove_confirm_deletes(t *testing.T) {
 	rt := teamtest.New(teamtest.Fail("DELETE", "/grants/com.example.foo", 204, ""))
 	rc := teamtest.NewRC(t, rt)
@@ -41,8 +36,6 @@ func TestRemove_confirm_deletes(t *testing.T) {
 	}
 }
 
-// TestRemove_withoutConfirm_exit3 asserts the destructive gate refuses without
-// --confirm; CI=true must not auto-confirm.
 func TestRemove_withoutConfirm_exit3(t *testing.T) {
 	t.Setenv("CI", "true")
 	rt := teamtest.New(teamtest.Fail("DELETE", "/grants/com.example.foo", 204, ""))
@@ -60,7 +53,6 @@ func TestRemove_withoutConfirm_exit3(t *testing.T) {
 	}
 }
 
-// TestRemove_dryRun_previews asserts --dry-run previews with no HTTP.
 func TestRemove_dryRun_previews(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -74,7 +66,6 @@ func TestRemove_dryRun_previews(t *testing.T) {
 	}
 }
 
-// TestRemove_missingPackage_exit2.
 func TestRemove_missingPackage_exit2(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -83,7 +74,6 @@ func TestRemove_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRemove_apiErrors maps a 404 (no such grant) to exit 30 and a 403 to 11.
 func TestRemove_apiErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -104,7 +94,6 @@ func TestRemove_apiErrors(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := removecmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"package", "confirm", "dry-run", "developer-id", "output"} {

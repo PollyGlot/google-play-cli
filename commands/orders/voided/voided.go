@@ -1,12 +1,3 @@
-// Package voided implements `gplay orders voided list`: the purchases Google Play
-// voided (refunded, charged back, revoked) over the last --since window, via
-// purchases.voidedpurchases.list (#346). The reconciliation read next to
-// `orders view` / `orders refund` (ADR-0031): pure read, no Edit, no
-// GPLAY_READONLY gate. --output json is the API's voidedPurchases envelope,
-// every page's items verbatim (ADR-0003); the human views decode the numeric
-// source/reason codes and epoch-millis times. Ships [experimental] with the
-// rest of `orders` (ADR-0010). `voided` is a pure grouping noun and `list` the
-// canonical verb (ADR-0019), the `apps accessible list` shape.
 package voided
 
 import (
@@ -25,17 +16,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/orders"
 )
 
-// DefaultSince is the widest window the API accepts, so the bare command reads
-// everything it can.
 const DefaultSince = "30d"
 
-// Type values for --type.
 const (
 	TypeAll   = "all"
 	TypeInapp = "inapp"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package               string
 	Since                 string
@@ -44,20 +31,15 @@ type Input struct {
 	Limit                 int
 }
 
-// Payload renders a voided-purchases walk.
 type Payload struct {
 	List orders.VoidedList
 }
 
-// voidedSources and voidedReasons name the API's integer codes, in the order
-// the VoidedPurchase schema lists them.
 var (
 	voidedSources = []string{"user", "developer", "google"}
 	voidedReasons = []string{"other", "remorse", "not_received", "defective", "accidental_purchase", "fraud", "friendly_fraud", "chargeback", "unacknowledged_purchase"}
 )
 
-// codeName names a code, falling back to the bare number for a code newer than
-// this build, and to blank when the API omitted it.
 func codeName(names []string, code *int) string {
 	if code == nil {
 		return ""
@@ -68,8 +50,6 @@ func codeName(names []string, code *int) string {
 	return strconv.Itoa(*code)
 }
 
-// millisTime renders an epoch-millis string as RFC3339 UTC; an unparsable
-// value is shown as sent rather than dropped.
 func millisTime(ms string) string {
 	if ms == "" {
 		return ""
@@ -105,10 +85,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run validates the window, type and limit before any request (the API
-// rejects a startTime older than 30 days with a 400; gplay names the limit as
-// a usage error instead), then walks the list and warns on stderr when
-// --limit hid items.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	spec := strings.TrimSpace(in.Since)
 	if spec == "" {
@@ -155,7 +131,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{List: list}, nil
 }
 
-// newListCommand returns the `gplay orders voided list` verb.
 func newListCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
@@ -205,9 +180,6 @@ it.`,
 	return cmd
 }
 
-// NewCommand returns the cobra group for `orders voided`: a pure grouping noun
-// (ADR-0019) holding one verb, `list`. The bare `voided` only prints help
-// (kernel.GroupRunE), so a mistyped subcommand fails as CLI misuse (exit 2).
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "voided",

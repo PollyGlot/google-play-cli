@@ -1,8 +1,3 @@
-// Package remove implements `gplay team users remove <email>`: off-board a
-// member via users.delete, targeted by email path (no pre-read). It is the
-// destructive tier (ADR-0017): it refuses without --confirm, exiting 3 with a
-// message naming the flag; --dry-run previews the target with no HTTP. CI=true
-// never auto-confirms.
 package remove
 
 import (
@@ -24,7 +19,6 @@ import (
 	playteam "github.com/PollyGlot/google-play-cli/internal/play/team"
 )
 
-// Input is the request-shaped struct cobra builds from flags + the email arg.
 type Input struct {
 	Email       string
 	DeveloperID string
@@ -65,7 +59,6 @@ func classifyError(developerID, email string, err error) error {
 	return err
 }
 
-// Payload renders what remove did (or, on --dry-run, would do).
 type Payload struct {
 	Email    string
 	Requires []string
@@ -129,9 +122,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, Email: p.Email, Requires: teamcmd.NonNil(p.Requires)})
 	}
-	// users.delete returns an empty body on success; emit a gplay-shaped
-	// success object so --output json (the CI default) is always parseable
-	// rather than zero bytes (the documented ADR-0003 exception).
 	if len(bytes.TrimSpace(p.Raw)) > 0 {
 		_, err := w.Write(p.Raw)
 		return err
@@ -142,8 +132,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 	}{OK: true, Removed: p.Email})
 }
 
-// Run is the business function the kernel invokes. It enforces the destructive
-// --confirm gate (unless --dry-run previews offline) and deletes the member.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	email := strings.TrimSpace(in.Email)
 	if email == "" {
@@ -176,7 +164,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Email: email, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay team users remove`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

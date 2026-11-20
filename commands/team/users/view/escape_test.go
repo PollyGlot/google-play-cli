@@ -7,10 +7,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestHumanViewsStripTerminalEscapes serves a member whose access state and
-// grant carry an OSC title and a CSI erase-screen, and asserts the table and
-// markdown views print them without the sequences while JSON keeps the bytes
-// verbatim (ADR-0003).
 func TestHumanViewsStripTerminalEscapes(t *testing.T) {
 	user := strings.NewReplacer(
 		`"PENDING_SIGNUP"`, `"PENDING_SIGNUP`+outputtest.HostileJSON+`"`,

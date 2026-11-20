@@ -1,9 +1,3 @@
-// Package view_test exercises `gplay team users view <email>` at the command
-// level: it asserts external behaviour (the scalar header + grants in the
-// table/markdown views, the verbatim single-User JSON pass-through, the
-// case-insensitive match, and the error-code mapping incl. the synthetic
-// member-not-found exit 30) against stubbed users.list responses via the shared
-// teamtest transport. No network.
 package view_test
 
 import (
@@ -18,16 +12,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/teamtest"
 )
 
-// aliceUser is the verbatim User object users.list returns for alice: an
-// account-wide admin (CAN_MANAGE_PERMISSIONS_GLOBAL) with one app grant. The
-// JSON view must echo these exact bytes (ADR-0003 pass-through).
 const aliceUser = `{"email":"alice@example.com","accessState":"PENDING_SIGNUP","developerAccountPermissions":["CAN_MANAGE_PERMISSIONS_GLOBAL","CAN_VIEW_FINANCIAL_DATA_GLOBAL"],"grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_VIEW_APP_QUALITY"]}]}`
 
-// bobUser is a plain (non-admin) member with no grants.
 const bobUser = `{"email":"bob@example.com","accessState":"INVITED"}`
 
-// carolUser is a non-admin member with TWO app grants: exercises the grants
-// count and multi-row rendering (every other fixture has ≤1 grant).
 const carolUser = `{"email":"carol@example.com","accessState":"PENDING_SIGNUP","grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_VIEW_APP_QUALITY"]},{"packageName":"com.example.bar","appLevelPermissions":["CAN_MANAGE_TRACK_USERS","CAN_VIEW_APP_QUALITY"]}]}`
 
 func usersBody(users ...string) string {
@@ -73,7 +61,6 @@ func renderMarkdown(t *testing.T, r output.Renderable) string {
 	return b.String()
 }
 
-// run is the common path: stub a users.list body, resolve the member, render.
 func run(t *testing.T, body, email string) (output.Renderable, error) {
 	t.Helper()
 	rt := teamtest.New(teamtest.UsersList(body))
@@ -99,15 +86,12 @@ func TestTableShowsHeaderAndGrants(t *testing.T) {
 			t.Errorf("table missing %q\n--- got ---\n%s", want, out)
 		}
 	}
-	// Admin marker present for an all-permissions member.
 	if !strings.Contains(out, "yes") {
 		t.Errorf("admin member should be marked, got:\n%s", out)
 	}
 }
 
 func TestJSONIsVerbatimSingleUser(t *testing.T) {
-	// alice is the SECOND entry, so a passing assertion proves the matched
-	// member's own bytes are selected (raw[i]), not merely raw[0].
 	r, err := run(t, usersBody(bobUser, aliceUser), "alice@example.com")
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -124,8 +108,6 @@ func TestMarkdownRendersRecord(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	out := renderMarkdown(t, r)
-	// A record (DESIGN.md §7): heading + `- **Field**: value` list, then the
-	// grants as a GFM table (header + separator + data row).
 	for _, want := range []string{
 		"## alice@example.com",
 		"- **Access state**: PENDING_SIGNUP",
@@ -143,8 +125,6 @@ func TestMarkdownRendersRecord(t *testing.T) {
 	}
 }
 
-// TestMarkdownGrantlessHasNoTable locks the empty-grants branch of the markdown
-// renderer: the record still lists Grants: 0 but emits no GFM grants table.
 func TestMarkdownGrantlessHasNoTable(t *testing.T) {
 	r, err := run(t, usersBody(bobUser), "bob@example.com")
 	if err != nil {
@@ -168,7 +148,6 @@ func TestMemberWithNoGrants(t *testing.T) {
 	if !strings.Contains(out, "bob@example.com") {
 		t.Errorf("table missing member email:\n%s", out)
 	}
-	// A grant-less member must render without a spurious grant row.
 	if strings.Contains(out, "com.example.foo") {
 		t.Errorf("unexpected grant row for grant-less member:\n%s", out)
 	}
@@ -243,9 +222,6 @@ func TestMultiGrantMember(t *testing.T) {
 	}
 }
 
-// TestMatchedMemberOnSecondPage proves FindUserRaw paginates to completion and
-// returns the matched member's verbatim bytes even when it sits on a later page
-// : the cross-page raw[i] alignment guard.
 func TestMatchedMemberOnSecondPage(t *testing.T) {
 	page1 := `{"users":[` + bobUser + `],"nextPageToken":"tok"}`
 	page2 := usersBody(aliceUser)
@@ -264,13 +240,11 @@ func TestMatchedMemberOnSecondPage(t *testing.T) {
 	}
 }
 
-// TestUnresolvedDeveloperIDIsExit10 asserts that with no developer-id anywhere
-// the command fails with exit 10 before any network call (AC of #272).
 func TestUnresolvedDeveloperIDIsExit10(t *testing.T) {
 	t.Setenv("GPLAY_DEVELOPER_ID", "")
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
-	rc.Resolved = &config.Resolved{} // no developer-id from any layer
+	rc.Resolved = &config.Resolved{}
 
 	_, err := viewcmd.Run(rc, viewcmd.Input{Email: "alice@example.com"})
 	if got := exitCodeOf(t, err); got != 10 {

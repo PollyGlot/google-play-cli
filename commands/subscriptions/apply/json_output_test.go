@@ -8,9 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// fullPlan touches every plan slice, so the golden pins the flat change order
-// (creates, patches, offers, states, then deletes innermost-first) and how the
-// typed identities render as productId/basePlanId/offerId.
 func fullPlan() reconcile.Plan {
 	return reconcile.Plan{
 		Creates:         []reconcile.Change{{ProductID: "premium_yearly"}},
@@ -28,16 +25,11 @@ func fullPlan() reconcile.Plan {
 	}
 }
 
-// TestRenderJSON_dryRunDestructive_golden freezes the plan a CI gate reads:
-// every op kind, the summary counts and the "requires" gate a destructive plan
-// surfaces before --confirm.
 func TestRenderJSON_dryRunDestructive_golden(t *testing.T) {
 	p := apply.Payload{Package: "com.example.app", Dir: "./catalog/subscriptions", Plan: fullPlan(), DryRun: true, Requires: []string{"confirm"}}
 	outputtest.GoldenJSON(t, "dry_run_destructive.json.golden", p)
 }
 
-// TestRenderJSON_applied_golden freezes the executed plan: same flat schema,
-// dryRun:false and no requires key once the gate was passed.
 func TestRenderJSON_applied_golden(t *testing.T) {
 	plan := reconcile.Plan{
 		Patches:   []reconcile.Change{{ProductID: "premium_monthly", Fields: []string{"listings"}}},
@@ -47,8 +39,6 @@ func TestRenderJSON_applied_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "applied.json.golden", p)
 }
 
-// TestRenderJSON_noChanges_golden pins an in-sync catalog to "changes": []
-// (never null) with an all-zero summary but the unchanged count.
 func TestRenderJSON_noChanges_golden(t *testing.T) {
 	p := apply.Payload{Package: "com.example.app", Dir: "./catalog/subscriptions", Plan: reconcile.Plan{Unchanged: []string{"premium_monthly"}}, DryRun: true}
 	outputtest.GoldenJSON(t, "no_changes.json.golden", p)

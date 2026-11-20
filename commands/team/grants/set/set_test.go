@@ -1,6 +1,3 @@
-// Package set_test exercises `gplay team grants set` at the command level: the
-// read-then-decide upsert (create vs update via a stubbed current state), the
-// dry-run verb + diff (read, no write), app-scope resolution, and the gates.
 package set_test
 
 import (
@@ -27,8 +24,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// bobNoGrant / bobWithGrant are stubbed users.list responses for the upsert's
-// read-then-decide.
 const (
 	bobNoGrant   = `{"users":[{"email":"bob@example.com"}]}`
 	bobWithGrant = `{"users":[{"email":"bob@example.com","grants":[{"packageName":"com.example.foo","appLevelPermissions":["CAN_VIEW_APP_QUALITY"]}]}]}`
@@ -51,8 +46,6 @@ func dryRun(t *testing.T, rc *kernel.RunContext, in setcmd.Input) map[string]any
 	return m
 }
 
-// TestGrantsSet_create asserts an absent grant is created via grants.create
-// with bare app-level enums (app scope strips _GLOBAL).
 func TestGrantsSet_create(t *testing.T) {
 	rt := teamtest.New(
 		teamtest.UsersList(bobNoGrant),
@@ -73,8 +66,6 @@ func TestGrantsSet_create(t *testing.T) {
 	}
 }
 
-// TestGrantsSet_update asserts a present grant is updated via grants.patch with
-// the updateMask.
 func TestGrantsSet_update(t *testing.T) {
 	rt := teamtest.New(
 		teamtest.UsersList(bobWithGrant),
@@ -95,7 +86,6 @@ func TestGrantsSet_update(t *testing.T) {
 	}
 }
 
-// findCall returns the first captured call with the given method.
 func findCall(calls []teamtest.Call, method string) (teamtest.Call, bool) {
 	for _, c := range calls {
 		if c.Method == method {
@@ -105,8 +95,6 @@ func findCall(calls []teamtest.Call, method string) (teamtest.Call, bool) {
 	return teamtest.Call{}, false
 }
 
-// TestGrantsSet_dryRun_update_verbAndDiff asserts the dry-run reads the current
-// state and reports verb=update + the diff, making NO write.
 func TestGrantsSet_dryRun_update_verbAndDiff(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(bobWithGrant))
 	rc := teamtest.NewRC(t, rt)
@@ -130,14 +118,11 @@ func TestGrantsSet_dryRun_update_verbAndDiff(t *testing.T) {
 	if rt.Wrote() {
 		t.Errorf("dry-run must make no write; calls=%v", rt.Calls())
 	}
-	// It DID read (the read powers the exact verb + diff).
 	if len(rt.Calls()) == 0 {
 		t.Errorf("dry-run should perform the idempotent read")
 	}
 }
 
-// TestGrantsSet_dryRun_create_verb asserts an absent grant dry-runs as
-// verb=create with an empty current set.
 func TestGrantsSet_dryRun_create_verb(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(bobNoGrant))
 	rc := teamtest.NewRC(t, rt)
@@ -150,8 +135,6 @@ func TestGrantsSet_dryRun_create_verb(t *testing.T) {
 	}
 }
 
-// TestGrantsSet_admin_withoutGrantAdmin_exit3 asserts an admin-conferring grant
-// is gated before any network.
 func TestGrantsSet_admin_withoutGrantAdmin_exit3(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(bobWithGrant))
 	rc := teamtest.NewRC(t, rt)
@@ -164,8 +147,6 @@ func TestGrantsSet_admin_withoutGrantAdmin_exit3(t *testing.T) {
 	}
 }
 
-// TestGrantsSet_notMember_exit30 asserts granting to a non-member fails with
-// exit 30 and points at `team users add`.
 func TestGrantsSet_notMember_exit30(t *testing.T) {
 	rt := teamtest.New(teamtest.UsersList(`{"users":[{"email":"someoneelse@example.com"}]}`))
 	rc := teamtest.NewRC(t, rt)
@@ -178,8 +159,6 @@ func TestGrantsSet_notMember_exit30(t *testing.T) {
 	}
 }
 
-// TestGrantsSet_misuse_exit2 covers the missing-package and role/permissions
-// conflict.
 func TestGrantsSet_misuse_exit2(t *testing.T) {
 	rt := teamtest.New()
 	rc := teamtest.NewRC(t, rt)
@@ -194,7 +173,6 @@ func TestGrantsSet_misuse_exit2(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := setcmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"package", "role", "permissions", "grant-admin", "dry-run", "developer-id", "output"} {

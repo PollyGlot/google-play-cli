@@ -1,8 +1,3 @@
-// Package view implements `gplay games achievements view <achievementId>`: read
-// a single achievement configuration (achievementConfigurations.get). Read-only.
-// Each config carries an editable draft and a read-only published detail; the
-// table summarises the best-available one. --output json passes the
-// AchievementConfiguration through verbatim (ADR-0003). Ships [experimental].
 package view
 
 import (
@@ -17,13 +12,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/games"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	ID      string
 	Columns string
 }
 
-// Payload renders one achievement as a single-row table / verbatim JSON.
 type Payload struct {
 	Row  gamescmd.AchievementRow
 	Cols []output.Column[gamescmd.AchievementRow]
@@ -38,7 +31,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	id, err := gamescmd.RequireID(in.ID, "missing achievement id: gplay games achievements view <achievementId>")
 	if err != nil {
@@ -59,7 +51,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Row: gamescmd.BuildAchievementRow(a), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay games achievements view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

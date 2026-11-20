@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// renderPlan exercises every entry the one-time-product plan can carry: a create
-// and a legacy→v2 migrate, a patch, a product delete, the three offer actions,
-// and every state verb (activate, deactivate, cancel) on both kinds.
 func renderPlan() reconcile.Plan {
 	return reconcile.Plan{
 		Creates:      []reconcile.Change{{ProductID: "coins"}, {ProductID: "legacy_gem"}},
@@ -32,9 +29,6 @@ func renderPlan() reconcile.Plan {
 	}
 }
 
-// TestRender_golden pins the table, markdown and JSON views of the plan byte
-// for byte, planned and executed, so moving the renderer (ARCH-07, #591)
-// provably changes nothing a user or a jq gate sees.
 func TestRender_golden(t *testing.T) {
 	migrating := map[string]bool{"legacy_gem": true}
 	cases := []struct {

@@ -23,9 +23,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// liveV2 serves one product with one purchase option (state ACTIVE): the
-// normalizer keeps that state out of the product diff, planStates reconciles
-// it separately when a file declares it.
 const liveV2 = `{"oneTimeProducts":[
   {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE"}]}
 ]}`
@@ -123,7 +120,6 @@ func newRC(t *testing.T, rt *iapRT) *kernel.RunContext {
 	return newRCServing(t, rt.serve)
 }
 
-// newRCServing is newRC for a test that wraps iapRT's answers.
 func newRCServing(t *testing.T, serve func(*http.Request) (*http.Response, error)) *kernel.RunContext {
 	t.Helper()
 	sa, err := serviceaccount.Parse(signedSAJSON(t))
@@ -147,8 +143,6 @@ func writeCatalog(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-// matchedCatalog mirrors the live surfaces exactly (as a pull would have
-// written them: packageName stripped, offers embedded, legacy kept verbatim).
 func matchedCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -157,8 +151,6 @@ func matchedCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_noChanges_isNoOp asserts the pull-then-apply invariant across both
-// models: nothing mutates, the legacy file is accepted untouched.
 func TestRun_noChanges_isNoOp(t *testing.T) {
 	rt := &iapRT{}
 	rc := newRC(t, rt)
@@ -178,9 +170,6 @@ func TestRun_noChanges_isNoOp(t *testing.T) {
 	}
 }
 
-// TestRun_v2CreateIsUpsert asserts a new v2 product creates via patch with
-// allowMissing (the API has no insert) and the embedded offer creates via the
-// per-option batchUpdate.
 func TestRun_v2CreateIsUpsert(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
@@ -207,7 +196,6 @@ func TestRun_v2CreateIsUpsert(t *testing.T) {
 	if !strings.Contains(batchBody, `"allowMissing":true`) || !strings.Contains(batchBody, `"offerId":"launch"`) {
 		t.Errorf("offer batchUpdate body %q must upsert the new offer", batchBody)
 	}
-	// The embedded offers array must never reach the product body.
 	for k, b := range rt.bodies {
 		if strings.Contains(k, "/onetimeproducts/") && strings.Contains(b, `"offers"`) {
 			t.Errorf("product body %q must strip embedded offers", b)
@@ -215,9 +203,6 @@ func TestRun_v2CreateIsUpsert(t *testing.T) {
 	}
 }
 
-// TestRun_deletes_gated asserts omitting a live v2 product refuses without
-// --confirm and deletes with it (offers excluded: the parent delete takes
-// them).
 func TestRun_deletes_gated(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"old_gems.json": `{"sku":"old_gems","purchaseType":"managedUser","status":"active"}`,
@@ -243,8 +228,6 @@ func TestRun_deletes_gated(t *testing.T) {
 	}
 }
 
-// TestRun_legacyEdit_refuses asserts an edited legacy file names the #372
-// migrate gate.
 func TestRun_legacyEdit_refuses(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
@@ -262,8 +245,6 @@ func TestRun_legacyEdit_refuses(t *testing.T) {
 	}
 }
 
-// TestRun_legacyOmission_refuses asserts deleting a legacy file refuses (gplay
-// never deletes the legacy surface).
 func TestRun_legacyOmission_refuses(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
@@ -277,8 +258,6 @@ func TestRun_legacyOmission_refuses(t *testing.T) {
 	}
 }
 
-// migrationCatalog redeclares the live legacy old_gems as a v2 product (the
-// one-way promotion gesture), next to the matched coins100.
 func migrationCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -287,8 +266,6 @@ func migrationCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_migrate_refusesWithoutFlag asserts a legacy→v2 redeclaration on a
-// real run exits 3 naming --migrate, mutating nothing.
 func TestRun_migrate_refusesWithoutFlag(t *testing.T) {
 	rt := &iapRT{}
 	rc := newRC(t, rt)
@@ -302,8 +279,6 @@ func TestRun_migrate_refusesWithoutFlag(t *testing.T) {
 	}
 }
 
-// TestRun_migrate_dryRunPreviews asserts --dry-run shows the promotion as a
-// distinct "migrate" op with requires:["migrate"], without the flag.
 func TestRun_migrate_dryRunPreviews(t *testing.T) {
 	rt := &iapRT{}
 	rc := newRC(t, rt)
@@ -345,8 +320,6 @@ func TestRun_migrate_dryRunPreviews(t *testing.T) {
 	}
 }
 
-// TestRun_migrate_promotesViaV2Upsert asserts --migrate executes the
-// promotion as a v2 allowMissing patch and reports the migrated op.
 func TestRun_migrate_promotesViaV2Upsert(t *testing.T) {
 	rt := &iapRT{}
 	rc := newRC(t, rt)
@@ -372,8 +345,6 @@ func TestRun_migrate_promotesViaV2Upsert(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_plansWithoutMutating asserts the offer patch mask stays
-// scoped and no write happens under --dry-run.
 func TestRun_dryRun_plansWithoutMutating(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"},{"regionCode":"FR"}]}]}]}`,
@@ -400,16 +371,10 @@ func TestRun_dryRun_plansWithoutMutating(t *testing.T) {
 	}
 }
 
-// liveV2Inactive serves the same product as liveV2 with its purchase option
-// INACTIVE: the seed for activation tests.
 const liveV2Inactive = `{"oneTimeProducts":[
   {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"INACTIVE"}]}
 ]}`
 
-// TestRun_purchaseOptionState_ridesBatchUpdateStates asserts a declared
-// state: ACTIVE on a live INACTIVE purchase option is one state change (no
-// phantom product patch) whose body hits purchaseOptions:batchUpdateStates
-// with the activate oneof, and that the unchanged offer state plans nothing.
 func TestRun_purchaseOptionState_ridesBatchUpdateStates(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"ACTIVE","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
@@ -445,8 +410,6 @@ func TestRun_purchaseOptionState_ridesBatchUpdateStates(t *testing.T) {
 	}
 }
 
-// TestRun_offerCancel_gated asserts a declared CANCELLED offer refuses
-// without --confirm (exit 3, no mutation) and calls :cancel with it.
 func TestRun_offerCancel_gated(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"CANCELLED","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
@@ -485,9 +448,6 @@ func TestRun_offerCancel_gated(t *testing.T) {
 	}
 }
 
-// TestRun_stateDryRun_andOrdering asserts --dry-run lists state changes
-// without sending them, and that on a real run a product created in the same
-// pass is activated after its upsert (option before offer).
 func TestRun_stateDryRun_andOrdering(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,
@@ -536,9 +496,6 @@ func TestRun_stateDryRun_andOrdering(t *testing.T) {
 	}
 }
 
-// TestRun_unreachableState_isUsageError asserts a declared state the verbs
-// cannot reach (INACTIVE on a DRAFT offer, CANCELLED on a purchase option) is
-// refused before any call (exit 2).
 func TestRun_unreachableState_isUsageError(t *testing.T) {
 	for name, file := range map[string]string{
 		"inactive from draft offer":        `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]},{"offerId":"new","state":"INACTIVE"}]}]}`,
@@ -564,13 +521,6 @@ func TestRun_unreachableState_isUsageError(t *testing.T) {
 	}
 }
 
-// TestRun_inactivePublished_isNeverATarget pins how apply treats
-// INACTIVE_PUBLISHED, a purchase-option state Play sets only on automatically
-// migrated options and no verb reaches. Declared over itself it plans
-// nothing, and ACTIVE plans the usual activation. INACTIVE is refused before
-// any write, without the usual "activate it first" advice: following it would
-// put a migrated option back on sale. Declaring INACTIVE_PUBLISHED over any
-// other live state is refused too.
 func TestRun_inactivePublished_isNeverATarget(t *testing.T) {
 	const live = `{"oneTimeProducts":[
   {"productId":"coins100","packageName":"com.example.app","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","state":"INACTIVE_PUBLISHED"}]}
@@ -615,17 +565,10 @@ func TestRun_inactivePublished_isNeverATarget(t *testing.T) {
 	}
 }
 
-// liveOffersGameReward serves the live promo offer as a game reward offer
-// capped at 5 redemptions: the seed for the gameRewardOffer diff (#537).
 const liveOffersGameReward = `{"oneTimeProductOffers":[
   {"packageName":"com.example.app","productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}],"gameRewardOffer":{"redemptionLimit":"5"}}
 ]}`
 
-// TestRun_offerGameReward_isManaged asserts gameRewardOffer sits in the
-// offer projection like its discountedOffer/preOrderOffer siblings (#537): a
-// changed or removed value plans an offer patch whose fields, and the
-// updateMask actually sent on offers:batchUpdate, carry gameRewardOffer, while
-// an identical value stays unchanged (no phantom patch).
 func TestRun_offerGameReward_isManaged(t *testing.T) {
 	const offerHead = `{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","state":"ACTIVE","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]`
 	catalogWith := func(offer string) string {
@@ -639,7 +582,7 @@ func TestRun_offerGameReward_isManaged(t *testing.T) {
 	for name, tc := range map[string]struct {
 		offer      string
 		wantPatch  bool
-		wantReward string // redemptionLimit the outgoing offer must carry; "" = field absent
+		wantReward string
 	}{
 		"changed":   {offer: offerHead + `,"gameRewardOffer":{"redemptionLimit":"10"}}`, wantPatch: true, wantReward: "10"},
 		"removed":   {offer: offerHead + `}`, wantPatch: true},
@@ -736,8 +679,6 @@ func assertExit(t *testing.T, err error, want int) {
 
 const migrationRefusal = `{"error":{"code":403,"message":"Please migrate to the new publishing API.","status":"PERMISSION_DENIED"}}`
 
-// v2OnlyCatalog mirrors liveV2 and liveOffers with no legacy file, as a pull
-// against an app whose legacy API is retired writes it.
 func v2OnlyCatalog(t *testing.T) string {
 	t.Helper()
 	return writeCatalog(t, map[string]string{
@@ -745,8 +686,6 @@ func v2OnlyCatalog(t *testing.T) string {
 	})
 }
 
-// TestRun_legacyRetired_plansAgainstV2 covers #741: a retired legacy API is an
-// empty legacy inventory, so apply plans the v2 catalog instead of failing.
 func TestRun_legacyRetired_plansAgainstV2(t *testing.T) {
 	rt := &iapRT{legacyStatus: http.StatusForbidden, legacyBody: migrationRefusal}
 	rc := newRC(t, rt)
@@ -763,9 +702,6 @@ func TestRun_legacyRetired_plansAgainstV2(t *testing.T) {
 	}
 }
 
-// TestRun_legacyRetired_legacyFile_refuses asserts a legacy-shaped file is a
-// usage error once the legacy API is retired: its product now lives in v2, and
-// planning without it would delete that v2 product.
 func TestRun_legacyRetired_legacyFile_refuses(t *testing.T) {
 	rt := &iapRT{legacyStatus: http.StatusForbidden, legacyBody: migrationRefusal}
 	rc := newRC(t, rt)
@@ -779,9 +715,6 @@ func TestRun_legacyRetired_legacyFile_refuses(t *testing.T) {
 	}
 }
 
-// TestRun_latencyTolerance_ridesTheWrites runs the create-and-upsert plan of
-// TestRun_v2CreateIsUpsert with --latency-tolerance tolerant: the product
-// patch carries it in its query, the offer batch in each entry.
 func TestRun_latencyTolerance_ridesTheWrites(t *testing.T) {
 	dir := writeCatalog(t, map[string]string{
 		"coins100.json": `{"productId":"coins100","listings":[{"languageCode":"en-US","title":"Coins"}],"purchaseOptions":[{"purchaseOptionId":"buy","offers":[{"productId":"coins100","purchaseOptionId":"buy","offerId":"promo","regionalPricingAndAvailabilityConfigs":[{"regionCode":"US"}]}]}]}`,

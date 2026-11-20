@@ -53,7 +53,6 @@ func exitOf(t *testing.T, err error) int {
 	return c.ExitCode()
 }
 
-// TestRun_missingSelector_exit2 asserts a targeting selector is required, offline.
 func TestRun_missingSelector_exit2(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -66,8 +65,6 @@ func TestRun_missingSelector_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingConfirm_exit3 asserts the destructive gate fires (with a valid
-// selector) before any HTTP.
 func TestRun_missingConfirm_exit3(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)
@@ -80,8 +77,6 @@ func TestRun_missingConfirm_exit3(t *testing.T) {
 	}
 }
 
-// TestRun_confirmed_postsAddTargeting asserts the confirmed path POSTs
-// :addTargeting with the widening body and emits ✓.
 func TestRun_confirmed_postsAddTargeting(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
 	rc := newRC(t, fake)

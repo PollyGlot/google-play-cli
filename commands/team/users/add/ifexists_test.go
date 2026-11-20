@@ -13,10 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/teamtest"
 )
 
-// existingMember is the users.list object of a member who is already in the
-// account, with a field gplay does not model so a verbatim pass-through is
-// observable. The address differs in case from the one passed to add: emails
-// match case-insensitively.
 const existingMember = `{"name":"developers/4900000000000000000/users/Bob@Example.com","email":"Bob@Example.com","accessState":"ACCESS_GRANTED","developerAccountPermissions":["CAN_VIEW_NON_FINANCIAL_DATA_GLOBAL"],"unmodeled":true}`
 
 const (
@@ -26,8 +22,6 @@ const (
 	createResp   = `{"email":"bob@example.com","developerAccountPermissions":["CAN_REPLY_TO_REVIEWS_GLOBAL"]}`
 )
 
-// teamAPI serves the --if-exists flow: users.list (the lookup), users.create
-// and users.patch. Anything else is unclaimed (200, empty) and shows in calls.
 func teamAPI(list string) *teamtest.RT {
 	return teamtest.New(
 		teamtest.UsersList(list),
@@ -44,8 +38,6 @@ func methods(rt *teamtest.RT) []string {
 	return out
 }
 
-// run invokes add and renders its JSON (stdout under --output json), with
-// stderr captured.
 func run(t *testing.T, rc *kernel.RunContext, in addcmd.Input) (stdout, stderr string, err error) {
 	t.Helper()
 	var se bytes.Buffer
@@ -63,8 +55,6 @@ func run(t *testing.T, rc *kernel.RunContext, in addcmd.Input) (stdout, stderr s
 
 const usersPath = "/androidpublisher/v3/developers/4900000000000000000/users"
 
-// Existing member + skip: one lookup, no write, exit 0, stdout is the matched
-// users.list object verbatim, stderr says it was skipped without a ✓.
 func TestAdd_ifExistsSkip_existingMember_writesNothing(t *testing.T) {
 	rt := teamAPI(usersWithBob)
 	rc := teamtest.NewRC(t, rt)
@@ -84,8 +74,6 @@ func TestAdd_ifExistsSkip_existingMember_writesNothing(t *testing.T) {
 	}
 }
 
-// Absent member + skip or update: the lookup finds nobody, then the invite
-// runs exactly as without the flag (users.create, its response on stdout).
 func TestAdd_ifExists_absentMember_looksUpThenCreates(t *testing.T) {
 	for _, policy := range []ifexists.Policy{ifexists.Skip, ifexists.Update} {
 		t.Run(string(policy), func(t *testing.T) {
@@ -106,9 +94,6 @@ func TestAdd_ifExists_absentMember_looksUpThenCreates(t *testing.T) {
 	}
 }
 
-// Existing member + update: the `team users set` write (users.patch with the
-// resolved permissions, replace semantics), its response on stdout, and no
-// users.create.
 func TestAdd_ifExistsUpdate_existingMember_patches(t *testing.T) {
 	rt := teamAPI(usersWithBob)
 	rc := teamtest.NewRC(t, rt)
@@ -136,9 +121,6 @@ func TestAdd_ifExistsUpdate_existingMember_patches(t *testing.T) {
 	}
 }
 
-// Conferring admin without --grant-admin is refused (exit 3, the structured
-// grant-admin flag) before the lookup, under every policy: the gate of the
-// invite and of `team users set` cannot be bypassed by the idempotent path.
 func TestAdd_ifExists_adminWithoutGrantAdmin_exit3BeforeLookup(t *testing.T) {
 	for _, policy := range []ifexists.Policy{ifexists.Skip, ifexists.Update} {
 		t.Run(string(policy), func(t *testing.T) {
@@ -160,7 +142,6 @@ func TestAdd_ifExists_adminWithoutGrantAdmin_exit3BeforeLookup(t *testing.T) {
 	}
 }
 
-// With --grant-admin, update confers admin through the same patch.
 func TestAdd_ifExistsUpdate_adminWithGrantAdmin_patches(t *testing.T) {
 	rt := teamAPI(usersWithBob)
 	rc := teamtest.NewRC(t, rt)
@@ -174,8 +155,6 @@ func TestAdd_ifExistsUpdate_adminWithGrantAdmin_patches(t *testing.T) {
 	}
 }
 
-// The --dry-run preview of update names the gate the live write needs, the
-// way `team users set --dry-run` does.
 func TestAdd_ifExistsUpdate_dryRunAdmin_requiresGrantAdmin(t *testing.T) {
 	rt := teamAPI(usersWithBob)
 	rc := teamtest.NewRC(t, rt)
@@ -189,8 +168,6 @@ func TestAdd_ifExistsUpdate_dryRunAdmin_requiresGrantAdmin(t *testing.T) {
 	}
 }
 
-// Default and explicit fail: no lookup, users.create as before, and a 409
-// keeps its exit code (60) and its `team users set` hint.
 func TestAdd_ifExistsFail_noLookup_conflictUnchanged(t *testing.T) {
 	for _, policy := range []ifexists.Policy{"", ifexists.Fail} {
 		t.Run("policy="+string(policy), func(t *testing.T) {
@@ -214,8 +191,6 @@ func TestAdd_ifExistsFail_noLookup_conflictUnchanged(t *testing.T) {
 	}
 }
 
-// --dry-run stays offline under every policy and reports a non-default one;
-// the default preview keeps its bytes (no ifExists key).
 func TestAdd_ifExists_dryRunOfflineAndReportsPolicy(t *testing.T) {
 	for _, tc := range []struct {
 		policy ifexists.Policy
@@ -237,8 +212,6 @@ func TestAdd_ifExists_dryRunOfflineAndReportsPolicy(t *testing.T) {
 	}
 }
 
-// An unknown policy is CLI misuse (exit 2) before any HTTP, for a direct
-// caller of Run and at flag parsing.
 func TestAdd_ifExists_invalidValue_exit2(t *testing.T) {
 	rt := teamAPI(usersWithBob)
 	rc := teamtest.NewRC(t, rt)
@@ -262,7 +235,6 @@ func TestAdd_ifExists_invalidValue_exit2(t *testing.T) {
 	}
 }
 
-// A lookup that fails (here a 403) stops before any write, with the add hint.
 func TestAdd_ifExists_lookupFails_noWrite(t *testing.T) {
 	rt := teamtest.New(
 		teamtest.Fail("GET", "/users", 403, `{"error":{"code":403,"message":"nope"}}`),

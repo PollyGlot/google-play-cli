@@ -53,9 +53,6 @@ func runCmd(t *testing.T, boot kernel.Boot, stdout, stderr *bytes.Buffer, args .
 	return root.Execute()
 }
 
-// TestRun_pureBusiness exercises the business function without cobra,
-// using a hand-built kernel.RunContext. Run reads rc.Resolved.Accounts
-// directly; no kernel.Run plumbing needed.
 func TestRun_pureBusiness(t *testing.T) {
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{}, kernel.Inputs{Format: output.FormatJSON})
 	rc.Resolved = &config.Resolved{
@@ -94,18 +91,16 @@ func TestList_emptyRegistry_prints_noAccountsLine(t *testing.T) {
 
 func TestList_table_marksActive(t *testing.T) {
 	boot := newBoot(t)
-	seed(t, boot, "alpha", "beta", "gamma") // alpha is active
+	seed(t, boot, "alpha", "beta", "gamma")
 
 	var stdout, stderr bytes.Buffer
 	if err := runCmd(t, boot, &stdout, &stderr, "--output", "table"); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
 	out := stdout.String()
-	// Active account line starts with "*"
 	if !strings.Contains(out, "* alpha") {
 		t.Errorf("table should mark alpha as active with '* '; got %q", out)
 	}
-	// Inactive accounts are present with leading spaces.
 	for _, n := range []string{"beta", "gamma"} {
 		if !strings.Contains(out, "  "+n) {
 			t.Errorf("table missing inactive %q; got %q", n, out)

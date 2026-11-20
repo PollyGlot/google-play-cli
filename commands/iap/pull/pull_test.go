@@ -22,8 +22,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// iapLive holds the bodies the three list surfaces (v2 products, legacy
-// inappproducts, wildcard offers) answer with; serve routes a call to them.
 type iapLive struct {
 	v2Body       string
 	legacyBody   string
@@ -73,9 +71,6 @@ func newRC(t *testing.T, rt http.RoundTripper) *kernel.RunContext {
 	return rc
 }
 
-// TestRun_unionsV2AndLegacy asserts pull writes one file per v2 product (with
-// offers embedded) and one per unmigrated legacy product, dedupes a shared ID
-// in favor of v2, and reports the composite json envelope.
 func TestRun_unionsV2AndLegacy(t *testing.T) {
 	dir := t.TempDir()
 	live := &iapLive{
@@ -88,7 +83,6 @@ func TestRun_unionsV2AndLegacy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// coins100 = the v2 file (legacy row shadowed), old_gems = the legacy file.
 	b, err := os.ReadFile(filepath.Join(dir, "coins100.json"))
 	if err != nil {
 		t.Fatalf("coins100.json: %v", err)
@@ -130,8 +124,6 @@ func TestRun_unionsV2AndLegacy(t *testing.T) {
 	if len(envelope.OneTimeProducts) != 1 || len(envelope.InAppProduct) != 2 {
 		t.Errorf("composite envelope = %s, want 1 v2 + 2 legacy verbatim", js.String())
 	}
-	// The composite envelope and the written file keep the API's & and <>
-	// literal (#622): neither may re-encode them as \u0026 or \u003c.
 	for name, b := range map[string][]byte{"json output": js.Bytes(), "old_gems.json": lb} {
 		if !strings.Contains(string(b), "Gems & <more>") {
 			t.Errorf("%s must carry the title verbatim, got %s", name, b)
@@ -146,8 +138,6 @@ func TestRun_unionsV2AndLegacy(t *testing.T) {
 	}
 }
 
-// TestRun_emptyLiveNonEmptyLocal_refuses asserts the erase guard covers the
-// union of both live surfaces.
 func TestRun_emptyLiveNonEmptyLocal_refuses(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "coins100.json"), []byte(`{"productId":"coins100"}`), 0o644); err != nil {
@@ -176,9 +166,6 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 }
 
-// TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses covers a repo that
-// commits monetization/iap as a symlink out of the checkout: pull refuses
-// before any HTTP rather than sweeping the target's *.json files.
 func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
 	victim := t.TempDir()
 	if err := os.WriteFile(filepath.Join(victim, "config.json"), []byte(`{"keep":true}`), 0o600); err != nil {
@@ -206,9 +193,6 @@ func TestRun_defaultDirSymlinkedOutOfTheCheckout_refuses(t *testing.T) {
 
 const migrationRefusal = `{"error":{"code":403,"message":"Please migrate to the new publishing API.","status":"PERMISSION_DENIED"}}`
 
-// TestRun_legacyRetired_pullsV2Only covers #741: when Google refuses the legacy
-// list with its migration message, pull writes the v2 catalog and says on
-// stderr why no legacy product was read, instead of failing on a 403.
 func TestRun_legacyRetired_pullsV2Only(t *testing.T) {
 	dir := t.TempDir()
 	live := &iapLive{
@@ -230,8 +214,6 @@ func TestRun_legacyRetired_pullsV2Only(t *testing.T) {
 	}
 }
 
-// TestRun_legacyForbidden_stillFails asserts an ordinary 403 on the legacy
-// list keeps failing as a permission error (exit 11).
 func TestRun_legacyForbidden_stillFails(t *testing.T) {
 	live := &iapLive{
 		legacyStatus: http.StatusForbidden,

@@ -1,9 +1,3 @@
-// Package validatecmd_test exercises `gplay compliance datasafety validate`
-// end to end at the kernel level, and, crucially, OFFLINE. The RunContext
-// is built with NO Account and NO injected transport: any attempt to
-// authenticate or make an HTTP call would fail (there is no credential and
-// no RoundTripper). A passing suite is itself proof that validate never
-// touches the network or needs credentials.
 package validatecmd_test
 
 import (
@@ -21,7 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// newRC builds an offline RunContext: no Account, no transport.
 func newRC(t *testing.T) (*kernel.RunContext, *bytes.Buffer) {
 	t.Helper()
 	var stdout bytes.Buffer
@@ -42,7 +35,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// writeCSV writes content to a fresh temp file and returns its path.
 func writeCSV(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -53,8 +45,6 @@ func writeCSV(t *testing.T, content string) string {
 	return path
 }
 
-// referenceCSV builds a well-formed CSV whose header matches the bundled
-// reference template (so no header-divergence warning fires) with n rows.
 func referenceCSV(t *testing.T, dataRows int) string {
 	t.Helper()
 	hdr := strings.Join(datasafety.ReferenceHeader(), ",")
@@ -68,9 +58,6 @@ func referenceCSV(t *testing.T, dataRows int) string {
 	return b.String()
 }
 
-// TestRun_valid_success is the tracer bullet: a well-formed CSV validates
-// with no credentials and renders a Payload; --output json reports ok:true
-// and the row tally.
 func TestRun_valid_success(t *testing.T) {
 	path := writeCSV(t, referenceCSV(t, 3))
 	rc, _ := newRC(t)
@@ -95,8 +82,6 @@ func TestRun_valid_success(t *testing.T) {
 	}
 }
 
-// TestRun_emptyFile_exit20 asserts an empty CSV is a structural failure
-// mapped to exit 20.
 func TestRun_emptyFile_exit20(t *testing.T) {
 	path := writeCSV(t, "")
 	rc, _ := newRC(t)
@@ -107,8 +92,6 @@ func TestRun_emptyFile_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_missingFile_exit20 asserts a --file pointing at a nonexistent path
-// fails as a client-side validation error (exit 20), not a panic.
 func TestRun_missingFile_exit20(t *testing.T) {
 	rc, _ := newRC(t)
 
@@ -118,7 +101,6 @@ func TestRun_missingFile_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_raggedRows_exit20 asserts a non-rectangular CSV fails with exit 20.
 func TestRun_raggedRows_exit20(t *testing.T) {
 	hdr := strings.Join(datasafety.ReferenceHeader(), ",")
 	path := writeCSV(t, hdr+"\nonly,two\n")
@@ -130,8 +112,6 @@ func TestRun_raggedRows_exit20(t *testing.T) {
 	}
 }
 
-// TestRun_headerMismatch_warns_exit0 asserts a divergent header does NOT
-// fail the command (exit 0) but surfaces a non-fatal warning in the output.
 func TestRun_headerMismatch_warns_exit0(t *testing.T) {
 	path := writeCSV(t, "totally,different,header\na,b,c\n")
 	rc, _ := newRC(t)
@@ -150,8 +130,6 @@ func TestRun_headerMismatch_warns_exit0(t *testing.T) {
 	}
 }
 
-// TestRun_default_table_rendersOK asserts the human table view names the
-// file and reports the row/column tally on success.
 func TestRun_default_table_rendersOK(t *testing.T) {
 	path := writeCSV(t, referenceCSV(t, 2))
 	rc, _ := newRC(t)
@@ -169,9 +147,6 @@ func TestRun_default_table_rendersOK(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersFlags is a thin smoke test of the cobra wiring:
-// --file and --output exist, there is NO --package (validate is file-only),
-// and the command is named "validate".
 func TestNewCommand_registersFlags(t *testing.T) {
 	cmd := validatecmd.NewCommand(kernel.Boot{})
 	if cmd.Flags().Lookup("file") == nil {

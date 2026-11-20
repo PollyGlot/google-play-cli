@@ -1,8 +1,3 @@
-// Package permissions_test exercises `gplay team permissions` at the command
-// level: it is OFFLINE (no Account, no transport) so the test proving it runs
-// with no credentials and makes zero network calls is the command itself
-// completing against a bare RunContext. The golden assertions lock the
-// contract snapshot shared with the internal/team/vocab unit tests.
 package permissions_test
 
 import (
@@ -19,9 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// newOfflineRC builds a RunContext with NO Account and NO transport: the
-// command must complete here, proving it makes no network call and needs no
-// credentials.
 func newOfflineRC(t *testing.T) *kernel.RunContext {
 	t.Helper()
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{}, kernel.Inputs{Format: output.FormatJSON})
@@ -47,9 +39,6 @@ func renderTable(t *testing.T, r output.Renderable) string {
 	return b.String()
 }
 
-// TestPermissions_offline_account is the tracer bullet: it runs with no
-// credentials, makes zero network calls, and lists the curated aliases and the
-// frozen bundles under the default (account) scope.
 func TestPermissions_offline_account(t *testing.T) {
 	rc := newOfflineRC(t)
 	r, err := permscmd.Run(rc, permscmd.Input{})
@@ -68,15 +57,11 @@ func TestPermissions_offline_account(t *testing.T) {
 			t.Errorf("table output missing %q\n---\n%s", want, table)
 		}
 	}
-	// An account-only alias shows the no-app-enum placeholder.
 	if !strings.Contains(table, "edit-games") {
 		t.Errorf("table should list the account-only alias edit-games\n%s", table)
 	}
 }
 
-// TestPermissions_json_marksAdmin asserts the JSON view marks the
-// admin-conferring alias and bundle (ADR-0017 §5) and carries both enum
-// families plus the scope-resolved enum.
 func TestPermissions_json_marksAdmin(t *testing.T) {
 	rc := newOfflineRC(t)
 	r, err := permscmd.Run(rc, permscmd.Input{Scope: "account"})
@@ -135,8 +120,6 @@ func TestPermissions_json_marksAdmin(t *testing.T) {
 	}
 }
 
-// TestPermissions_scopeApp_resolvesBareEnum asserts --scope app resolves the
-// alias `enum` field to the bare app-level enum.
 func TestPermissions_scopeApp_resolvesBareEnum(t *testing.T) {
 	rc := newOfflineRC(t)
 	r, err := permscmd.Run(rc, permscmd.Input{Scope: "app"})
@@ -166,7 +149,6 @@ func TestPermissions_scopeApp_resolvesBareEnum(t *testing.T) {
 	}
 }
 
-// TestPermissions_unknownScope_exit2 asserts a bad --scope is a usage error.
 func TestPermissions_unknownScope_exit2(t *testing.T) {
 	rc := newOfflineRC(t)
 	_, err := permscmd.Run(rc, permscmd.Input{Scope: "global"})
@@ -176,7 +158,6 @@ func TestPermissions_unknownScope_exit2(t *testing.T) {
 	}
 }
 
-// TestNewCommand_flags asserts the flag/name surface.
 func TestNewCommand_flags(t *testing.T) {
 	cmd := permscmd.NewCommand(kernel.Boot{})
 	for _, name := range []string{"scope", "output"} {
@@ -189,10 +170,6 @@ func TestNewCommand_flags(t *testing.T) {
 	}
 }
 
-// TestPermissions_flagsDeprecatedAlias covers #559: manage-managed-play stays
-// listed (Public contract) but is flagged as deprecated, in the table (label
-// note, no successor named) and in JSON (the additive `deprecated` field, the
-// label itself untouched). No other alias carries the marking.
 func TestPermissions_flagsDeprecatedAlias(t *testing.T) {
 	rc := newOfflineRC(t)
 	r, err := permscmd.Run(rc, permscmd.Input{})

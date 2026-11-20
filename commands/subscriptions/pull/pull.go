@@ -1,11 +1,3 @@
-// Package pull implements `gplay subscriptions pull`: read the complete live
-// subscription catalog (monetization.subscriptions.list, followed to
-// completion) and write it as the on-disk Monetization catalog: one
-// <productId>.json per subscription under --dir, stale catalog files removed,
-// so pull-then-apply is a no-op (ADR-0041). Edit-free, package axis. The
-// files are the API resources verbatim; --output json passes the merged
-// ListSubscriptionsResponse envelope through (ADR-0003). Ships [experimental]
-// (ADR-0010).
 package pull
 
 import (
@@ -23,17 +15,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
-	// Dir is the catalog directory; "" means the default one, which
-	// catalog.ResolveDefault keeps inside the working directory.
-	Dir string
+	Dir     string
 }
 
-// Payload renders what pull wrote. Raw is the merged ListSubscriptionsResponse
-// envelope for the ADR-0003 pass-through; Written/Removed are the catalog file
-// names for the human views.
 type Payload struct {
 	Package string
 	Dir     string
@@ -81,8 +67,6 @@ func (p Payload) renderMarkdown(w io.Writer) error {
 	return output.MarkdownTable(w, []string{"FILE", "RESULT"}, rows)
 }
 
-// Run is the business function the kernel invokes: list the live catalog to
-// completion, mirror it into --dir, report what changed on disk.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -102,18 +86,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, subscriptionscmd.Classify(pkg, err)
 	}
-	// Mirror semantics make pull destructive locally: an unexpectedly-empty
-	// live listing (mis-set --package, scope loss) would erase a populated
-	// catalog directory. Refuse instead: the apply-side empty-vs-live guard,
-	// mirrored (ADR-0041).
 	if len(items) == 0 {
 		if existing, readErr := catalog.Read(dir); readErr == nil && len(existing) > 0 {
 			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s): refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
 		}
 	}
-	// Offers are a separate sub-resource (no embedding in the Subscription
-	// resource), read in one wildcard walk and nested under each base plan's
-	// "offers" array in the files (slice #369, ADR-0041 §5).
 	offers, err := subscriptions.ListAllOffers(rc.Ctx, httpClient, pkg)
 	if err != nil {
 		return nil, subscriptionscmd.Classify(pkg, err)
@@ -134,9 +111,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Merge the pages back into one ListSubscriptionsResponse envelope so the
-	// json view stays an API-shaped pass-through (the fully-consumed
-	// nextPageToken is the only field dropped): the team users list precedent.
 	merged, err := output.Marshal(struct {
 		Subscriptions []json.RawMessage `json:"subscriptions"`
 	}{Subscriptions: rawSubs})
@@ -146,7 +120,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Package: pkg, Dir: dir, Written: written, Removed: removed, Raw: merged}, nil
 }
 
-// NewCommand returns the cobra command for `gplay subscriptions pull`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

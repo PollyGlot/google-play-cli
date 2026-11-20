@@ -1,6 +1,3 @@
-// Package view implements `gplay device-tiers view <deviceTierConfigId>`: read a
-// single device tier config by its server-assigned int64 id. Read-only, no Edit
-// transaction. --output json passes the DeviceTierConfig through verbatim.
 package view
 
 import (
@@ -17,14 +14,12 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/devicetiers"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	Package string
 	ID      string
 	Columns string
 }
 
-// Payload renders one config as a single-row table / verbatim JSON.
 type Payload struct {
 	Row  devicetierscmd.Row
 	Cols []output.Column[devicetierscmd.Row]
@@ -39,7 +34,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	id := strings.TrimSpace(in.ID)
 	if id == "" {
@@ -64,7 +58,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Row: devicetierscmd.BuildRow(cfg), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay device-tiers view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -1,10 +1,5 @@
 package create_test
 
-// Artifact preflight (PRD #448) on `gplay customapps create`. Google assigns
-// the package name here (the app is created FROM the artifact), so there is
-// nothing local to compare it against: this surface gets the container check
-// only, and it accepts either an AAB or an APK.
-
 import (
 	"path/filepath"
 	"strings"
@@ -31,9 +26,6 @@ func TestRun_preflight_refusesAFileThatIsNotAnAndroidPackage(t *testing.T) {
 	}
 }
 
-// TestRun_preflight_acceptsAnAPKAsWellAsAnAAB asserts the surface's real
-// contract: a custom app ships from either container, so the preflight must
-// not narrow it to the AAB.
 func TestRun_preflight_acceptsAnAPKAsWellAsAnAAB(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -44,8 +36,6 @@ func TestRun_preflight_acceptsAnAPKAsWellAsAnAAB(t *testing.T) {
 	}
 }
 
-// TestRun_skipPreflight_restoresPreCheckBehaviour asserts the escape hatch
-// bypasses the container check entirely.
 func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)
@@ -60,11 +50,6 @@ func TestRun_skipPreflight_restoresPreCheckBehaviour(t *testing.T) {
 	}
 }
 
-// TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact asserts
-// --skip-preflight lifts the container check and nothing else. This surface
-// validated the artifact path unconditionally before the preflight existed
-// (exit 20, no HTTP), and a rehearsal that answers exit 0 with a payload
-// preview for a file that was never built is worse than no rehearsal.
 func TestRun_dryRunSkipPreflight_stillRefusesAMissingArtifact(t *testing.T) {
 	rt := &customRT{t: t}
 	rc, _ := newRC(t, rt)

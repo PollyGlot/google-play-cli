@@ -1,16 +1,3 @@
-// Package enroll implements `gplay signing enroll`: enroll an app into Play App
-// Signing with a self-hosted Google Cloud KMS key (appsigning.enrollApp).
-//
-// This is NOT standard Play App Signing enrollment: enrolling with a
-// Google-generated or Google-managed key cannot be done through any API, only
-// the Play Console. The method exists for enterprises whose compliance rules
-// force them to keep key custody in their own Cloud KMS instance.
-//
-// DESTRUCTIVE tier (ADR-0017/0043): enrollment changes the live signing key of
-// a real app and is irreversible with an external effect, so it requires
-// --confirm (missing → exit 3) and is MarkMutating (GPLAY_READONLY → exit 4).
-// Ships [experimental] (ADR-0010/0042): a low-traffic enterprise surface whose
-// flags may still settle.
 package enroll
 
 import (
@@ -23,7 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/appsigning"
 )
 
-// Input is the request-shaped struct cobra builds from the flags.
 type Input struct {
 	Package    string
 	KmsKey     string
@@ -34,14 +20,10 @@ type Input struct {
 	DryRun     bool
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.KmsKey == "" {
 		return nil, exit.Usagef("missing --kms-key: pass the Cloud KMS crypto key VERSION resource (projects/*/locations/*/keyRings/*/cryptoKeys/*/cryptoKeyVersions/*)")
 	}
-	// The API's request is a oneof: enrollNewApp carries the key AND its
-	// certificate, enrollExistingApp carries the key alone. Enforcing the pair
-	// here turns a silent wrong-branch request into a named flag error.
 	if in.NewApp && in.KmsCert == "" {
 		return nil, exit.Usagef("--new-app requires --kms-cert <file.pem>: enrolling a new app registers the certificate of the KMS key at the same time")
 	}
@@ -93,7 +75,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return signingcmd.Payload{Verb: "enroll", Package: pkg, Rows: rows, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay signing enroll`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string
