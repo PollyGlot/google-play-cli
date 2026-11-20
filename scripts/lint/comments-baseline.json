@@ -814,7 +814,6 @@
     "scripts/dash-gate.sh": 13,
     "scripts/install-hooks.sh": 13,
     "scripts/install-test.sh": 18,
-    "scripts/lint/comments.py": 9,
     "scripts/merge-pr.sh": 39,
     "scripts/repin-skills.sh": 12,
     "scripts/required-files.sh": 7,

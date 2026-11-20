@@ -30,11 +30,11 @@ GENERATED_PATH = re.compile(
     r"|worker-configuration\.d\.ts|(^|/)third_party/|(^|/)node_modules/"
     r"|(^|/)vendor/|\.min\.js$|(^|/)l10n/app_localizations.*\.dart$"
     r"|GeneratedPluginRegistrant|(^|/)(ios|macos)/Flutter/|(^|/)(windows|linux)/flutter/"
-    r"|(^|/)migrations/.*\.sql$)"
+    r"|(^|/)migrations/.*\.sql$|^scripts/lint/comments\.py$)"
 )
 GENERATED_HEAD = re.compile(
     r"DO NOT EDIT|DO NOT MODIFY|@generated"
-    r"|^\s*(//+|#|--|/?\*+)\s*(GENERATED|[Aa]uto-?generated|This file (is|was) (automatically )?generated)",
+    r"|^\s*(//+|#|--|/?\*+)\s*(GENERATED|(?i:auto-?generated)|This file (is|was) (automatically )?generated)",
     re.M,
 )
 DIRECTIVE_WORDS = (
@@ -53,6 +53,8 @@ AAA_WORD = r"(arrange|act|assert|given|when|then)"
 AAA = re.compile(rf"^\s*(//+|#|--)\s*{AAA_WORD}(\s*(&|and|/|,|\+|-)\s*{AAA_WORD})*\s*[:.]?\s*$", re.I)
 RULE = re.compile(r"^\s*(//+|#+|--|/?\*+/?)\s*(.*?)\s*$")
 RULE_CHARS = re.compile(r"[─━═=\-*#~_+]{3,}")
+JSDOC_TYPE = re.compile(r"@(type|param|returns?|typedef|template|satisfies|import|callback|property)\b[^\n]*\{")
+REFERENCE = re.compile(r"\bADR[- ]?\d|#\d+|\b[A-Z]{1,3}-\d{2,}")
 MARK = re.compile(r"^\s*//\s*MARK:|^\s*(//|#)\s*#?(end)?region\b", re.I)
 
 
@@ -148,6 +150,8 @@ def scan(root: Path, rel: str, lang: str) -> list[Block]:
             b.kind = "directive"
         elif b.start <= 3 and LICENSE.search(b.text):
             b.kind = "license"
+        elif lang == "javascript" and JSDOC_TYPE.search(b.text):
+            b.kind = "directive"
         elif first.startswith(("///", "/**")) or (lang == "go" and b.own and go_doc(lines, b.end)):
             b.kind = "doc"
     return merged
@@ -180,8 +184,9 @@ def is_mechanical(b: Block, pattern: str) -> bool:
         words = [x for x in bodies if x and not RULE_CHARS.fullmatch(x)]
         if not rules:
             return False
-        titles = [RULE_CHARS.sub("", x).strip(" .:") for x in words]
-        return len(titles) <= 1 and all(len(t) <= 60 and not t.endswith((".", "!", "?")) for t in titles) \
+        titles = [RULE_CHARS.sub("", x).strip() for x in words]
+        return len(titles) <= 1 and all(len(t) <= 60 and not t.endswith((".", "!", "?")) and not REFERENCE.search(t)
+                                        for t in titles) \
             and all(len(RULE_CHARS.sub("", x).strip()) <= 60 for x in bodies)
     raise SystemExit(f"unknown pattern: {pattern}")
 
@@ -226,7 +231,8 @@ def delete_blocks(root: Path, targets: list[Block]) -> list[str]:
                 elif i == 0 and lines and lines[0].strip() == "":
                     del lines[0]
             elif not b.own and b.trailing and b.start == b.end:
-                lines[b.start - 1] = lines[b.start - 1][:b.col].rstrip()
+                raw = lines[b.start - 1].encode("utf8")
+                lines[b.start - 1] = raw[:b.col].decode("utf8").rstrip()
             else:
                 refused.append(f"{rel}:{b.start} comment shares its line with code after it")
         path.write_text("\n".join(lines))
@@ -235,29 +241,45 @@ def delete_blocks(root: Path, targets: list[Block]) -> list[str]:
 
 def code_tokens(src: bytes, lang: str) -> list[bytes]:
     tree = get_parser(lang).parse(src)
-    dropped = {(n.start_byte, n.end_byte) for n in comment_nodes(tree.root_node)
-               if not DIRECTIVE.search(src[n.start_byte:n.end_byte].decode("utf8", "replace"))}
+    dropped = [(n.start_byte, n.end_byte) for n in comment_nodes(tree.root_node)
+               if not DIRECTIVE.search(src[n.start_byte:n.end_byte].decode("utf8", "replace"))]
     if lang == "python":
-        dropped |= {(n.start_byte, n.end_byte) for n, _ in docstring_nodes(tree.root_node)}
-    tokens, stack = [], [tree.root_node]
+        dropped += [(n.start_byte, n.end_byte) for n, _ in docstring_nodes(tree.root_node)]
+    masked = bytearray(src)
+    for a, b in dropped:
+        masked[a:b] = b" " * (b - a)
+    skip = set(dropped)
+    tokens, stack, prev_end = [], [tree.root_node], None
     while stack:
         n = stack.pop()
-        if (n.start_byte, n.end_byte) in dropped:
+        if isinstance(n, bytes):
+            tokens.append(n)
+            continue
+        if (n.start_byte, n.end_byte) in skip:
             continue
         if n.child_count == 0:
+            if prev_end is not None and b"\n" in masked[prev_end:n.start_byte]:
+                tokens.append(b"\n")
             tokens.append(src[n.start_byte:n.end_byte])
+            prev_end = n.end_byte
         else:
+            tokens.append(n.type.encode() + b"(")
+            stack.append(b")")
             stack.extend(reversed(n.children))
     return tokens
 
 
 def only_comments_changed(root: Path, base: str) -> list[str]:
-    names = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "--diff-filter=M", base],
-                           capture_output=True, text=True, check=True).stdout.split()
+    status = subprocess.run(["git", "-C", str(root), "diff", "--name-status", "--no-renames", base],
+                            capture_output=True, text=True, check=True).stdout.splitlines()
     changed = []
-    for rel in names:
+    for row in status:
+        flag, rel = row.split("\t", 1)
         lang = LANGS.get(Path(rel).suffix)
-        if not lang:
+        if not lang or GENERATED_PATH.search(rel):
+            continue
+        if flag != "M":
+            changed.append(rel)
             continue
         old = subprocess.run(["git", "-C", str(root), "show", f"{base}:{rel}"], capture_output=True,
                              check=True).stdout
