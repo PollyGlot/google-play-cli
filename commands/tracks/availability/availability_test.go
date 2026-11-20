@@ -1,10 +1,3 @@
-// Package availability_test exercises `gplay tracks availability view` at
-// the kernel level: a RunContext built by hand, a testkit Fake injected via
-// the oauth2.HTTPClient context key, and Run invoked directly. Mirrors
-// the tracks-view harness: the transport FAILS on any PUT/:commit,
-// because reading Country availability is read-only (open Edit →
-// countryAvailability.get → discard, never commit). Availability is also
-// read-only at the API level: there is no writer to test.
 package availability_test
 
 import (
@@ -27,14 +20,10 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// availAPI is the Play API the availability read sees, served by a testkit
-// Fake: edits.insert, countryAvailability.get, edits.delete. It has NO
-// PUT/:commit route: reaching one means the command tried to mutate state,
-// which a read-only command must never do, so the test fails.
 type availAPI struct {
 	editID string
 	body   string
-	code   int // 0 → 200 on countryAvailability.get
+	code   int
 
 	fake *testkit.Fake
 }
@@ -55,9 +44,6 @@ func (a *availAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *availAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -96,11 +82,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_happyPath asserts the read-only vertical slice: /token first,
-// then edits.insert, countryAvailability.get(track), edits.delete (no
-// commit). The payload carries syncWithProduction, restOfWorld, and the
-// country codes; --output json emits the countryavailability.get body
-// verbatim (clean ADR-0003 pass-through: a single endpoint).
 func TestRun_happyPath(t *testing.T) {
 	body := `{"syncWithProduction":false,"restOfWorld":true,"countries":[{"countryCode":"US"},{"countryCode":"GB"}]}`
 	api := &availAPI{editID: "edit-avail", body: body}
@@ -132,7 +113,6 @@ func TestRun_happyPath(t *testing.T) {
 		}
 	}
 
-	// JSON pass-through: the countryavailability.get body verbatim.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -142,9 +122,6 @@ func TestRun_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_missingTrack_exit2_noHTTP asserts --track is REQUIRED (no
-// implicit production default): absence short-circuits with exit 2 before
-// any HTTP call.
 func TestRun_missingTrack_exit2_noHTTP(t *testing.T) {
 	api := &availAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -157,8 +134,6 @@ func TestRun_missingTrack_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts that with neither --package nor a
-// pinned project, the command short-circuits with exit 2 before any HTTP.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	api := &availAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -171,8 +146,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_usesPin_whenNoFlag asserts that without --package the command
-// falls back to rc.Resolved.Pin.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	api := &availAPI{
 		editID: "edit-pin",
@@ -192,8 +165,6 @@ func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	t.Errorf("expected calls scoped to com.pinned.app, got: %v", api.calls())
 }
 
-// TestRun_get403_exit11 asserts a 403 on countryAvailability.get bubbles
-// up as exit 11 (authorization).
 func TestRun_get403_exit11(t *testing.T) {
 	api := &availAPI{
 		editID: "edit-403",
@@ -207,8 +178,6 @@ func TestRun_get403_exit11(t *testing.T) {
 	}
 }
 
-// TestRun_get404_exit30_tracksListHint asserts a 404 (unknown track or
-// package) maps to exit 30 with a hint pointing at `gplay tracks list`.
 func TestRun_get404_exit30_tracksListHint(t *testing.T) {
 	api := &availAPI{
 		editID: "edit-404",
@@ -225,8 +194,6 @@ func TestRun_get404_exit30_tracksListHint(t *testing.T) {
 	}
 }
 
-// TestRenderTable_showsAvailabilityFields asserts the table view surfaces
-// syncWithProduction, restOfWorld, and the country codes.
 func TestRenderTable_showsAvailabilityFields(t *testing.T) {
 	p := availability.Payload{
 		Track:              "production",
@@ -246,8 +213,6 @@ func TestRenderTable_showsAvailabilityFields(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_showsAvailabilityFields asserts the markdown view
-// surfaces the same fields.
 func TestRenderMarkdown_showsAvailabilityFields(t *testing.T) {
 	p := availability.Payload{
 		Track:              "production",
@@ -267,31 +232,21 @@ func TestRenderMarkdown_showsAvailabilityFields(t *testing.T) {
 	}
 }
 
-// TestGroup_bareAvailabilityIsPureNoun asserts the ADR-0019 shape: `tracks
-// availability` is a pure grouping noun: the bare command prints help and
-// never reads (the read lives under `view`) and, being read-only at the
-// Developer API level, holds no `set`. Its RunE is the shared grouping RunE
-// (kernel.GroupRunE: help when bare, loud exit-2 misuse on an unknown
-// subcommand), NOT a business reader.
 func TestGroup_bareAvailabilityIsPureNoun(t *testing.T) {
 	group := availability.NewCommand(kernel.Boot{})
 	if got := group.Use; got != "availability" {
 		t.Errorf("group.Use = %q, want %q", got, "availability")
 	}
-	// A grouping noun carries no business Run; its RunE only helps or rejects.
 	if group.Run != nil {
 		t.Error("bare `tracks availability` must not carry a business Run (it is a grouping noun)")
 	}
 	if group.RunE == nil {
 		t.Fatal("bare `tracks availability` must have the grouping RunE (help when bare, loud on unknown subcommand)")
 	}
-	// Bare invocation prints help and succeeds: it never performs a read.
 	group.SetOut(io.Discard)
 	if err := group.RunE(group, nil); err != nil {
 		t.Errorf("bare `tracks availability` should print help and succeed, got err=%v", err)
 	}
-	// An unknown subcommand is rejected loudly, naming the command, not
-	// silently helped with exit 0.
 	if err := group.RunE(group, []string{"nonesuch"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("unknown subcommand of `tracks availability` should be rejected naming the command; got err=%v", err)
 	}
@@ -312,8 +267,6 @@ func TestGroup_bareAvailabilityIsPureNoun(t *testing.T) {
 	}
 }
 
-// TestViewCommand_hasReadSurface asserts `tracks availability view` is wired
-// as the read: it runs (has a RunE) and exposes --package/--track/--output.
 func TestViewCommand_hasReadSurface(t *testing.T) {
 	view := availability.NewViewCommand(kernel.Boot{})
 	if view.RunE == nil {

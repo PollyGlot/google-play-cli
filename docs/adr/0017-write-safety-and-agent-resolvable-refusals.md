@@ -75,6 +75,10 @@ trivially fixable one.
   preview's gplay-authored array fields are normalised to `[]` before they
   are encoded, so a consumer iterates them without a guard. The error
   envelope differs: its `requires` and `reasons` are omitted when empty.
+- **The Routine tier reaches beyond `team`.** `apps details set` takes no
+  `--confirm`, for the reason `testers set` takes none: contact details are
+  low-stakes and reversible. It checks no email, URL or phone shape offline
+  either; the API arbitrates the format and its error surfaces verbatim.
 
 ## Considered options
 

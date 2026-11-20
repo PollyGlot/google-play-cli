@@ -1,8 +1,3 @@
-// Package upload implements `gplay releases expansion-files upload`: upload a
-// legacy .obb expansion file and attach it to an already-published APK
-// versionCode, through the full Edit lifecycle (insert → upload → commit). OBB
-// is legacy (superseded by Play Asset Delivery for AABs). ROUTINE tier
-// (ADR-0017): MarkMutating, --dry-run, no --confirm. Ships [experimental].
 package upload
 
 import (
@@ -22,7 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/expansionfiles"
 )
 
-// Input is the request-shaped struct cobra builds from flags + args.
 type Input struct {
 	Package           string
 	VersionCode       int
@@ -34,7 +28,6 @@ type Input struct {
 	SkipPreflight     bool
 }
 
-// Payload renders the upload (live) or rehearsal (--dry-run).
 type Payload struct {
 	VersionCode int
 	Type        string
@@ -66,7 +59,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
 		return nil, exit.Usagef("missing or invalid --version-code: the APK versionCode the expansion file attaches to is required")
@@ -83,12 +75,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	// Artifact preflight (PRD #448): an .obb is neither an AAB nor an APK, so
-	// the check here is the container one only (there is no package name to
-	// read out of an expansion file). It catches the real mistake on this
-	// surface: passing the app's build where its asset sidecar belongs. It
-	// also covers the missing / non-regular path, which is why the dry-run
-	// branch below no longer stats the file itself.
 	if err := artifact.Verify(rc.Stderr, in.OBBPath, artifact.Expect{
 		Kinds: []artifact.Kind{artifact.KindUnknown},
 	}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
@@ -99,13 +85,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return Payload{VersionCode: in.VersionCode, Type: ft, DryRun: true}, nil
 	}
 
-	// UploadClient: a >150 MB .obb is exempt from the control-plane timeout.
 	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return nil, err
 	}
-	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-upload Edit.
 	explicitEditID, err := rc.ExplicitEditID(pkg)
 	if err != nil {
 		return nil, err
@@ -123,7 +106,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{VersionCode: in.VersionCode, Type: ft, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases expansion-files upload`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

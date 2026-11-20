@@ -34,8 +34,6 @@ type dlRT struct {
 	status int
 }
 
-// serve answers the artifact GET with raw octet-stream bytes, which the Fake's
-// JSON responses cannot express.
 func (r *dlRT) serve(req *http.Request) (*http.Response, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -77,9 +75,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout, &stderr
 }
 
-// TestRun_writesBytesToFile asserts the artifact lands on disk, the request
-// carried alt=media on the :download endpoint, and the ✓ went to stderr (not the
-// data path).
 func TestRun_writesBytesToFile(t *testing.T) {
 	rt := &dlRT{}
 	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -107,7 +102,6 @@ func TestRun_writesBytesToFile(t *testing.T) {
 	}
 }
 
-// TestRun_destDash_streamsToStdout asserts --dest - puts the raw bytes on stdout.
 func TestRun_destDash_streamsToStdout(t *testing.T) {
 	rt := &dlRT{}
 	rc, stdout, stderr := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -124,8 +118,6 @@ func TestRun_destDash_streamsToStdout(t *testing.T) {
 	}
 }
 
-// TestRun_404_exit30_noPartialFile asserts an unknown downloadId fails with exit
-// 30 and leaves no partial file behind.
 func TestRun_404_exit30_noPartialFile(t *testing.T) {
 	rt := &dlRT{status: 404}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -138,8 +130,6 @@ func TestRun_404_exit30_noPartialFile(t *testing.T) {
 	}
 }
 
-// TestRun_403_exit11 covers the refusal path: exit 11 from the wrapped
-// *api.Error, and the canonical grant hint every package-axis group shares.
 func TestRun_403_exit11(t *testing.T) {
 	rt := &dlRT{status: 403}
 	rc, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
@@ -151,8 +141,6 @@ func TestRun_403_exit11(t *testing.T) {
 	}
 }
 
-// TestRun_validation_exit2_noNetwork asserts the missing-argument guards fire
-// before any network call.
 func TestRun_validation_exit2_noNetwork(t *testing.T) {
 	cases := []struct {
 		name string

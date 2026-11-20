@@ -4,6 +4,11 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments;
+corrected for [ADR-0019](./0019-canonical-verb-vocabulary.md), which turned
+the two verb-less reads into `apps details view` and `tracks availability
+view`
+
 ## Context
 
 PRD #113 set out to give gplay "complete info about an app" by covering
@@ -39,8 +44,9 @@ of trap that needs recording.
    country availability are not siblings; they go to different
    namespaces with different capabilities.
 
-2. **App details → `apps`, read + write.** `gplay apps details` (bare
-   noun) reads the full `edits.details` record; `gplay apps details set`
+2. **App details → `apps`, read + write.** `gplay apps details view`
+   reads the full `edits.details` record (the bare `apps details` is a
+   grouping noun that prints help, ADR-0019); `gplay apps details set`
    writes it field-by-field via `patch`. This is the one writable
    app-global surface gplay exposes. It stays distinct from `apps info`,
    the cross-resource identity card (package + title + default language,
@@ -48,8 +54,9 @@ of trap that needs recording.
    altitudes, deliberately (the `kubectl get`/`describe` pattern).
 
 3. **Country availability → `tracks`, read-only.** It surfaces as a read
-   under `tracks` (e.g. `gplay tracks availability --package <P> --track
-   <T>`). gplay does **not** synthesize an app-global, editable
+   under `tracks` (`gplay tracks availability view --package <P> --track
+   <T>`). Because the resource is keyed by track, `--track` is required, with
+   no implicit `production` default. gplay does **not** synthesize an app-global, editable
    availability surface — no aggregating the four standard tracks into a
    fake "app availability", no client-side emulation of a writer the API
    does not provide. We surface the resource at its real grain (per
@@ -62,8 +69,8 @@ of trap that needs recording.
    by track → Country availability → `tracks`.
 
 5. **No `[experimental]` label and no contested verbs.** The write verb
-   `set` is already gplay's convention (`testers set`, `tracks set`); the
-   read is the bare noun, asserting no verb at all. Nothing new is
+   `set` is already gplay's convention (`testers set`); the
+   read was first the bare noun, and is `view` since ADR-0019. Nothing new is
    frozen that the verb-vocabulary audit (#98) could be forced to rename,
    so these commands ship as stable preview surface. `set` is a partial
    patch at flag granularity — omitted flag leaves the field untouched,
@@ -75,7 +82,7 @@ of trap that needs recording.
 - ADR-0011's parenthetical filing `edits.countryavailability` under
   `apps` is superseded by this ADR; its two-axis test is widened to the
   three-axis test in item 4.
-- `gplay apps details` reads a **single** endpoint, so its `--output
+- `gplay apps details view` reads a **single** endpoint, so its `--output
   json` is a clean `edits.details.get` pass-through — unlike `apps info`,
   it needs no ADR-0003 exception.
 - The command names (`apps details`, `apps details set`, and the future

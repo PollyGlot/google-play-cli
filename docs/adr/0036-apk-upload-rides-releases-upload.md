@@ -27,6 +27,18 @@ The decisions:
   flag surface (`--track`, `--staged`, `--release-notes*`, `--mapping`,
   `--dry-run`, `--confirm`) for zero semantic gain.
 
+- **With several artifacts, detection stays per file.** Each path is
+  classified on its own, and a mixed AAB/APK set is sent as is: whether Play
+  accepts it is Play's call. One `--format` then covers every artifact, so an
+  extension naming the other container is a contradiction, refused before
+  any file is read, rather than an override. A single artifact keeps the
+  original semantics, where `--format` wins over its extension. Options that
+  belong to one container follow the file they reach: `--device-tier-config`
+  goes to the bundle uploads only
+  ([ADR-0055](./0055-play-api-behaviours-the-client-absorbs.md)), and the
+  checks on retained versionCodes and on `--mapping` are in
+  [ADR-0063](./0063-offline-validation-before-the-api.md).
+
 - **The rest of the pipeline is unchanged, by construction.** Everything after
   the upload step keys on the `versionCode` the API returns, which
   `apks.upload` returns exactly like `bundles.upload`. So draft-by-default on

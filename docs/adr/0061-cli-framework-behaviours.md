@@ -61,6 +61,10 @@ either is the moment to re-read it.
 - **`cobra.NoArgs` is recognised by comparing code pointers**, the one way to
   identify a top-level func value in Go, so its rejection can be reworded
   without matching cobra's message text.
+- **Flags are parsed before cobra runs the `Args` validator**, so
+  `Flags().Changed` is reliable inside one. `apps init` relies on it: with
+  `--package` already given, a stray positional is not a misplaced package
+  name, and the hint suggesting `--package` is left out.
 - **cobra adds `help` and `completion` lazily.** The root materialises them
   before the walk so their validators are covered. The hidden `__complete`
   command is injected inside `Execute` with no earlier hook, and stays out of

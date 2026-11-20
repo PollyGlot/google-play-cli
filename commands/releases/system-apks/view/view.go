@@ -1,5 +1,3 @@
-// Package view implements `gplay releases system-apks view <variantId>`: read
-// one System APK variant. Read-only and Edit-free. Ships [experimental].
 package view
 
 import (
@@ -14,7 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/systemapks"
 )
 
-// Input is the request-shaped struct cobra builds from the positional + flags.
 type Input struct {
 	Package     string
 	VersionCode int64
@@ -22,7 +19,6 @@ type Input struct {
 	Columns     string
 }
 
-// Payload renders one variant as a single-row table / verbatim JSON.
 type Payload struct {
 	Row  systemapkscmd.Row
 	Cols []output.Column[systemapkscmd.Row]
@@ -37,7 +33,6 @@ func (p Payload) Renderers() output.Renderers {
 	}
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	id, err := systemapkscmd.ParseVariantID(in.VariantID)
 	if err != nil {
@@ -65,7 +60,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{Row: systemapkscmd.BuildRow(v), Cols: cols, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases system-apks view`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

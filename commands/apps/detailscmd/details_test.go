@@ -1,10 +1,3 @@
-// Package detailscmd_test exercises `gplay apps details view` (the record
-// read) at the kernel level: a RunContext built by hand, a testkit Fake
-// injected via the oauth2.HTTPClient context key, and Run invoked
-// directly. Mirrors the apps-view harness: the transport FAILS on any
-// PUT/PATCH/:commit AND on listings.get, because reading App details is a
-// read-only, single-endpoint operation (open Edit → details.get →
-// discard, never commit, never a second endpoint).
 package detailscmd_test
 
 import (
@@ -27,11 +20,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// readAPI is the Play API the apps-details read sees, served by a testkit
-// Fake: edits.insert, edits.details.get, edits.delete. It has NO
-// PUT/PATCH/:commit route and NO listings.get route: reaching either means
-// the command tried to mutate state or hit a second endpoint, which a
-// single-endpoint read-only command must never do, so the test fails.
 type readAPI struct {
 	editID  string
 	details string
@@ -57,9 +45,6 @@ func (a *readAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *readAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -98,11 +83,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_happyPath asserts the read-only single-endpoint vertical slice:
-// /token first, then edits.insert, details.get, edits.delete (no
-// listings.get, no commit). The returned payload carries the four App
-// details fields, and --output json emits the details.get body verbatim
-// (clean ADR-0003 pass-through: no envelope).
 func TestRun_happyPath(t *testing.T) {
 	body := `{"contactEmail":"hi@example.com","contactPhone":"+1 555 0100","contactWebsite":"https://x.example","defaultLanguage":"en-US"}`
 	api := &readAPI{editID: "edit-details", details: body}
@@ -134,7 +114,6 @@ func TestRun_happyPath(t *testing.T) {
 		}
 	}
 
-	// JSON pass-through: the details.get body verbatim, no gplay envelope.
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
 		t.Fatalf("JSON render: %v", err)
@@ -144,9 +123,6 @@ func TestRun_happyPath(t *testing.T) {
 	}
 }
 
-// TestRun_usesPin_whenNoFlag asserts that without --package the command
-// falls back to rc.Resolved.Pin (the .gplay/config.json pin), matching
-// the same precedence rule as `gplay apps view` / `tracks view`.
 func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	api := &readAPI{
 		editID:  "edit-pin",
@@ -166,9 +142,6 @@ func TestRun_usesPin_whenNoFlag(t *testing.T) {
 	t.Errorf("expected calls scoped to com.pinned.app, got: %v", api.calls())
 }
 
-// TestRun_missingPackage_exit2 asserts that with neither --package nor a
-// pinned project, the command short-circuits with a usage error before
-// any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	api := &readAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -181,9 +154,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call: there is no
-// dry-run path for a read.
 func TestRun_noAccount_exit10(t *testing.T) {
 	api := &readAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -197,9 +167,6 @@ func TestRun_noAccount_exit10(t *testing.T) {
 	}
 }
 
-// TestRun_get403_exit11_apiAccessHint asserts a 403 on details.get
-// bubbles up as exit 11 (authorization) with an actionable hint pointing
-// at the Play Console API access page.
 func TestRun_get403_exit11_apiAccessHint(t *testing.T) {
 	api := &readAPI{
 		editID:      "edit-403",
@@ -216,9 +183,6 @@ func TestRun_get403_exit11_apiAccessHint(t *testing.T) {
 	}
 }
 
-// TestRun_get404_exit30_appsListHint asserts a 404 on details.get maps to
-// exit 30 (API 4xx other than auth/perms) with a hint pointing at
-// `gplay apps list`.
 func TestRun_get404_exit30_appsListHint(t *testing.T) {
 	api := &readAPI{
 		editID:      "edit-404",
@@ -235,9 +199,6 @@ func TestRun_get404_exit30_appsListHint(t *testing.T) {
 	}
 }
 
-// TestRenderTable_showsAllFourFields asserts the table view surfaces all
-// four App details fields. The exact layout is up to the renderer; the
-// contract is that each value appears somewhere in the output.
 func TestRenderTable_showsAllFourFields(t *testing.T) {
 	p := detailscmd.Payload{
 		Package:         "com.example.app",
@@ -258,10 +219,6 @@ func TestRenderTable_showsAllFourFields(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_showsAllFourFields asserts the markdown view
-// surfaces the same four fields. Per docs/DESIGN.md §7, markdown for a
-// single-record read is a `- **Field**: value` list rather than a GFM
-// table.
 func TestRenderMarkdown_showsAllFourFields(t *testing.T) {
 	p := detailscmd.Payload{
 		Package:         "com.example.app",
@@ -282,28 +239,18 @@ func TestRenderMarkdown_showsAllFourFields(t *testing.T) {
 	}
 }
 
-// TestGroup_bareDetailsIsPureNoun asserts the ADR-0019 shape: `apps details`
-// is a pure grouping noun: the bare command prints help and never reads (the
-// read lives under `view`), and `set` stays present. Its RunE is the shared
-// grouping RunE (kernel.GroupRunE: help when bare, loud exit-2 misuse on an
-// unknown subcommand), NOT a business reader. This is the structural guard for
-// #166 (a verb-less read would be a regression) plus the loud-failure contract.
 func TestGroup_bareDetailsIsPureNoun(t *testing.T) {
 	group := detailscmd.NewCommand(kernel.Boot{})
-	// A grouping noun carries no business Run; its RunE only helps or rejects.
 	if group.Run != nil {
 		t.Error("bare `apps details` must not carry a business Run (it is a grouping noun)")
 	}
 	if group.RunE == nil {
 		t.Fatal("bare `apps details` must have the grouping RunE (help when bare, loud on unknown subcommand)")
 	}
-	// Bare invocation prints help and succeeds: it never performs a read.
 	group.SetOut(io.Discard)
 	if err := group.RunE(group, nil); err != nil {
 		t.Errorf("bare `apps details` should print help and succeed, got err=%v", err)
 	}
-	// An unknown subcommand is rejected loudly, naming the command, not
-	// silently helped with exit 0.
 	if err := group.RunE(group, []string{"nonesuch"}); err == nil || !strings.Contains(err.Error(), "unknown command") {
 		t.Errorf("unknown subcommand of `apps details` should be rejected naming the command; got err=%v", err)
 	}
@@ -324,8 +271,6 @@ func TestGroup_bareDetailsIsPureNoun(t *testing.T) {
 	}
 }
 
-// TestViewCommand_hasReadSurface asserts `apps details view` is wired as the
-// read: it runs (has a RunE) and exposes --package.
 func TestViewCommand_hasReadSurface(t *testing.T) {
 	view := detailscmd.NewViewCommand(kernel.Boot{})
 	if view.RunE == nil {
@@ -334,8 +279,6 @@ func TestViewCommand_hasReadSurface(t *testing.T) {
 	if view.Flags().Lookup("package") == nil {
 		t.Error("`apps details view` must expose --package")
 	}
-	// Per the repo contract, every command supports --output with table/json/
-	// markdown: lock that on the read surface too.
 	out := view.Flags().Lookup("output")
 	if out == nil {
 		t.Fatal("`apps details view` must expose --output")

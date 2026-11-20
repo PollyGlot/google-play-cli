@@ -1,9 +1,3 @@
-// Package set implements `gplay releases expansion-files set`: declaratively
-// point an APK's expansion file at another APK versionCode's already-uploaded
-// file (no new binary). It wraps edits.expansionfiles.update (PUT) inside the
-// Edit lifecycle. `set` covers both the API's update (PUT) and patch (PATCH):
-// a 1-writable-field resource needs one declarative verb (ADR-0019 / ADR-0030).
-// ROUTINE tier: MarkMutating, --dry-run, no --confirm. Ships [experimental].
 package set
 
 import (
@@ -22,7 +16,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/expansionfiles"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package           string
 	VersionCode       int
@@ -33,7 +26,6 @@ type Input struct {
 	DryRun            bool
 }
 
-// Payload renders the set (live) or rehearsal (--dry-run).
 type Payload struct {
 	VersionCode       int
 	Type              string
@@ -73,7 +65,6 @@ func dryRunSuffix(dry bool) string {
 	return ""
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if in.VersionCode <= 0 {
 		return nil, exit.Usagef("missing or invalid --version-code: the APK whose expansion config is being set is required")
@@ -98,8 +89,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Reuse an open explicit Edit when one is pinned (`gplay edits begin`); ""
-	// keeps the implicit per-set Edit.
 	explicitEditID, err := rc.ExplicitEditID(pkg)
 	if err != nil {
 		return nil, err
@@ -117,7 +106,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	return Payload{VersionCode: in.VersionCode, Type: ft, ReferencesVersion: in.ReferencesVersion, Raw: raw}, nil
 }
 
-// NewCommand returns the cobra command for `gplay releases expansion-files set`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

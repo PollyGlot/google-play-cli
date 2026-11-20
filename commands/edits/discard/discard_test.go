@@ -23,8 +23,6 @@ import (
 
 const pkg = "com.example.app"
 
-// newDiscardFake serves the edits.delete DELETE; deleteStatus (0 → 204)
-// forces a 404 or a 500 for the already-gone and server-error tests.
 func newDiscardFake(deleteStatus int) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if c.Method != http.MethodDelete || !strings.Contains(c.Path, "/edits/") {
@@ -37,7 +35,6 @@ func newDiscardFake(deleteStatus int) *testkit.Fake {
 	})
 }
 
-// deleteCalls counts the edits.delete requests the fake served.
 func deleteCalls(f *testkit.Fake) int {
 	n := 0
 	for _, c := range f.Calls() {
@@ -54,8 +51,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string) {
 	return rc, gplayDir
 }
 
-// newRCWithStderr is newRC plus the buffer behind rc.Stderr, for the tests that
-// read the confirmation line.
 func newRCWithStderr(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, string, *bytes.Buffer) {
 	t.Helper()
 	stderr := &bytes.Buffer{}
@@ -102,8 +97,6 @@ func TestRun_discardsAndClearsPin(t *testing.T) {
 }
 
 func TestRun_discard404_isSuccessAndClearsPin(t *testing.T) {
-	// A 404 means the Edit is already gone: the discard's desired end state.
-	// The pin must still be cleared and the command must succeed.
 	fake := newDiscardFake(404)
 	rc, gplayDir := newRC(t, fake)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-gone"); err != nil {
@@ -119,9 +112,6 @@ func TestRun_discard404_isSuccessAndClearsPin(t *testing.T) {
 }
 
 func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
-	// A non-404 server error: the user asked to abandon the Edit, so the local
-	// pin must still be cleared (it auto-expires in ~24h), but the failed remote
-	// discard must surface: a filesystem clear must not mask it.
 	fake := newDiscardFake(500)
 	rc, gplayDir := newRC(t, fake)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-stuck"); err != nil {
@@ -140,10 +130,6 @@ func TestRun_discardServerError_clearsPinButReturnsError(t *testing.T) {
 	}
 }
 
-// TestRun_unreadablePin_removedWithoutNetwork is #786: a corrupt pin used to
-// make discard fail like every other command, leaving `rm` as the only way
-// out. Discard now removes it, sends nothing to Play (there is no Edit ID to
-// trust), and says so on stderr and in its payload.
 func TestRun_unreadablePin_removedWithoutNetwork(t *testing.T) {
 	fake := newDiscardFake(0)
 	rc, gplayDir, stderrBuf := newRCWithStderr(t, fake)
@@ -173,9 +159,6 @@ func TestRun_unreadablePin_removedWithoutNetwork(t *testing.T) {
 	}
 }
 
-// TestRun_pinThatCannotBeRead_isNotRemoved guards the other side: a pin that
-// fails to READ (here a directory where the file should be) is not corrupt
-// content, so discard must refuse rather than delete what it never inspected.
 func TestRun_pinThatCannotBeRead_isNotRemoved(t *testing.T) {
 	fake := newDiscardFake(0)
 	rc, gplayDir := newRC(t, fake)

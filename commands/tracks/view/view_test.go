@@ -1,10 +1,3 @@
-// Package view_test exercises `gplay tracks view` at the kernel
-// level: a RunContext built by hand, a testkit Fake injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// `tracks list` harness, but routes tracks.get (the single-track deep
-// read, GET .../tracks/<name>) instead of tracks.list. The transport
-// FAILS on any PUT or :commit: a read-only track view opens, reads,
-// and discards the Edit, never writes or commits it.
 package view_test
 
 import (
@@ -26,16 +19,11 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// statusAPI is the Play API the read-only single-track view sees, served by
-// a testkit Fake: edits.insert, tracks.get (GET .../tracks/<name>),
-// edits.delete. It deliberately has NO PUT or :commit route: reaching one
-// means the command tried to mutate or commit, which a read-only status view
-// must never do, so the test fails.
 type statusAPI struct {
 	editID     string
 	trackResp  string
-	insertCode int // 0 -> 200
-	trackCode  int // 0 -> 200
+	insertCode int
+	trackCode  int
 	insertBody string
 
 	fake *testkit.Fake
@@ -61,9 +49,6 @@ func (a *statusAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *statusAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -101,10 +86,6 @@ func exitCodeOf(t *testing.T, err error) int {
 	return coder.ExitCode()
 }
 
-// TestRun_statusOfTrack_happyPath is the tracer bullet: /token precedes
-// edits.insert, then tracks.get (GET .../tracks/production, the
-// single-track deep read), then the Edit is DISCARDED (never committed).
-// --output json is the raw tracks.get payload (ADR-0003 pass-through).
 func TestRun_statusOfTrack_happyPath(t *testing.T) {
 	raw := `{"track":"production","releases":[` +
 		`{"name":"142","status":"completed","versionCodes":["142"],"userFraction":1.0},` +
@@ -148,11 +129,6 @@ func TestRun_statusOfTrack_happyPath(t *testing.T) {
 	}
 }
 
-// TestRenderTable_halted_isVisuallyDistinct is the headline feature: a
-// halted release must jump out at a glance. The status column renders
-// `halted` uppercased and prefixed with `!` (-> !HALTED), so an operator
-// scanning the table cannot confuse it with a healthy inProgress rollout,
-// which is left in its plain API form.
 func TestRenderTable_halted_isVisuallyDistinct(t *testing.T) {
 	cols, _ := view.ResolveColumns("status")
 	p := view.Payload{
@@ -172,8 +148,6 @@ func TestRenderTable_halted_isVisuallyDistinct(t *testing.T) {
 	if !strings.Contains(out, "!HALTED") {
 		t.Errorf("table missing halted marker !HALTED:\n%s", out)
 	}
-	// The healthy rollout stays in its plain API form: it must NOT pick
-	// up the halted marker, otherwise the marker stops meaning "halted".
 	if !strings.Contains(out, "inProgress") {
 		t.Errorf("table missing plain inProgress status:\n%s", out)
 	}
@@ -182,8 +156,6 @@ func TestRenderTable_halted_isVisuallyDistinct(t *testing.T) {
 	}
 }
 
-// lineContaining returns the first line of out that contains needle, or
-// "" if none does. Used to assert one release's row in a rendered table.
 func lineContaining(out, needle string) string {
 	for _, line := range strings.Split(out, "\n") {
 		if strings.Contains(line, needle) {
@@ -193,10 +165,6 @@ func lineContaining(out, needle string) string {
 	return ""
 }
 
-// TestRenderTable_listsEveryCoexistingRelease asserts the deep view: every
-// release coexisting on the track: draft, inProgress, halted, completed
-// alike: gets its own row under the default columns, and the release-notes
-// locale count is rendered as the count of localized entries.
 func TestRenderTable_listsEveryCoexistingRelease(t *testing.T) {
 	p := view.Payload{
 		Releases: []tracks.Release{
@@ -222,14 +190,11 @@ func TestRenderTable_listsEveryCoexistingRelease(t *testing.T) {
 			t.Errorf("table missing header %q:\n%s", want, out)
 		}
 	}
-	// All four coexisting releases get a row, regardless of status.
 	for _, name := range []string{"150-draft", "143", "142", "140-live"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("table missing release %q:\n%s", name, out)
 		}
 	}
-	// The completed release carries two release-notes locales -> "2" in
-	// its NOTES_LOCALES cell (the last field of its row).
 	row := lineContaining(out, "140-live")
 	fields := strings.Fields(row)
 	if len(fields) == 0 || fields[len(fields)-1] != "2" {
@@ -237,11 +202,6 @@ func TestRenderTable_listsEveryCoexistingRelease(t *testing.T) {
 	}
 }
 
-// TestRun_derivesTrackKind asserts the command labels the track standard
-// vs custom from its name: the four well-known tracks Google Play
-// provisions for every app are "standard"; anything else is a "custom"
-// closed track. The kind is gplay-derived (the API has no such field), so
-// it appears in the human table view, alongside the track name.
 func TestRun_derivesTrackKind(t *testing.T) {
 	cases := map[string]string{
 		"internal":   "standard",
@@ -276,8 +236,6 @@ func TestRun_derivesTrackKind(t *testing.T) {
 	}
 }
 
-// TestDefaultColumns_documentedOrder pins the default table column order
-// promised in --help and the issue's acceptance criteria.
 func TestDefaultColumns_documentedOrder(t *testing.T) {
 	want := []string{"name", "status", "userFraction", "versionCodes", "notes"}
 	got := make([]string, 0, len(want))
@@ -289,9 +247,6 @@ func TestDefaultColumns_documentedOrder(t *testing.T) {
 	}
 }
 
-// mustDefaultColumns resolves the default column set for a Payload built
-// directly in a render test, failing the test if resolution errors (it
-// cannot, for the empty spec: this just keeps the call sites terse).
 func mustDefaultColumns(t *testing.T) []output.Column[tracks.Release] {
 	t.Helper()
 	cols, err := view.ResolveColumns("")
@@ -301,8 +256,6 @@ func mustDefaultColumns(t *testing.T) []output.Column[tracks.Release] {
 	return cols
 }
 
-// TestRun_columnsOverride_restrictsColumns asserts --columns narrows the
-// rendered table to exactly the requested columns, in order.
 func TestRun_columnsOverride_restrictsColumns(t *testing.T) {
 	raw := `{"track":"production","releases":[{"name":"143","status":"inProgress","versionCodes":["143"],"userFraction":0.1}]}`
 	api := &statusAPI{editID: "edit-cols", trackResp: raw}
@@ -329,8 +282,6 @@ func TestRun_columnsOverride_restrictsColumns(t *testing.T) {
 	}
 }
 
-// TestRun_unknownColumn_exit2 asserts an unknown --columns value is a CLI
-// misuse caught before any HTTP call.
 func TestRun_unknownColumn_exit2(t *testing.T) {
 	api := &statusAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -343,10 +294,6 @@ func TestRun_unknownColumn_exit2(t *testing.T) {
 	}
 }
 
-// TestRenderMarkdown_isGFMTable_marksHalted asserts the markdown view is a
-// GFM table (header + `---` separator) over the same releases, and that
-// the halted marker carries into it: markdown is a human-facing view, so
-// a halted rollout must stand out there too.
 func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	p := view.Payload{
 		Track: "production",
@@ -372,18 +319,11 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	if !strings.Contains(out, "!HALTED") {
 		t.Errorf("markdown output = %q, want the halted marker !HALTED", out)
 	}
-	// Markdown carries the same track/kind context as the table view, so
-	// a pasted report stands on its own without the command line.
 	if !strings.Contains(out, "Track: production (standard)") {
 		t.Errorf("markdown output = %q, want the track/kind context line", out)
 	}
 }
 
-// TestRenderJSON_emptyRaw_errors asserts the JSON view refuses to emit a
-// Payload with no captured raw body rather than silently writing zero
-// bytes (exit 0). Every Payload field is json:"-", so an empty Raw could
-// only ever produce a bare body and break the ADR-0003 pass-through
-// contract: defensive parity with the tracks.list sibling.
 func TestRenderJSON_emptyRaw_errors(t *testing.T) {
 	var buf bytes.Buffer
 	if err := (view.Payload{}).Renderers().JSON(&buf); err == nil {
@@ -391,9 +331,6 @@ func TestRenderJSON_emptyRaw_errors(t *testing.T) {
 	}
 }
 
-// TestRun_unknownTrack_exit30WithHint asserts that an unknown track
-// (tracks.get 404) maps to exit 30 with a hint pointing the operator at
-// `gplay tracks list`, and that the read-only Edit is still discarded.
 func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 	api := &statusAPI{
 		editID:    "edit-404",
@@ -420,12 +357,6 @@ func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_unknownPackage_exit30WithHint asserts that an unknown package
-// (edits.insert 404, raised before the read closure runs) maps to exit 30
-// with a hint pointing the operator at `gplay apps list`: mirroring the
-// sibling `gplay tracks list`. The closure never runs, so the track is
-// never read; the package miss is caught at insert, distinct from the
-// tracks.get 404 (unknown track) that points at `gplay tracks list`.
 func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	api := &statusAPI{
 		insertCode: 404,
@@ -447,8 +378,6 @@ func TestRun_unknownPackage_exit30WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_forbidden_exit11WithHint asserts that a 403 (service account not
-// invited on the app) maps to exit 11 with the standard grant-access hint.
 func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	api := &statusAPI{
 		insertCode: 403,
@@ -465,9 +394,6 @@ func TestRun_forbidden_exit11WithHint(t *testing.T) {
 	}
 }
 
-// TestRun_tracksGetError_discardsEditAndPropagates asserts the read-only
-// Edit is discarded even when the read itself fails after the Edit was
-// opened, and the underlying status drives the exit code (5xx -> 40).
 func TestRun_tracksGetError_discardsEditAndPropagates(t *testing.T) {
 	api := &statusAPI{
 		editID:    "edit-err",
@@ -491,8 +417,6 @@ func TestRun_tracksGetError_discardsEditAndPropagates(t *testing.T) {
 	}
 }
 
-// TestRun_missingTrack_exit2 asserts a missing --track is a usage error
-// caught before any HTTP call.
 func TestRun_missingTrack_exit2(t *testing.T) {
 	api := &statusAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -505,8 +429,6 @@ func TestRun_missingTrack_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_missingPackage_exit2 asserts a missing package (no --package and
-// no pin) is a usage error before any HTTP call.
 func TestRun_missingPackage_exit2(t *testing.T) {
 	api := &statusAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -519,11 +441,6 @@ func TestRun_missingPackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_whitespaceTrack_exit2 asserts a --track that is only whitespace
-// is treated as missing: a usage error (exit 2) caught before any HTTP
-// call, not a track named "   " sent to the API. Mirrors the empty-track
-// guard: leading/trailing whitespace from a shell or CI variable must be
-// trimmed at the input boundary.
 func TestRun_whitespaceTrack_exit2(t *testing.T) {
 	api := &statusAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -536,8 +453,6 @@ func TestRun_whitespaceTrack_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_whitespacePackage_exit2 asserts a --package that is only
-// whitespace is treated as missing (exit 2) before any HTTP call.
 func TestRun_whitespacePackage_exit2(t *testing.T) {
 	api := &statusAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -550,8 +465,6 @@ func TestRun_whitespacePackage_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_noAccount_exit10 asserts that with no resolved Account the
-// command fails auth (exit 10) before any HTTP call.
 func TestRun_noAccount_exit10(t *testing.T) {
 	api := &statusAPI{}
 	rc, _ := newRC(t, api.serve(t))

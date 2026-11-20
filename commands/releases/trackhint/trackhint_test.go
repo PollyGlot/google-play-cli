@@ -1,7 +1,3 @@
-// Package trackhint_test exercises the shared track-not-found classifier
-// that `releases upload` and `releases promote` use to point an operator at
-// `gplay tracks create <name>` when they target a closed track that does not
-// exist yet.
 package trackhint_test
 
 import (
@@ -13,10 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
-// TestClassify_tracksUpdate404_addsCreateHint asserts a tracks.update 404 (the
-// signal that the destination closed track has not been created) is wrapped
-// with a `gplay tracks create <name>` hint while the underlying
-// *api.Error keeps driving the exit code (404 → 30).
 func TestClassify_tracksUpdate404_addsCreateHint(t *testing.T) {
 	cause := &api.Error{Operation: "tracks.update", Package: "com.example.app", StatusCode: 404, Message: "Track not found."}
 
@@ -32,10 +24,6 @@ func TestClassify_tracksUpdate404_addsCreateHint(t *testing.T) {
 	}
 }
 
-// TestClassify_otherFailures_passThroughVerbatim asserts the hint is scoped
-// to the tracks.update-not-found case: a package miss (edits.insert 404), an
-// auth failure (tracks.update 403), a non-api error, and nil all propagate
-// untouched so no unrelated failure is mislabeled "create the track".
 func TestClassify_otherFailures_passThroughVerbatim(t *testing.T) {
 	pkgMiss := &api.Error{Operation: "edits.insert", StatusCode: 404}
 	if got := trackhint.Classify("qa-team", pkgMiss); got != error(pkgMiss) { //nolint:errorlint // identity, not errors.Is: the test asserts the error is returned verbatim

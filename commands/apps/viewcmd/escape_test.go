@@ -8,10 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output/outputtest"
 )
 
-// TestRun_humanViews_stripTerminalEscapes serves details and a listing whose
-// contact email and title carry an OSC title and a CSI erase-screen, and
-// asserts the human views print them without the sequences while JSON keeps
-// the bytes verbatim (ADR-0003).
 func TestRun_humanViews_stripTerminalEscapes(t *testing.T) {
 	api := &viewAPI{
 		editID:      "edit-info",

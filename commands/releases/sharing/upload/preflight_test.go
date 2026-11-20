@@ -1,10 +1,5 @@
 package upload_test
 
-// Artifact preflight (PRD #448) on `gplay releases sharing upload`. Internal
-// App Sharing bypasses tracks and the Edit lifecycle, but it is still keyed
-// by package, so both checks apply: the container must be the format
-// --format resolved to, and the build must belong to the app named.
-
 import (
 	"strings"
 	"testing"
@@ -17,7 +12,6 @@ func TestRun_preflight_refusesAContainerThatIsNotTheResolvedFormat(t *testing.T)
 	fake := newFake()
 	rc, _ := newRC(t, fake)
 
-	// An AAB behind an .apk name: extension auto-detect says "apk".
 	p := artifacttest.AAB(t, t.TempDir(), "app.apk", "com.example.app")
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: p})
 	if got := exitOf(t, err); got != 20 {

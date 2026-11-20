@@ -10,9 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 )
 
-// TestRun_deviceTierConfig_forwardedToBundlesUpload asserts
-// --device-tier-config reaches edits.bundles.upload as deviceTierConfigId and
-// leaves the rest of the release unchanged (#603).
 func TestRun_deviceTierConfig_forwardedToBundlesUpload(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{
 		editID:             "edit-dtc",
@@ -39,9 +36,6 @@ func TestRun_deviceTierConfig_forwardedToBundlesUpload(t *testing.T) {
 	}
 }
 
-// TestRun_deviceTierConfig_withAPK_exit2_noHTTP asserts the flag is refused
-// for an APK, which has no device tier parameter, before any request: a
-// silently dropped flag would ship a release the operator did not ask for.
 func TestRun_deviceTierConfig_withAPK_exit2_noHTTP(t *testing.T) {
 	rt, transport := newUploadTransport(uploadAPI{})
 	rc, _ := newRC(t, transport)
@@ -66,8 +60,6 @@ func TestRun_deviceTierConfig_withAPK_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_deviceTierConfig_documented asserts the flag is registered
-// and explained in the command's help.
 func TestNewCommand_deviceTierConfig_documented(t *testing.T) {
 	cmd := upload.NewCommand(kernel.Boot{})
 	if cmd.Flags().Lookup("device-tier-config") == nil {

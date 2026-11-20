@@ -1,8 +1,3 @@
-// Package validate implements `gplay edits validate`: run Google's commit-time
-// checks on the explicit Edit pinned in .gplay/edit-<package>.json
-// (edits.validate) WITHOUT committing it. The Edit stays open whatever the
-// outcome, so a batch of writes can be checked before `gplay edits commit`.
-// With no open Edit it fails with exit 60, like commit.
 package validate
 
 import (
@@ -18,21 +13,15 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 )
 
-// Input is the request-shaped struct cobra builds from flags.
 type Input struct {
 	Package string
 }
 
-// Payload is the renderable: the shared edits envelope for the human views,
-// plus the raw AppEdit the API returned, mirrored verbatim under --output json
-// (ADR-0003): unlike begin/commit/discard/status, validate has an upstream
-// body to pass through.
 type Payload struct {
 	editscmd.Payload
 	Raw json.RawMessage
 }
 
-// Renderers satisfies output.Renderable.
 func (p Payload) Renderers() output.Renderers {
 	r := p.Payload.Renderers()
 	r.JSON = func(w io.Writer) error {
@@ -45,7 +34,6 @@ func (p Payload) Renderers() output.Renderers {
 	return r
 }
 
-// Run is the business function the kernel invokes.
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	pkg, err := rc.Package(in.Package)
 	if err != nil {
@@ -71,8 +59,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	raw, err := edits.ValidateExplicit(rc.Ctx, httpClient, pkg, pin.EditID)
 	if err != nil {
-		// The API's rejection (its error envelope, exit code per HTTP status)
-		// is the answer; the Edit and the pin stay in place for a fix-and-retry.
 		return nil, err
 	}
 
@@ -83,7 +69,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}, nil
 }
 
-// NewCommand returns the cobra command for `gplay edits validate`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var (
 		outputFlag string

@@ -1,10 +1,3 @@
-// Package download implements `gplay releases generated download <downloadId>`:
-// fetch one APK Play generated from a bundle, streaming the raw signed bytes to
-// a local file (or stdout with `--dest -`). This is gplay's first binary
-// download-to-file gesture (ADR-0034): `download` is a domain verb (it writes
-// opaque bytes, which `view`/`set` cannot state honestly), the payload is raw
-// bytes (no --output), and the destination is --dest. Read-only and Edit-free;
-// not MarkMutating, not gated by GPLAY_READONLY. Ships [experimental].
 package download
 
 import (
@@ -21,10 +14,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/generatedapks"
 )
 
-// destStdout is the --dest sentinel that streams the bytes to stdout for piping.
 const destStdout = "-"
 
-// Input is the request-shaped struct cobra builds from the positional + flags.
 type Input struct {
 	Package     string
 	VersionCode int64
@@ -32,10 +23,6 @@ type Input struct {
 	Dest        string
 }
 
-// localIOError is returned when the destination file cannot be created or
-// finalized. It is distinct from *api.Error so the exit code maps to client-side
-// IO (20 per docs/DESIGN.md §9) rather than transport (50): mirroring
-// internal/play/sharing.LocalIOError.
 type localIOError struct {
 	path  string
 	cause error
@@ -45,10 +32,6 @@ func (e *localIOError) Error() string { return fmt.Sprintf("write %s: %v", e.pat
 func (e *localIOError) Unwrap() error { return e.cause }
 func (e *localIOError) ExitCode() int { return 20 }
 
-// Run streams the addressed artifact to the destination and emits the success ✓
-// on stderr. It writes the data path itself (binary file or stdout) and returns
-// no Renderable: the bytes are not a Renderable (DESIGN §"Commands without
-// --output"), so the kernel renders nothing.
 func Run(rc *kernel.RunContext, in Input) error {
 	if strings.TrimSpace(in.DownloadID) == "" {
 		return exit.Usagef("missing <downloadId>: the artifact to download, from `gplay releases generated list`")
@@ -63,10 +46,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	if err != nil {
 		return err
 	}
-	// UploadClient, not AuthedClient: a universal APK can weigh 100+ MB, and the
-	// 60s control-plane deadline also bounds reading the body, so a slow runner
-	// link used to fail mid-stream. The alt=media download is a media transfer,
-	// bounded only by an explicit --timeout (docs/DESIGN.md §8).
 	httpClient, err := rc.UploadClient()
 	if err != nil {
 		return err
@@ -87,8 +66,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	}
 	n, derr := generatedapks.Download(rc.Ctx, httpClient, pkg, in.VersionCode, in.DownloadID, f)
 	closeErr := f.Close()
-	// Don't leave a partial/corrupt APK behind: a failed transfer OR a Close
-	// failure (buffered bytes that never reached disk) means the file is suspect.
 	if derr != nil {
 		_ = os.Remove(in.Dest)
 		return generatedcmd.Classify(pkg, derr)
@@ -101,7 +78,6 @@ func Run(rc *kernel.RunContext, in Input) error {
 	return nil
 }
 
-// NewCommand returns the cobra command for `gplay releases generated download`.
 func NewCommand(boot kernel.Boot) *cobra.Command {
 	var in Input
 	cmd := &cobra.Command{

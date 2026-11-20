@@ -122,6 +122,15 @@ structured output do not get forced into the dispatcher.
   `bufio`) whole for the filter, while a view of several hundred MiB (a
   markdown report) never sits in memory at once. No sequence survives a line
   break: its ESC is a control rune, dropped on the line that holds it.
+- **A raw `userFraction` renders in its shortest decimal form**
+  (`strconv.FormatFloat(f, 'f', -1, 64)`: `0.1`, `0.5`, `1`), never with the
+  `'g'` verb, which switches to scientific notation for a small staged
+  fraction (`1e-03` instead of `0.001`).
+- **A one-line summary of a track shows its release with the highest
+  versionCode.** A track can carry several releases at once (a staged
+  rollout above a completed one, a draft above production); the highest
+  versionCode is the newest build whatever order the API lists them in, and
+  the status column says whether that build is a draft (`tracks list`).
 
 ## Consequences
 

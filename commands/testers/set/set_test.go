@@ -1,8 +1,3 @@
-// Package set_test exercises `gplay testers set` at the kernel level: a
-// RunContext built by hand, a testkit Fake injected via the
-// oauth2.HTTPClient context key, and Run invoked directly. Mirrors the
-// promote / upload write-command harness so a single seam proves the auth +
-// Edit lifecycle wiring (open → testers.update → commit) for testers set.
 package set_test
 
 import (
@@ -24,9 +19,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// setAPI is the Play API a testers replacement sees, served by a testkit
-// Fake: edits.insert, testers.update (PUT, body recorded), edits.commit, and
-// edits.delete (the failure/discard path).
 type setAPI struct {
 	editID            string
 	testersUpdateResp string
@@ -56,9 +48,6 @@ func (a *setAPI) serve(t *testing.T) *testkit.Fake {
 	return a.fake
 }
 
-// calls lists the requests as "METHOD path", the token exchanges first: the
-// oauth2 transport runs the exchange before the first API call and caches
-// the token, and the Fake counts exchanges without recording them.
 func (a *setAPI) calls() []string {
 	var out []string
 	for range a.fake.TokenExchanges() {
@@ -70,7 +59,6 @@ func (a *setAPI) calls() []string {
 	return out
 }
 
-// testersUpdateReq returns the body of the last testers.update request.
 func (a *setAPI) testersUpdateReq() []byte {
 	var body []byte
 	for _, c := range a.fake.Calls() {
@@ -95,10 +83,6 @@ func newRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *bytes.Buffe
 	return rc, &stdout
 }
 
-// TestRun_bareSet_exit2_noHTTP asserts the footgun guard: a bare `set`
-// with neither --group nor --clear is misuse: it must short-circuit with
-// exit 2 before any HTTP, so a forgotten --group can never silently wipe
-// the list.
 func TestRun_bareSet_exit2_noHTTP(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -115,8 +99,6 @@ func TestRun_bareSet_exit2_noHTTP(t *testing.T) {
 	}
 }
 
-// TestRun_groupAndClear_exit2 asserts --group and --clear together is
-// contradictory: exit 2 before any HTTP.
 func TestRun_groupAndClear_exit2(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -139,9 +121,6 @@ func TestRun_groupAndClear_exit2(t *testing.T) {
 	}
 }
 
-// TestRun_clear_putsEmptyArray asserts --clear writes an empty audience:
-// the full open → PUT → commit sequence runs and the captured PUT body
-// carries an explicit empty array (NOT null).
 func TestRun_clear_putsEmptyArray(t *testing.T) {
 	api := &setAPI{
 		editID:            "edit-clear",
@@ -181,9 +160,6 @@ func TestRun_clear_putsEmptyArray(t *testing.T) {
 	}
 }
 
-// TestRun_setGroups_putsList asserts `--group a,b` writes [a,b]: the PUT
-// body carries both groups and --output json is the raw testers.update
-// response (ADR-0003 pass-through).
 func TestRun_setGroups_putsList(t *testing.T) {
 	api := &setAPI{
 		editID:            "edit-set",
@@ -218,9 +194,6 @@ func TestRun_setGroups_putsList(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noHTTP asserts --dry-run previews the target audience
-// without any HTTP call and still returns a non-nil Renderable whose view
-// shows the groups that would be written.
 func TestRun_dryRun_noHTTP(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -252,9 +225,6 @@ func TestRun_dryRun_noHTTP(t *testing.T) {
 	}
 }
 
-// TestNewCommand_registersExpectedFlags is a thin smoke test for the
-// cobra wiring: every write flag exists, there is NO --confirm, and the
-// command is named "set".
 func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	cmd := set.NewCommand(kernel.Boot{})
 	for _, name := range []string{
@@ -278,9 +248,6 @@ func TestNewCommand_registersExpectedFlags(t *testing.T) {
 	}
 }
 
-// TestRun_setGroups_emitsConfirmationOnStderr asserts a committed testers set
-// prints a single ✓ line on stderr (DESIGN §8) naming the track, alongside the
-// stdout payload.
 func TestRun_setGroups_emitsConfirmationOnStderr(t *testing.T) {
 	api := &setAPI{
 		editID:            "edit-set",
@@ -304,7 +271,6 @@ func TestRun_setGroups_emitsConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_noConfirmationOnStderr asserts --dry-run never emits a ✓.
 func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -325,11 +291,6 @@ func TestRun_dryRun_noConfirmationOnStderr(t *testing.T) {
 	}
 }
 
-// TestRun_dryRun_jsonPreview_golden drives the --dry-run in JSON, the default
-// format in CI and in a pipe (#777): no testers.update ran, so instead of the
-// API pass-through it prints the planned body tagged dryRun, in the shape of
-// the other dry-run previews (`tracks create`, `expansion-files set`). Before
-// the fix it failed with "missing raw testers.update payload".
 func TestRun_dryRun_jsonPreview_golden(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -350,8 +311,6 @@ func TestRun_dryRun_jsonPreview_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run.json.golden", r)
 }
 
-// TestRun_dryRun_clear_jsonPreview_golden pins the --clear preview: an empty
-// audience encodes as [] (never null), so a consumer iterates it unguarded.
 func TestRun_dryRun_clear_jsonPreview_golden(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))
@@ -363,8 +322,6 @@ func TestRun_dryRun_clear_jsonPreview_golden(t *testing.T) {
 	outputtest.GoldenJSON(t, "dry_run_clear.json.golden", r)
 }
 
-// TestRun_dryRun_tablePreview pins the human view of the same dry-run: the
-// track line carries the (dry-run) marker and every planned group is listed.
 func TestRun_dryRun_tablePreview(t *testing.T) {
 	api := &setAPI{}
 	rc, _ := newRC(t, api.serve(t))

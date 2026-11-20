@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 By the time `gplay reviews list` (#92) shipped, four read-only commands
@@ -73,6 +75,13 @@ this is about the column machinery layered on top of it.
    pass-through paths (ADR-0003) are untouched. A small exported
    `ResolveColumns` per command lets render-focused tests build a `Payload`
    from the one registry instead of a bare `[]string`.
+
+## Implementation notes
+
+- **A `--columns` key that maps to one API field takes that field's name**
+  (`userFraction`, `versionCodes` on `releases list`), so an operator who has
+  read the JSON, which is the API body (ADR-0003), can name the same columns
+  for the table. The header stays a human label (`USER_FRACTION`).
 
 ## Consequences
 

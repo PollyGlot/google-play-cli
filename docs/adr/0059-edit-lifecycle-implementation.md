@@ -72,12 +72,35 @@ them here.
 
 ### Explicit Edits
 
+- **`gplay edits begin` refuses while a pin exists.** Play keeps one open Edit
+  per app, so opening another would orphan the pinned one.
+- **A pin that cannot be written discards the Edit just opened**, or it
+  would hold the app for up to 24 hours with nothing local to find it by. If
+  that discard fails too, the error names the open Edit ID and the ways out
+  (the Play Console, the expiry). The pin-write failure owns the exit code:
+  the discard error is only quoted, since a wrapped API error would take the
+  code over.
 - **`gplay edits commit` leaves the Edit and the pin in place on failure**, so
   the commit can be retried or the Edit discarded; the pin goes only after a
   successful commit.
+- **A commit that succeeded but left its pin behind says so.** The error
+  states that the change is live and names the stale pin file, so it does not
+  read as a failed commit (inviting a retry) and the file, which would block
+  the next `edits begin`, can be removed by hand.
 - **`gplay edits discard` clears the pin whatever the DELETE answers.** An Edit
   that already expired or vanished server-side is the state the operator asked
-  for.
+  for, so a 404 counts as success. Even a transient failure clears the pin:
+  the operator asked to abandon the Edit, and it expires on its own. When the
+  DELETE and the pin removal both fail, the error carries both, so a local
+  cleanup failure never hides whether the Edit is still open on Play.
+- **The warning that a commit flag is ignored comes only before a staged
+  write.** With a pinned Edit, a commit flag cannot apply and DESIGN §4 warns
+  that the change is staged instead. A command that may stage nothing
+  (`tracks create --if-exists skip`) emits that warning right before its
+  write, so a skip never claims a change was staged.
+- **A `--dry-run` never reads the pin**: the dry-run path never reuses a
+  pinned Edit, so a corrupt pin must not fail a preview
+  ([ADR-0063](./0063-offline-validation-before-the-api.md)).
 - **An unusable pin is an error, never "no pin".** A missing file means
   implicit mode; a present file that is not JSON or has no `editId` must
   surface, because falling back to a fresh Edit would open a second,
