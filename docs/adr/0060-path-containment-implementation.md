@@ -36,9 +36,11 @@ gathers them here.
   target exists, and the content is never loaded to be dropped later.
 - **The walk does not descend into a symlinked directory entry.** The
   directory listing reports entries with `lstat` semantics, so a locale
-  directory that is itself a symlink reads as a stray entry and is skipped,
-  hatch or not. Containment is the backstop for every path the walk does
-  follow: a symlinked `images/` directory, gallery or field file.
+  directory or an image gallery directory that is itself a symlink reads as
+  a stray entry and is skipped, hatch or not (#843 tracks whether it should
+  be followed or refused instead). Containment is the backstop for every
+  path the walk does follow: a symlinked `images/` directory, an image file
+  or a field file.
 - **Names found on disk use the relaxable check; names from the API use the
   strict one.** The read side checks every name it found by listing the
   operator's own directory with the form `GPLAY_ALLOW_EXTERNAL_SYMLINKS`
