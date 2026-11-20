@@ -9,24 +9,14 @@ import (
 	"testing"
 )
 
-// TokenURL is the OAuth2 token endpoint ServiceAccountJSON declares and the
-// only URL the Fake answers with a bearer token.
 const TokenURL = "https://oauth2.googleapis.com/token"
 
-// tokenBody is the canned token-exchange response.
 const tokenBody = `{"access_token":"a.b.c","token_type":"Bearer","expires_in":3600}`
 
-// IsTokenRequest reports whether r targets TokenURL exactly. A suffix match
-// (any path ending in /token) would hand a bearer token to a misdirected auth
-// host or to an API path that happens to end in /token, and the test would
-// pass for the wrong reason.
 func IsTokenRequest(r *http.Request) bool {
 	return r.URL.Scheme+"://"+r.URL.Host+r.URL.Path == TokenURL && r.URL.RawQuery == ""
 }
 
-// TokenResponse answers the token exchange when r is one (see IsTokenRequest),
-// so a hand-rolled RoundTripper can delegate the auth hop. It returns
-// (nil, false) for any other request.
 func TokenResponse(r *http.Request) (*http.Response, bool) {
 	if !IsTokenRequest(r) {
 		return nil, false
@@ -34,7 +24,6 @@ func TokenResponse(r *http.Request) (*http.Response, bool) {
 	return Response(http.StatusOK, tokenBody), true
 }
 
-// Response builds an application/json response with status and body.
 func Response(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,
@@ -43,41 +32,22 @@ func Response(status int, body string) *http.Response {
 	}
 }
 
-// Call records one API request the Fake served (token exchanges excluded).
 type Call struct {
-	Method string
-	Host   string
-	Path   string
-	Query  string
-	Header http.Header
-	Body   []byte
-	// URL is the request URL as sent, escaping included (Path is decoded).
-	URL string
-	// ContentLength is the length the request declared (-1 unknown).
+	Method        string
+	Host          string
+	Path          string
+	Query         string
+	Header        http.Header
+	Body          []byte
+	URL           string
 	ContentLength int64
-	// Replayable reports whether the --retry transport could re-send the
-	// request: it has no body, or a GetBody to re-open it.
-	Replayable bool
+	Replayable    bool
 
-	// Reply holds the response headers a responder sets, for what a status
-	// and body cannot say (a resumable session's Location). The Fake and the
-	// Wire copy it onto the response they send.
 	Reply http.Header
 }
 
-// Responder decides the response for a Call. ok=false falls through to the
-// next responder; a status of 0 means 200.
 type Responder func(c Call) (status int, body string, ok bool)
 
-// Fake is an http.RoundTripper standing in for the Play APIs: it terminates
-// the token exchange at TokenURL, records every other request, and serves it
-// from the first matching responder. A request no responder claims fails the
-// round trip, so an unexpected call surfaces as an error instead of a silent
-// empty 200.
-//
-// A request body that breaks a constraint Play documents (the rules table)
-// panics: the Fake holds no testing.TB, and a panic fails the test whatever
-// the code under test does with an error, which Play's 400 would not.
 type Fake struct {
 	responders []Responder
 
@@ -89,14 +59,10 @@ type Fake struct {
 	refusals []string
 }
 
-// NewFake builds a Fake whose responders are tried in order per request.
 func NewFake(responders ...Responder) *Fake {
 	return &Fake{responders: responders, allowed: map[string]bool{}}
 }
 
-// AllowInvalid lets bodies that break the named rules (`Schema.property`, as
-// the failure message names them) reach the responders: for a test that
-// sends a body Play refuses on purpose, to exercise the 400 path.
 func (f *Fake) AllowInvalid(rules ...string) *Fake {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -104,10 +70,6 @@ func (f *Fake) AllowInvalid(rules ...string) *Fake {
 	return f
 }
 
-// CollectRefusals makes a body that breaks a rule fail its round trip and
-// land in Refusals instead of panicking: for a test that runs whole commands
-// and reports the rule per case. A command that sends from a goroutine would
-// take the test binary down with the panic.
 func (f *Fake) CollectRefusals() *Fake {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -115,15 +77,12 @@ func (f *Fake) CollectRefusals() *Fake {
 	return f
 }
 
-// Refusals returns, in order, the failure message of every body the Fake
-// refused under CollectRefusals, each naming the rule it breaks.
 func (f *Fake) Refusals() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.refusals...)
 }
 
-// RoundTrip implements http.RoundTripper.
 func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body != nil {
 		defer func() { _ = req.Body.Close() }()
@@ -184,22 +143,18 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 	return nil, fmt.Errorf("testkit: no responder for %s %s", req.Method, req.URL.Redacted())
 }
 
-// Calls returns the recorded API calls in order.
 func (f *Fake) Calls() []Call {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]Call(nil), f.calls...)
 }
 
-// TokenExchanges returns how many token requests the Fake answered.
 func (f *Fake) TokenExchanges() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.tokens
 }
 
-// Wrote reports whether any recorded call used a mutating method (POST, PUT,
-// PATCH, DELETE): the assertion that a refused write reached no API.
 func (f *Fake) Wrote() bool {
 	for _, c := range f.Calls() {
 		switch c.Method {
@@ -210,16 +165,10 @@ func (f *Fake) Wrote() bool {
 	return false
 }
 
-// Any answers every call with status and body: the catch-all responder to
-// put last when unclaimed calls should succeed rather than fail.
 func Any(status int, body string) Responder {
 	return func(Call) (int, string, bool) { return status, body, true }
 }
 
-// ReplyHeader wraps r so every response it claims carries the header key set
-// to value(c, status), status being the one sent (0 already read as 200); an
-// empty value leaves the header unset. It is how a
-// fake answers a resumable-upload initiate with the session URI in Location.
 func ReplyHeader(r Responder, key string, value func(c Call, status int) string) Responder {
 	return func(c Call) (int, string, bool) {
 		status, body, ok := r(c)
@@ -236,9 +185,6 @@ func ReplyHeader(r Responder, key string, value func(c Call, status int) string)
 	}
 }
 
-// Refuse claims no call but fails t with each one it sees: put it last to
-// state that no other request may reach the API (the round trip then fails
-// too). why, when set, is appended to the message (" in dry-run").
 func Refuse(t testing.TB, why string) Responder {
 	t.Helper()
 	return func(c Call) (int, string, bool) {

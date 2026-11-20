@@ -76,9 +76,6 @@ func TestServiceAccountJSON_fields(t *testing.T) {
 	}
 }
 
-// The fixture is only useful if the real oauth2 JWT flow signs with it and
-// lands on the fake: this drives golang.org/x/oauth2/jwt end to end, the
-// flow internal/auth/token builds from the same key-file fields.
 func TestFake_servesTheJWTExchangeOfTheFixture(t *testing.T) {
 	fake := testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		return 200, `{"ok":true}`, c.Method == http.MethodGet && c.Path == "/v1/things"
@@ -177,7 +174,6 @@ func TestGolden_matchesCommittedFile(t *testing.T) {
 	testkit.Golden(t, "example.golden", []byte("line one\nline two\n"))
 }
 
-// recorder captures what Golden reports instead of failing this test.
 type recorder struct {
 	testing.TB
 	errs []string

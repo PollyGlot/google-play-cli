@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 `gplay team users` and `team grants` (PRD #147) write permissions. Google
@@ -97,6 +99,22 @@ permission Google ships tomorrow.
   a *rejected-by-Google* permission surfaces as an `*api.Error`.
 - A deprecated value used raw still works but warns; gplay never offers it
   as an alias, steering callers to the modern permission.
+
+## Implementation notes
+
+- **The six account-only capabilities** (Play Games, managed Play, connected
+  apps) have no app-level enum, so their aliases do not resolve under
+  `team grants`.
+- **The alias registry is the one place a deprecation is marked.** The map
+  of deprecated raw enums (each to the modern value its warning names, empty
+  when Google named none) takes the enums of retired aliases from the alias
+  registry at start-up, rather than listing them a second time.
+- **Registry order is display order**: read capabilities, then management,
+  then money, then the account-only ones; role bundles from least to most
+  privilege.
+- **The anchor test reads the committed Discovery snapshot**, not the
+  embedded Schema index ([ADR-0022](./0022-schema-index-keyed-by-api-method.md)),
+  which keeps neither array-item enums nor `enumDeprecated`.
 
 ## Amendment (2026-09-22, #559)
 

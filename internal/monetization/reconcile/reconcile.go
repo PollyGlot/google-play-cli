@@ -1,10 +1,3 @@
-// Package reconcile computes the Reconciliation plan (GLOSSARY.md) of the
-// Monetization catalog: the pure create/patch/delete diff between a declared
-// catalog (files) and the live one, restricted to the managed fields of the
-// calling slice. No I/O, no clock, no auth: the same split as
-// internal/metadata/diff vs its orchestrator. Later slices widen the managed
-// field set (basePlans with #368); the engine itself does not change
-// (ADR-0041).
 package reconcile
 
 import (
@@ -14,19 +7,11 @@ import (
 	"sort"
 )
 
-// Field is one managed top-level field of the resource. Normalize, when set,
-// rewrites the decoded value on both sides before comparison: the hook that
-// keeps server-derived output-only subfields (basePlans[].state) from
-// producing phantom patches while the field itself stays declarable. It never
-// affects what apply sends (the file body travels verbatim; the server ignores
-// output-only fields on write).
 type Field struct {
 	Name      string
 	Normalize func(any) any
 }
 
-// StripKeys returns a Normalize func that removes the named keys from every
-// object in the value, walking objects and arrays recursively.
 func StripKeys(keys ...string) func(any) any {
 	drop := map[string]struct{}{}
 	for _, k := range keys {
@@ -57,15 +42,6 @@ func StripKeys(keys ...string) func(any) any {
 	return walk
 }
 
-// Change is one planned action on one catalog resource. Fields names the
-// changed managed fields (patch only): it is both the human diff summary and
-// the exact updateMask the executor sends, which is what keeps unmanaged
-// nesting out of reach (ADR-0041 §5).
-//
-// The identity is typed, never a composite string to split again: ProductID
-// alone for a product; ParentID (the base plan or purchase option, the middle
-// level whose name depends on the catalog) for a base-plan delete; ParentID
-// and OfferID for an offer.
 type Change struct {
 	ProductID string   `json:"productId"`
 	ParentID  string   `json:"parentId,omitempty"`
@@ -73,20 +49,14 @@ type Change struct {
 	Fields    []string `json:"fields,omitempty"`
 }
 
-// Key renders the change's identity as its productId[/parentId[/offerId]]
-// display key: the form the plan prints and the order it sorts by.
 func (c Change) Key() string {
 	return Key{ProductID: c.ProductID, ParentID: c.ParentID, OfferID: c.OfferID}.String()
 }
 
-// Key is the typed identity of a nested catalog resource (a base plan, a
-// purchase option or an offer) under its product.
 type Key struct {
 	ProductID, ParentID, OfferID string
 }
 
-// String joins the levels with "/": productId, productId/parentId or
-// productId/parentId/offerId.
 func (k Key) String() string {
 	s := k.ProductID
 	if k.ParentID != "" || k.OfferID != "" {
@@ -98,16 +68,6 @@ func (k Key) String() string {
 	return s
 }
 
-// StateChange is one planned lifecycle transition (slice #369): a base plan or
-// offer whose declared state: differs from live, reconciled via the dedicated
-// activate/deactivate endpoints rather than a patch. Kind is "basePlan" or
-// "offer"; To is the declared target ("ACTIVE" → activate, "INACTIVE" →
-// deactivate). Surfaced prominently in every plan view: a state change moves
-// buyer availability. The one-time-product catalog (slice #541) reuses it
-// with Kind "purchaseOption"/"offer" and the purchase option in
-// PurchaseOptionID instead of BasePlanID: the two families share the plan
-// shape, only the middle level of the identity differs. To may also be
-// "CANCELLED" there (the pre-order :cancel verb, irreversible).
 type StateChange struct {
 	Kind             string `json:"kind"`
 	ProductID        string `json:"productId"`
@@ -118,15 +78,6 @@ type StateChange struct {
 	To               string `json:"to"`
 }
 
-// Plan is the Reconciliation plan: what apply would (or did) do. The Offer*
-// slices carry offer-level actions (typed productId, parentId and offerId);
-// BasePlanDeletes carries productId and parentId. All slices are sorted by
-// display key for stable output; Entries flattens them in plan-view order.
-//
-// Base plans have deletes but no creates or patches of their own: their config
-// rides the parent subscription patch, which never removes a plan its body
-// omits, so the removal is the one base-plan action that needs its own
-// endpoint (slice #542).
 type Plan struct {
 	Creates         []Change      `json:"-"`
 	Patches         []Change      `json:"-"`
@@ -139,18 +90,12 @@ type Plan struct {
 	Unchanged       []string      `json:"-"`
 }
 
-// Kinds of a plan entry below the product level.
 const (
 	KindOffer          = "offer"
 	KindBasePlan       = "basePlan"
 	KindPurchaseOption = "purchaseOption"
 )
 
-// Entry is one typed plan record: every action of a Plan in one shape, so a
-// renderer walks a single list instead of re-deriving identities per slice.
-// Op is the plan's verb (create, patch, delete, activate, deactivate, cancel);
-// Kind is "" for a product, else KindOffer, KindBasePlan or
-// KindPurchaseOption. From/To are set on state changes only.
 type Entry struct {
 	Op        string
 	Kind      string
@@ -161,14 +106,10 @@ type Entry struct {
 	From, To  string
 }
 
-// Target is the entry's productId[/parentId[/offerId]] display key.
 func (e Entry) Target() string {
 	return Key{ProductID: e.ProductID, ParentID: e.ParentID, OfferID: e.OfferID}.String()
 }
 
-// Entries flattens the plan in the order every plan view lists it: grow
-// (creates, patches, offer creates and patches), move state, then shrink
-// (offer deletes, base-plan deletes, product deletes), the order apply runs.
 func (p Plan) Entries() []Entry {
 	out := make([]Entry, 0, len(p.Creates)+len(p.Patches)+len(p.Deletes)+len(p.BasePlanDeletes)+
 		len(p.OfferCreates)+len(p.OfferPatches)+len(p.OfferDeletes)+len(p.StateChanges))
@@ -190,7 +131,6 @@ func (p Plan) Entries() []Entry {
 	return out
 }
 
-// Op names the verb a state change rides: cancel, deactivate or activate.
 func (s StateChange) Op() string {
 	switch s.To {
 	case "CANCELLED":
@@ -202,7 +142,6 @@ func (s StateChange) Op() string {
 	}
 }
 
-// Parent is the middle level of the identity, whichever catalog it belongs to.
 func (s StateChange) Parent() string {
 	if s.BasePlanID != "" {
 		return s.BasePlanID
@@ -210,33 +149,20 @@ func (s StateChange) Parent() string {
 	return s.PurchaseOptionID
 }
 
-// Target is the productId/parentId[/offerId] display key of the resource the
-// state change moves.
 func (s StateChange) Target() string {
 	return Key{ProductID: s.ProductID, ParentID: s.Parent(), OfferID: s.OfferID}.String()
 }
 
-// HasChanges reports whether the plan does anything at all.
 func (p Plan) HasChanges() bool {
 	return len(p.Creates)+len(p.Patches)+len(p.Deletes)+len(p.BasePlanDeletes)+
 		len(p.OfferCreates)+len(p.OfferPatches)+len(p.OfferDeletes)+
 		len(p.StateChanges) > 0
 }
 
-// HasDeletes reports whether the plan is destructive: the condition that
-// gates execution behind --confirm (ADR-0041 §3). Base-plan and offer deletes
-// count: they remove catalog state just like subscription deletes. State
-// changes do not: activate/deactivate are reversible.
 func (p Plan) HasDeletes() bool {
 	return len(p.Deletes)+len(p.BasePlanDeletes)+len(p.OfferDeletes) > 0
 }
 
-// BasePlanDeletes computes the base-plan shrink set (slice #542): for every
-// product declared locally and present live, each live base plan the file no
-// longer declares becomes a delete keyed productId/basePlanId. Products the
-// plan deletes outright are skipped (the parent delete takes their plans), as
-// are products being created (nothing live to remove). Sorted for stable
-// output.
 func BasePlanDeletes(local, live map[string]json.RawMessage) ([]Change, error) {
 	var out []Change
 	for id, rawLocal := range local {
@@ -262,8 +188,6 @@ func BasePlanDeletes(local, live map[string]json.RawMessage) ([]Change, error) {
 	return out, nil
 }
 
-// basePlanIDs returns the set of basePlanId values of one subscription
-// resource.
 func basePlanIDs(id, side string, raw json.RawMessage) (map[string]struct{}, error) {
 	var sub struct {
 		BasePlans []struct {
@@ -283,10 +207,6 @@ func basePlanIDs(id, side string, raw json.RawMessage) (map[string]struct{}, err
 	return ids, nil
 }
 
-// Compute diffs the declared catalog against the live one over the managed
-// fields only: local-only products become creates, live-only products become
-// deletes, and a product whose managed projection differs becomes a patch
-// naming exactly the differing fields.
 func Compute(local, live map[string]json.RawMessage, managed []Field) (Plan, error) {
 	var plan Plan
 	for id, rawLocal := range local {
@@ -317,9 +237,6 @@ func Compute(local, live map[string]json.RawMessage, managed []Field) (Plan, err
 	return plan, nil
 }
 
-// changedFields projects both resources onto the managed fields and returns
-// the ones whose values differ. A field absent on both sides is equal;
-// comparison is on decoded values, so formatting differences never count.
 func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field) ([]string, error) {
 	var localM, liveM map[string]any
 	if err := json.Unmarshal(rawLocal, &localM); err != nil {
@@ -346,10 +263,6 @@ func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field
 	return changed, nil
 }
 
-// ComputeChildren diffs a nested level (the offers of a catalog) with the same
-// engine as Compute. The comparison runs on the display keys, so the order
-// (and any error naming a resource) follows the productId/parentId/offerId
-// string, and the changes come back with their identity typed.
 func ComputeChildren(local, live map[Key]json.RawMessage, managed []Field) (creates, patches, deletes []Change, err error) {
 	byKey := map[string]Key{}
 	flatten := func(in map[Key]json.RawMessage) map[string]json.RawMessage {

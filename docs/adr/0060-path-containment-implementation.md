@@ -142,6 +142,21 @@ gathers them here.
   removes files; a `2.png` that is a symlink must not turn it into a removal
   outside the tree.
 
+### The monetization catalog
+
+- **`pull`'s default catalog directory is contained in the working
+  directory** before anything is written into it. `pull` deletes every stale
+  `*.json` there, and a cloned repo can commit that directory as a symlink to
+  `~/.gplay`; a default directory a symlink carries out of the working
+  directory is refused. An explicit `--dir` is the operator's own choice and
+  is not checked.
+- **A product ID names its file, and it comes from the API.** Play product
+  IDs are lowercase letters, digits, underscores and periods, so a path-like
+  ID is refused rather than joined into the directory.
+- **A catalog file is written to a temporary file and renamed into place**,
+  so a `<productId>.json` already present as a symlink is replaced, never
+  followed.
+
 ### Between the scan and the use
 
 A scan describes the tree at one instant; a file opened later can have been

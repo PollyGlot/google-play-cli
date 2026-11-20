@@ -18,25 +18,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// This file pins WHAT the Public contract freezes, where the stability registry
-// in main_test.go pins WHICH leaves it covers (ADR-0010 / ADR-0042). Two
-// mechanisms, both fed by runnableLeaves:
-//
-//   - surface.golden, a generated snapshot of every leaf, flag and exit code.
-//     A renamed flag, a changed default or a dropped shorthand on a frozen leaf
-//     passed the whole suite before it; now it is a golden diff that CI
-//     (scripts/contract-gate.sh) refuses without a breaking marker or an ADR.
-//   - TestLeafContract, the rules every leaf must follow (Long, Example,
-//     --output, flag and verb vocabulary). Today's violators sit in ratchet
-//     allowlists that may only shrink, so the rules bind every NEW leaf at once
-//     and the backlog drains slice by slice.
-//
-// Multi-token paths appear here only as map keys or quoted golden fields, which
-// the repo-wide verb gate (#168) does not match on the pre-rename phrases.
-
-// updateContract regenerates the golden instead of comparing against it. It is
-// not named -update so it cannot collide with a shared golden helper's flag in
-// a package this test binary imports.
 var updateContract = flag.Bool("update-contract", false, "rewrite testdata/surface.golden from the cobra tree (make contract-update)")
 
 const surfaceGoldenPath = "testdata/surface.golden"
@@ -49,9 +30,6 @@ const surfaceGoldenHeader = `# gplay command surface: every leaf, flag and exit 
 # compatible and pass (scripts/contract-gate.sh).
 `
 
-// TestSurfaceGolden_isFresh fails when surface.golden no longer matches the
-// cobra tree, so every change to the command surface shows up as a reviewable
-// golden diff in the PR that makes it.
 func TestSurfaceGolden_isFresh(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 	got := renderSurface(root)
@@ -77,11 +55,6 @@ func TestSurfaceGolden_isFresh(t *testing.T) {
 	}
 }
 
-// renderSurface prints the contract, one self-describing line per element, so
-// a unified diff of the file is readable on its own and every changed line
-// carries its stability as the first field (what contract-gate.sh keys on).
-// Help prose (Short, Long, Example, flag usage) is left out on purpose: it is
-// not contract, and pinning it would make every help rewrite look breaking.
 func renderSurface(root *cobra.Command) string {
 	var b strings.Builder
 	b.WriteString(surfaceGoldenHeader)
@@ -104,9 +77,6 @@ func renderSurface(root *cobra.Command) string {
 		}
 		fmt.Fprintf(&b, "%s leaf %q use=%q%s\n", stab, leafKey(c), c.Use, leafMarkers(c))
 		for _, f := range leafFlags(root, c) {
-			// A frozen leaf may carry one experimental flag
-			// (kernel.ExperimentalFlag): the line says so, so reshaping that
-			// flag is not read as a contract break.
 			fstab := "frozen"
 			if kernel.IsExperimentalFlag(c, f) {
 				fstab = "experimental"
@@ -117,9 +87,6 @@ func renderSurface(root *cobra.Command) string {
 	return b.String()
 }
 
-// leafMarkers renders the leaf-level properties that are contract beyond the
-// name: the GPLAY_READONLY refusal (exit 4, ADR-0024), visibility, deprecation
-// and aliases, each only when set so the common line stays short.
 func leafMarkers(c *cobra.Command) string {
 	var m strings.Builder
 	if kernel.IsMutating(c) {
@@ -137,10 +104,6 @@ func leafMarkers(c *cobra.Command) string {
 	return m.String()
 }
 
-// leafFlags returns every flag a leaf accepts beyond the global ones: its own,
-// plus any persistent flag a grouping noun hands down. Root flags are listed
-// once under "global" instead of on all leaves. cobra adds --help lazily at
-// execution, so it is skipped to keep the output independent of test order.
 func leafFlags(root, c *cobra.Command) []*pflag.Flag {
 	byName := map[string]*pflag.Flag{}
 	collect := func(f *pflag.Flag) {
@@ -164,9 +127,6 @@ func leafFlags(root, c *cobra.Command) []*pflag.Flag {
 	return flags
 }
 
-// flagSpec renders the parts of a flag a script depends on: name, shorthand,
-// type, default, required, and whether it is hidden or deprecated (a hidden
-// compatibility flag is still accepted, so still contract).
 func flagSpec(f *pflag.Flag) string {
 	var s strings.Builder
 	s.WriteString("--" + f.Name)
@@ -186,8 +146,6 @@ func flagSpec(f *pflag.Flag) string {
 	return s.String()
 }
 
-// lineDiff is a small order-preserving set difference, enough to name the
-// stale lines in a failure message without pulling in a diff library.
 func lineDiff(want, got string) string {
 	count := func(s string) map[string]int {
 		m := map[string]int{}
@@ -214,18 +172,12 @@ func lineDiff(want, got string) string {
 	return b.String()
 }
 
-// ratchet is an allowlist of today's violators of one leaf rule. It may only
-// shrink: an entry that now passes the rule, or that names nothing, fails the
-// test so it gets deleted, and ceiling pins the size so growing the list is a
-// deliberate, reviewable edit rather than the easy way past a red test.
 type ratchet struct {
-	name    string // the Go identifier, so a failure names what to edit
+	name    string
 	ceiling int
 	entries []string
 }
 
-// enforce checks subjects (key -> passes the rule) against the ratchet. fix is
-// the message for a new violator and must name the fix, not just the rule.
 func (r ratchet) enforce(t *testing.T, subjects map[string]bool, fix string) {
 	t.Helper()
 	allowed := map[string]bool{}
@@ -261,9 +213,6 @@ func (r ratchet) enforce(t *testing.T, subjects map[string]bool, fix string) {
 	}
 }
 
-// TestLeafContract is the leaf-level half of the Public contract: the rules a
-// leaf follows so a user (or agent) reading --help can drive it without
-// reading the source. It extends the stability-registry walk (runnableLeaves).
 func TestLeafContract(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 	leaves := runnableLeaves(root)
@@ -281,8 +230,6 @@ func TestLeafContract(t *testing.T) {
 	})
 
 	t.Run("Example", func(t *testing.T) {
-		// No allowlist: every leaf has one (#592). What the Example says is
-		// checked against the leaf's real flags by TestLeafExamples_parse.
 		for _, c := range leaves {
 			if !strings.Contains(c.Example, "gplay ") {
 				t.Errorf(`leaf %q has no Example: set cobra.Command.Example to 2 or 3 realistic "gplay ..." invocations (one --dry-run or --output json variant when the leaf has one)`, leafKey(c))
@@ -291,8 +238,6 @@ func TestLeafContract(t *testing.T) {
 	})
 
 	t.Run("OutputJSON", func(t *testing.T) {
-		// The reference flag, registered by the one shared helper: a leaf that
-		// hand-rolls --output (other help, other type) fails like a missing one.
 		probe := &cobra.Command{}
 		var sink string
 		output.RegisterFlag(probe, &sink)
@@ -331,14 +276,10 @@ func TestLeafContract(t *testing.T) {
 		}
 		for _, c := range leaves {
 			for _, f := range leafFlags(root, c) {
-				// Hidden and deprecated flags are compatibility names kept so old
-				// scripts still run, never names a new leaf should copy.
 				if f.Hidden || f.Deprecated != "" {
 					continue
 				}
 				key := leafKey(c) + " --" + f.Name
-				// A drift pair fails by definition, even when its name is in the
-				// table: that is a collision (same name, another concept).
 				subjects[key] = flagVocabulary[f.Name] != "" && !drift[key]
 			}
 		}
@@ -363,11 +304,6 @@ func TestLeafContract(t *testing.T) {
 	})
 }
 
-// TestAPIRegistry_commandsNameRealLeaves: every command internal/apiregistry
-// credits with an API method starts with a leaf of the tree, and every --flag
-// after it is one that leaf registers. docs/COVERAGE.md is generated from
-// those strings, so a renamed verb or flag (#597 renamed nine verbs) would
-// otherwise keep advertising a command that no longer exists.
 func TestAPIRegistry_commandsNameRealLeaves(t *testing.T) {
 	byKey := map[string]*cobra.Command{}
 	for _, c := range runnableLeaves(newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})) {
@@ -388,7 +324,7 @@ func TestAPIRegistry_commandsNameRealLeaves(t *testing.T) {
 			for _, w := range words[n+1:] {
 				name, isFlag := strings.CutPrefix(w, "--")
 				if !isFlag {
-					continue // a positional argument
+					continue
 				}
 				name, _, _ = strings.Cut(name, "=")
 				if leaf.Flags().Lookup(name) == nil {
@@ -408,9 +344,6 @@ func hasLeaf(leaves []*cobra.Command, key string) bool {
 	return false
 }
 
-// ownLong is the Long a leaf's author wrote. kernel.Experimental prefixes a
-// notice and, when Long is empty, synthesises one from Short: neither tells
-// the reader more than the command list already did, so both read as absent.
 func ownLong(c *cobra.Command) string {
 	long := strings.TrimSpace(c.Long)
 	if strings.HasPrefix(long, "[experimental]") {

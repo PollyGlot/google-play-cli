@@ -12,9 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/output"
 )
 
-// TestRemovedVerb_namesReplacement is #688: a verb 2.0.0 removed still fails as
-// CLI misuse (exit 2, USAGE_ERROR), but the message and the JSON envelope name
-// the verb that replaced it, so a 1.x script or an agent can recover alone.
 func TestRemovedVerb_namesReplacement(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	stdout, code, err := runLikeMain(t, "games", "achievements", "update", "x")
@@ -39,9 +36,6 @@ func TestRemovedVerb_namesReplacement(t *testing.T) {
 	}
 }
 
-// TestRemovedVerb_beforeAGroupUnknownFlag covers the group-parses-flags-first
-// quirk: `update` is not a child, so cobra parses `--output` on the group,
-// which has no such flag. The removed verb, not the flag, is the real cause.
 func TestRemovedVerb_beforeAGroupUnknownFlag(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	stdout, code, err := runLikeMain(t, "games", "achievements", "update", "x", "--output", "json")
@@ -56,11 +50,6 @@ func TestRemovedVerb_beforeAGroupUnknownFlag(t *testing.T) {
 	}
 }
 
-// TestRemovedVerb_afterAGroupUnknownFlag: the same quirk with the flag typed
-// before the removed verb. pflag stops on `--output` before it reaches the
-// verb, so the hint comes from the raw argv that follows the group's path,
-// read the way cobra resolved that path (a known valued flag and an unknown
-// one both consume the next token).
 func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	for _, tc := range []struct {
@@ -71,7 +60,6 @@ func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
 		{[]string{"games", "achievements", "--output=json", "update", "x"}, "gplay games achievements set"},
 		{[]string{"appstore", "upload", "--output", "json", "apk", "app.apk"}, "gplay appstore apk upload"},
 		{[]string{"--account", "ci", "games", "--output", "json", "achievements", "update", "x"}, "gplay games achievements set"},
-		// "--" ends flag parsing: what follows is positional, verb included.
 		{[]string{"games", "achievements", "--output", "json", "--", "update", "x"}, "gplay games achievements set"},
 	} {
 		stdout, code, err := runLikeMain(t, tc.argv...)
@@ -86,13 +74,10 @@ func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
 		}
 	}
 
-	// No false positive: the value of a flag is not a verb, and an unknown flag
-	// before a live verb or a never-shipped one keeps pflag's own message.
 	for _, argv := range [][]string{
 		{"games", "achievements", "--output", "update", "x"},
 		{"games", "achievements", "--output", "json", "bogus"},
 		{"apps", "--bogus", "json"},
-		// A bare "-" is a positional (the unknown verb), not a flag.
 		{"games", "achievements", "-", "update", "--output", "json"},
 	} {
 		stdout, code, err := runLikeMain(t, argv...)
@@ -105,9 +90,6 @@ func TestRemovedVerb_afterAGroupUnknownFlag(t *testing.T) {
 	}
 }
 
-// TestRemovedVerb_precedenceOverDidYouMean: on an exact removed path the table
-// replaces the Levenshtein suggestion (`apps info` used to suggest `init`); a
-// live typo keeps the suggestion and gets no replacement.
 func TestRemovedVerb_precedenceOverDidYouMean(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 
@@ -132,14 +114,11 @@ func TestRemovedVerb_precedenceOverDidYouMean(t *testing.T) {
 	if !strings.Contains(err.Error(), "Did you mean this?\n    view") || strings.Contains(err.Error(), "removed in") {
 		t.Errorf("apps veiw: message = %q, want the did-you-mean and no removal", err.Error())
 	}
-	// Absent, not empty: the field is omitempty on an unmatched usage error.
 	if strings.Contains(stdout, "replacement") {
 		t.Errorf("apps veiw: envelope carries a replacement key:\n%s", stdout)
 	}
 }
 
-// TestRemovedVerb_carriesItsNote: appstore update became the domain verb
-// submit, not a pure rename, and the message says so.
 func TestRemovedVerb_carriesItsNote(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "table")
 	stdout, code, err := runLikeMain(t, "appstore", "update")
@@ -155,10 +134,6 @@ func TestRemovedVerb_carriesItsNote(t *testing.T) {
 	}
 }
 
-// TestRemovedVerb_keepsItsArgument: `appstore publish-status published` became
-// `set published`, so `use` carries the argument the removed verb held: an
-// agent that substitutes `removed` by `use` in its command keeps the state.
-// The note, which says why, reaches the envelope too.
 func TestRemovedVerb_keepsItsArgument(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	stdout, code, err := runLikeMain(t, "appstore", "publish-status", "published", "--store-package", "x", "--output", "json")
@@ -182,7 +157,6 @@ func TestRemovedVerb_keepsItsArgument(t *testing.T) {
 	}
 }
 
-// TestRemovedFlag_carriesItsNote: a flag row's note reaches the envelope.
 func TestRemovedFlag_carriesItsNote(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	stdout, code, err := runLikeMain(t, "subscriptions", "prices", "migrate", "--region", "US")
@@ -195,8 +169,6 @@ func TestRemovedFlag_carriesItsNote(t *testing.T) {
 	}
 }
 
-// TestRemovedVerb_movedBranch: a verb whose whole branch moved
-// (`appstore upload apk` -> `appstore apk upload`) matches on its full path.
 func TestRemovedVerb_movedBranch(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	stdout, code, err := runLikeMain(t, "appstore", "upload", "apk", "app.apk")
@@ -212,18 +184,12 @@ func TestRemovedVerb_movedBranch(t *testing.T) {
 	}
 }
 
-// TestRemovedSurface_table keeps the removed-surface table honest against the
-// live command tree (ADR-0051); removedSurfaceProblems holds the rules.
 func TestRemovedSurface_table(t *testing.T) {
 	for _, p := range removedSurfaceProblems(newRootCmd(kernel.Boot{}), kernel.RemovedSurface()) {
 		t.Error(p)
 	}
 }
 
-// TestRemovedSurface_tableCheck proves the integrity rules on a synthetic tree:
-// a row is accepted at the root, with declared trailing arguments its
-// replacement takes, and refused when its removed path resolves through an
-// alias or its trailing arguments do not fit the replacement.
 func TestRemovedSurface_tableCheck(t *testing.T) {
 	tree := func(viewAliases ...string) *cobra.Command {
 		root := &cobra.Command{Use: "gplay", Args: cobra.ArbitraryArgs, RunE: kernel.GroupRunE}
@@ -240,7 +206,7 @@ func TestRemovedSurface_tableCheck(t *testing.T) {
 		name    string
 		root    *cobra.Command
 		row     kernel.Removal
-		problem string // "" when the row must be accepted
+		problem string
 	}{
 		{"plain rename", tree(), kernel.Removal{Kind: kernel.RemovedCommand, Path: "apps", Token: "info", Use: "apps view", RemovedIn: "1.0.0"}, ""},
 		{"row at the root", tree(), kernel.Removal{Kind: kernel.RemovedCommand, Path: "", Token: "info", Use: "apps view", RemovedIn: "1.0.0"}, ""},
@@ -258,19 +224,9 @@ func TestRemovedSurface_tableCheck(t *testing.T) {
 	}
 }
 
-// removedSurfaceProblems walks rows against root's command tree: every
-// replacement resolves to a runnable leaf that accepts the row's declared
-// trailing arguments, when it has some, (a flag of the leaf, for a flag row), every removed path
-// or flag resolves to nothing, by name or by alias (one that still exists is a
-// table bug: the hint would shadow a live command or flag, or never fire), and
-// the group or leaf a row hangs off still exists (the root included), or the
-// lookup could never run.
 func removedSurfaceProblems(root *cobra.Command, rows []kernel.Removal) []string {
 	var problems []string
 	fail := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
-	// resolves reports whether path names a command of the tree by its
-	// canonical name, consuming every word (cobra's Find stops at the first
-	// unknown word and returns the deepest command it reached).
 	resolves := func(path string) (*cobra.Command, bool) {
 		c, _, err := root.Find(strings.Fields(path))
 		if err != nil || c.CommandPath() != strings.TrimSpace(root.Name()+" "+path) {
@@ -278,8 +234,6 @@ func removedSurfaceProblems(root *cobra.Command, rows []kernel.Removal) []string
 		}
 		return c, true
 	}
-	// reaches reports whether cobra would run some command for path, aliases
-	// included: Find consumed every word.
 	reaches := func(path string) bool {
 		_, rest, err := root.Find(strings.Fields(path))
 		return err == nil && len(rest) == 0
@@ -307,8 +261,6 @@ func removedSurfaceProblems(root *cobra.Command, rows []kernel.Removal) []string
 				fail("row %q: replacement %q is not a live leaf", key, r.Use)
 				continue
 			}
-			// Declared arguments alone must fit the leaf: the user's own
-			// arguments after the removed verb (an id, a file) follow them.
 			if r.UseArgs == "" {
 				continue
 			}
@@ -316,9 +268,6 @@ func removedSurfaceProblems(root *cobra.Command, rows []kernel.Removal) []string
 				fail("row %q: replacement %q does not accept arguments %q: %v", key, r.Use, r.UseArgs, err)
 			}
 		case kernel.RemovedFlag:
-			// A flag row hangs off the leaf that lost the flag: Use must be a
-			// flag that leaf takes (its own or inherited), Token must not be,
-			// or the hint would shadow a live flag.
 			leaf, ok := resolves(r.Path)
 			if !ok || leaf.HasSubCommands() || !leaf.Runnable() {
 				fail("row %q: %q is not a live leaf", key, r.Path)
@@ -346,10 +295,6 @@ func removedSurfaceProblems(root *cobra.Command, rows []kernel.Removal) []string
 	return problems
 }
 
-// TestRemovedFlag_namesReplacement is #689: a flag 2.0.0 removed from a leaf
-// fails as before (exit 2, USAGE_ERROR, `unknown flag: --to`), then names the
-// flag that replaced it on that leaf, in text and in the JSON envelope. Both
-// spellings cobra accepts for a valued flag reach the same hint.
 func TestRemovedFlag_namesReplacement(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	for _, argv := range [][]string{
@@ -378,16 +323,9 @@ func TestRemovedFlag_namesReplacement(t *testing.T) {
 	}
 }
 
-// TestRemovedFlag_scopedToItsLeaf: a flag row applies to the leaf that lost the
-// flag only. `--to` is still a live flag of `releases promote`, and on a leaf
-// that never had it, or for a flag gplay never shipped, the message stays
-// pflag's own, with no replacement in the envelope.
 func TestRemovedFlag_scopedToItsLeaf(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 
-	// Hermetic: --dry-run makes no HTTP call, --package and an empty cwd keep a
-	// .gplay/ pin out, and the credential variables are cleared, so the call
-	// succeeds offline or fails for a reason this test names.
 	t.Chdir(t.TempDir())
 	for _, v := range []string{"GPLAY_SERVICE_ACCOUNT", "GPLAY_ACCOUNT", "GPLAY_READONLY", "GOOGLE_APPLICATION_CREDENTIALS"} {
 		t.Setenv(v, "")
@@ -422,8 +360,6 @@ func TestRemovedFlag_scopedToItsLeaf(t *testing.T) {
 	}
 }
 
-// TestRemovedFlag_perLeafRename: the vitals `--version` flag became
-// `--version-code` on each of the eight vitals leaves, nested ones included.
 func TestRemovedFlag_perLeafRename(t *testing.T) {
 	t.Setenv(output.EnvDefaultOutput, "")
 	for _, path := range []string{"vitals crashes", "vitals errors counts"} {

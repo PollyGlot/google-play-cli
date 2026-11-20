@@ -4,6 +4,8 @@
 
 accepted, extends [ADR-0037](./0037-reviews-history-gcs-csv-reports.md)
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 A gplay user who wants an app's install and uninstall numbers, Store listing
@@ -211,6 +213,29 @@ permission. Three findings shape the design:
     rows of a 24-column earnings report (about 185 MB of CSV) in one
     command; past it, a narrower `--since/--until` reads, which the error
     says.
+
+## Implementation notes
+
+- **Object names of a per-product family** (subscription statistics) have two
+  free segments before the month. With `--package` given, the parse anchors
+  on it; in an unfiltered inventory the package ends at the first underscore,
+  since Android package names rarely hold one and product ids often do. The
+  list prefix of one product also matches its longer siblings (`gold` matches
+  `gold_trial`), so only exports whose parsed product is the one asked are
+  kept.
+- **An empty cell at or past the header width is a trailing separator**, read
+  as absent; only a non-empty cell past the header is kept under a positional
+  key. A positional column is charged to the cell budget like a header cell,
+  so one very wide row cannot bypass the bound.
+- **Masking buyer location copies the layout, not the rows.** A masked row
+  shares its cells and points to a copy of its export's layout without the
+  hidden keys: the hidden cells become unreachable and no row text is copied.
+- **A `--since/--until` range spans at most 120 months.** Each month is one
+  sequential fetch, and a mistyped year (`1026`) still matches `YYYY-MM`; the
+  cap turns it into an immediate usage error instead of thousands of
+  requests. Ten years exceeds any history Play's reports cover.
+- **A member that fails to inflate is a refusal naming it**, which covers a
+  member longer than its header says: `archive/zip` stops there with an error.
 
 ## Considered options
 

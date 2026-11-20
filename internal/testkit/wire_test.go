@@ -12,7 +12,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// send issues one request through hc and returns the status and body.
 func send(t *testing.T, hc *http.Client, method, url, contentType string, body io.Reader) (int, string, error) {
 	t.Helper()
 	req, err := http.NewRequestWithContext(context.Background(), method, url, body)

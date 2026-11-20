@@ -1,7 +1,5 @@
 package reports
 
-// cellsOf returns the cells a row has, by key, among cols: the row as a map,
-// for a count or a failure message.
 func cellsOf(r Row, cols []Column) map[string]string {
 	out := map[string]string{}
 	for _, c := range cols {
@@ -12,8 +10,6 @@ func cellsOf(r Row, cols []Column) map[string]string {
 	return out
 }
 
-// tableOf builds a table by hand: each row has exactly the cells its map
-// gives, whatever the columns, as a decoded or merged row may.
 func tableOf(cols []Column, rows ...map[string]string) Table {
 	t := Table{Columns: cols}
 	for _, m := range rows {

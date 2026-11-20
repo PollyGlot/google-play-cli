@@ -105,6 +105,9 @@ either is the moment to re-read it.
   the raw argv ([ADR-0051](./0051-removed-surface-names-its-replacement.md)).
 - **The argv reader imitates pflag's positional rules**: every token after
   `--` is positional, and so is a bare `-` (stdin, by convention).
+- **A flag typed before the removed verb consumes the next token**, whether
+  the group knows the flag or not, as cobra did when it resolved the path; the
+  argv reader skips it the same way before looking for the verb.
 
 ### Flag values gplay validates itself
 
@@ -121,6 +124,17 @@ either is the moment to re-read it.
 
 ### Tests
 
+- **`Command.Find` returns no error on an unknown word.** It stops at the
+  deepest command it reached and leaves the rest in its remaining arguments,
+  so a test that a path resolves compares the found command's path, and a
+  test that a name is gone checks that the name stayed unconsumed.
+- **Parsing sets flag values on the tree it parses into.** A test that parses
+  several command lines builds a fresh tree for each, so a value left by one
+  can never satisfy a required flag of the next.
+- **cobra adds `--help` to a command lazily, at execution.** A test that
+  lists a command's flags skips it, or its output would depend on test order.
+- **`os/exec`'s `Wait` closes the output pipes**, so a test reading a child's
+  output drains the pipe before calling `Wait`, or it loses the tail.
 - **A test that runs `git` drops the inherited `GIT_*` variables.** Inside a
   git hook (`make check` on pre-push), git exports `GIT_DIR` and friends, and
   a child `git` would act on the hook's repository instead of the test's

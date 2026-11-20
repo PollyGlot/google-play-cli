@@ -8,8 +8,6 @@ import (
 	"unicode/utf16"
 )
 
-// encodeUTF16 encodes s as UTF-16 in the given byte order, with or without a
-// BOM: the shapes Play's monthly exports come in.
 func encodeUTF16(s string, order binary.ByteOrder, bom bool) []byte {
 	var buf bytes.Buffer
 	if bom {
@@ -93,9 +91,6 @@ func TestDecode_valuesVerbatimAndQuoted(t *testing.T) {
 	}
 }
 
-// TestDecode_headerKeyRule pins the documented header -> JSON key rule (ADR-0050):
-// words are the runs of letters and digits, the first lowercased, each next one
-// capitalised with the rest lowercased; a header with no word gets column<N>.
 func TestDecode_headerKeyRule(t *testing.T) {
 	for header, want := range map[string]string{
 		"Daily Device Installs":              "dailyDeviceInstalls",
@@ -139,8 +134,6 @@ func TestDecode_duplicateAndBlankHeadersGetUniqueKeys(t *testing.T) {
 }
 
 func TestDecode_raggedRows(t *testing.T) {
-	// A short row leaves its missing cells absent; an extra non-empty cell is
-	// kept under a positional key rather than dropped.
 	tbl, err := Decode([]byte("Date,Country\n2026-09-01\n2026-09-02,FR,surplus\n2026-09-03,DE,\n"))
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
@@ -201,9 +194,6 @@ func equal(a, b []string) bool {
 	return true
 }
 
-// TestDecode_oddUTF16IsRefused covers a UTF-16 export cut mid code unit: the
-// last byte cannot be decoded, so the report is refused (exit 20) rather than
-// returned with its last amount silently cut short.
 func TestDecode_oddUTF16IsRefused(t *testing.T) {
 	for name, raw := range map[string][]byte{
 		"LE with BOM":    append(encodeUTF16("Amount\n12", binary.LittleEndian, true), '3'),

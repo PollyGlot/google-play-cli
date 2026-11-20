@@ -1,6 +1,3 @@
-// Package reportstest holds the test doubles the `gplay reports` command tests
-// share: a Reporting bucket served by the testkit Play fake, and a RunContext
-// wired to it with a parsed service account and a resolved developer-id.
 package reportstest
 
 import (
@@ -28,24 +25,14 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/transport"
 )
 
-// DeveloperID is the developer-id NewRC resolves, so the derived bucket is
-// pubsite_prod_rev_123456.
 const DeveloperID = "123456"
 
-// Bucket is a fake Reporting bucket: its objects by key, and the HTTP status
-// forced on any call (list or fetch) whose object key or list prefix starts
-// with a Deny key. Sizes overrides the size the listing reports for an
-// object (its byte length otherwise), so a test can list an export too large
-// to build.
 type Bucket struct {
 	Objects map[string][]byte
 	Deny    map[string]int
 	Sizes   map[string]string
 }
 
-// Responder answers storage.objects.list (filtered by the prefix query, every
-// object reported with its size and a fixed update time) and media fetches.
-// An unknown object is a 404, as GCS answers.
 func (b Bucket) Responder() testkit.Responder {
 	return func(c testkit.Call) (int, string, bool) {
 		if c.Host != "storage.googleapis.com" {
@@ -92,8 +79,6 @@ func (b Bucket) Responder() testkit.Responder {
 	}
 }
 
-// UTF16LE encodes s as UTF-16LE with a BOM: the byte shape of Play's
-// statistics exports.
 func UTF16LE(s string) []byte {
 	var buf bytes.Buffer
 	buf.Write([]byte{0xFF, 0xFE})
@@ -105,8 +90,6 @@ func UTF16LE(s string) []byte {
 	return buf.Bytes()
 }
 
-// Zip packs one CSV member the way Play packs a finance export: a ZIP
-// holding the report file.
 func Zip(t *testing.T, member string, body []byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -124,10 +107,6 @@ func Zip(t *testing.T, member string, body []byte) []byte {
 	return buf.Bytes()
 }
 
-// NewRC wires a RunContext whose HTTP client goes through rt (behind a
-// ScopeObserver, so the token exchange's scope can be asserted), with the
-// storage scope declared, a parsed service account, and DeveloperID resolved.
-// It returns the observer and the stderr buffer warnings land in.
 func NewRC(t *testing.T, rt http.RoundTripper) (*kernel.RunContext, *transport.ScopeObserver, *bytes.Buffer) {
 	t.Helper()
 	sa, err := serviceaccount.Parse(testkit.ServiceAccountJSON(t))

@@ -8,24 +8,11 @@ import (
 	"unicode/utf8"
 )
 
-// rule is one constraint Play documents in prose on a request property and
-// refuses at runtime, which a schema alone does not express.
 type rule struct {
-	// sentence is the Discovery description wording check encodes, verbatim.
-	// The anchor test fails when Google rewords it, so a snapshot refresh
-	// forces a review of check.
 	sentence string
-	// check returns why obj, an object of the rule's schema, breaks the rule,
-	// or "" when it does not.
-	check func(obj map[string]any) string
+	check    func(obj map[string]any) string
 }
 
-// rules is the request-constraint table, keyed by `Schema.property` as
-// Discovery names them. The Fake and the Wire check every request body
-// against it, so a test that pins a body Play refuses fails (#731, #735).
-// constraints_internal_test.go holds the inventory: every Discovery property
-// whose description states a constraint is either here or listed there with
-// the reason it is not.
 var rules = map[string]rule{
 	"TrackRelease.userFraction": {
 		sentence: `0 < fraction < 1. Can only be set when status is "inProgress" or "halted".`,
@@ -40,13 +27,6 @@ var rules = map[string]rule{
 			return openUnit("userFraction", f)
 		},
 	},
-	// Discovery names inProgress alone, yet halted counts too: a halted
-	// release is a paused staged rollout that keeps its targeting, and
-	// halt/resume must round-trip it (#779). The production-track half of the
-	// sentence is not checked: the rule sees the release, not its track.
-	// Rollout keeps countryTargeting on the track it was read from, and
-	// promote, the one verb that moves it across tracks, pins the production
-	// guard in TestPromote_countryTargetingFollowsTheFraction.
 	"TrackRelease.countryTargeting": {
 		sentence: "Note this is only allowed to be set for inProgress releases in the production track.",
 		check: func(o map[string]any) string {
@@ -89,8 +69,6 @@ var rules = map[string]rule{
 	},
 	"OneTimeProductTaxAndComplianceSettings.regionalProductAgeRatingInfos": usOnlyAgeRating,
 	"SubscriptionTaxAndComplianceSettings.regionalProductAgeRatingInfos":   usOnlyAgeRating,
-	// The immutability half of the description needs the release Play
-	// stores, which a body rule does not see.
 	"TrackRelease.inAppUpdatePriority": {
 		sentence: "Can take values in the range [0, 5], with 5 the highest priority.",
 		check: func(o map[string]any) string {
@@ -109,8 +87,6 @@ var rules = map[string]rule{
 			return ""
 		},
 	},
-	// Play says "approximately": the rule holds the documented figure, so a
-	// test that needs a longer reply is one that exercises the refusal.
 	"ReviewsReplyRequest.replyText": {
 		sentence: "Replies of more than approximately 350 characters will be rejected.",
 		check: func(o map[string]any) string {
@@ -128,8 +104,6 @@ var rules = map[string]rule{
 	},
 	"GooglePlayDeveloperReportingV1beta1TimelineSpec.endTime": {
 		sentence: "See start_time for restrictions. The timezone of the end point must match the timezone of the start point.",
-		// Each aggregation period takes a single zone, so two aligned ends
-		// share it: the zone match needs no check of its own.
 		check: func(o map[string]any) string {
 			return aligned("endTime", o)
 		},
@@ -137,7 +111,6 @@ var rules = map[string]rule{
 	"SubscriptionOffer.phases": {
 		sentence: "Must contain at least one and at most two entries.",
 		check: func(o map[string]any) string {
-			// A patch that leaves phases out keeps the stored ones.
 			if v, set := present(o, "phases"); set {
 				if phases, _ := v.([]any); len(phases) < 1 || len(phases) > 2 {
 					return fmt.Sprintf("phases holds %d entries, not one or two", len(phases))
@@ -180,9 +153,6 @@ var rules = map[string]rule{
 	},
 }
 
-// batchOf100 holds the size limit alone. The "different offers" half of each
-// sentence needs no check: apply keys every change by its identity, so one
-// batch never names an offer or a purchase option twice.
 var batchOf100 = rule{
 	sentence: "of up to 100 elements.",
 	check: func(o map[string]any) string {
@@ -203,9 +173,6 @@ var redemptionLimit = rule{
 	},
 }
 
-// aligned checks one end of a TimelineSpec against its aggregation period.
-// proto3 JSON writes an unset integer as 0 or leaves it out, so only a
-// non-zero value breaks "must be unset".
 func aligned(end string, spec map[string]any) string {
 	dt, _ := spec[end].(map[string]any)
 	if dt == nil {
@@ -219,8 +186,6 @@ func aligned(end string, spec map[string]any) string {
 			return fmt.Sprintf("%s is in time zone %q on an HOURLY timeline, which takes UTC alone", end, z)
 		}
 	case "DAILY":
-		// Every metric set's timelineSpec says America/Los_Angeles is the
-		// only DAILY zone.
 		unset = []string{"hours", "minutes", "seconds", "nanos"}
 		if z := zone(dt); z != "" && z != "America/Los_Angeles" {
 			return fmt.Sprintf("%s is in time zone %q on a DAILY timeline, which takes America/Los_Angeles alone", end, z)
@@ -234,8 +199,6 @@ func aligned(end string, spec map[string]any) string {
 	return ""
 }
 
-// zone names the time zone of a google.type.DateTime: its IANA id, its UTC
-// offset when set instead, "" when neither is.
 func zone(dt map[string]any) string {
 	if tz, _ := dt["timeZone"].(map[string]any); tz != nil {
 		if id, _ := tz["id"].(string); id != "" {
@@ -272,15 +235,11 @@ var usOnlyAgeRating = rule{
 	},
 }
 
-// present reads key from o. A JSON null counts as absent: proto3 JSON maps it
-// to the field's default, which is what an unset field is.
 func present(o map[string]any, key string) (any, bool) {
 	v, ok := o[key]
 	return v, ok && v != nil
 }
 
-// number reads a JSON number. proto3 JSON also accepts a number written as a
-// string (an int64 always is), so "0.8" counts as 0.8.
 func number(v any) (float64, bool) {
 	if s, isString := v.(string); isString {
 		f, err := strconv.ParseFloat(s, 64)
@@ -290,7 +249,6 @@ func number(v any) (float64, bool) {
 	return f, ok
 }
 
-// openUnit requires v to be a number strictly between 0 and 1.
 func openUnit(name string, v any) string {
 	if f, ok := number(v); !ok || !(f > 0 && f < 1) {
 		return fmt.Sprintf("%s is %v, not strictly between 0 and 1", name, v)
@@ -298,7 +256,6 @@ func openUnit(name string, v any) string {
 	return ""
 }
 
-// between requires v to be an integer from lo to hi inclusive.
 func between(name string, v any, lo, hi float64) string {
 	if f, ok := number(v); !ok || f != math.Trunc(f) || f < lo || f > hi {
 		return fmt.Sprintf("%s is %v, not an integer from %v to %v", name, v, lo, hi)
@@ -306,8 +263,6 @@ func between(name string, v any, lo, hi float64) string {
 	return ""
 }
 
-// quoted renders a JSON value for a violation message, telling a missing
-// value apart from an empty string.
 func quoted(v any) string {
 	if v == nil {
 		return "unset"

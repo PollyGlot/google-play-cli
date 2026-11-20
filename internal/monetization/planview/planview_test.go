@@ -9,10 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 )
 
-// TestAxis_namesTheMiddleLevel asserts what the axis decides for one and the
-// same plan: the JSON key of the middle level, the markdown heading and the
-// catalog's own summary counter. The full views are pinned byte for byte by
-// the goldens of commands/iap/apply and commands/subscriptions/apply.
 func TestAxis_namesTheMiddleLevel(t *testing.T) {
 	plan := reconcile.Plan{OfferCreates: []reconcile.Change{{ProductID: "p", ParentID: "mid", OfferID: "o"}}}
 	cases := []struct {

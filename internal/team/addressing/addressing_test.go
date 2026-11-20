@@ -13,8 +13,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/team/addressing"
 )
 
-// TestResolve_cascade asserts the ADR-0015 precedence (later wins): flag beats
-// env beats the config-merged Resolved.DeveloperID.
 func TestResolve_cascade(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -40,8 +38,6 @@ func TestResolve_cascade(t *testing.T) {
 	}
 }
 
-// TestResolve_unresolved_exit10 asserts that no resolvable id is an
-// auth-family failure (exit 10) whose message names how to set one.
 func TestResolve_unresolved_exit10(t *testing.T) {
 	_, err := addressing.Resolve("", "", &config.Resolved{})
 	if err == nil {
@@ -58,8 +54,6 @@ func TestResolve_unresolved_exit10(t *testing.T) {
 	}
 }
 
-// TestResolve_nilResolved asserts a nil Resolved degrades to unresolved rather
-// than panicking.
 func TestResolve_nilResolved(t *testing.T) {
 	if _, err := addressing.Resolve("", "", nil); !errors.Is(err, addressing.ErrUnresolved) {
 		t.Errorf("nil Resolved: err = %v, want ErrUnresolved", err)
@@ -69,9 +63,6 @@ func TestResolve_nilResolved(t *testing.T) {
 	}
 }
 
-// TestForRun_noAccount_namesTheAccountNotTheDeveloperID pins #593: with no
-// Account at all, the failure is the one no-Account error, because a
-// developer-id set now would only lead to that same error one step later.
 func TestForRun_noAccount_namesTheAccountNotTheDeveloperID(t *testing.T) {
 	t.Setenv(addressing.EnvDeveloperID, "")
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{}, kernel.Inputs{})
@@ -89,9 +80,6 @@ func TestForRun_noAccount_namesTheAccountNotTheDeveloperID(t *testing.T) {
 	}
 }
 
-// TestForRun_accountWithoutDeveloperID_keepsTheDeveloperIDError asserts the
-// Account check only reorders the failures: with an Account resolved, a
-// missing developer-id is still reported as such, and a resolved id wins.
 func TestForRun_accountWithoutDeveloperID_keepsTheDeveloperIDError(t *testing.T) {
 	t.Setenv(addressing.EnvDeveloperID, "")
 	rc := kernel.NewForTest(context.Background(), kernel.Boot{}, kernel.Inputs{})

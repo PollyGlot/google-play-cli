@@ -4,6 +4,8 @@
 
 accepted
 
+amended (2026-11-20): implementation decisions moved from code comments
+
 ## Context
 
 gplay uploaded whatever file it was handed. A wrong path (an APK where an
@@ -89,3 +91,64 @@ restoration.
   repo.
 - Signature verification, `versionCode` comparisons, and minSdk policy stay
   out of scope: this ADR covers identity and container, not policy.
+
+## Implementation notes
+
+### Order and output
+
+- **The container check runs before the package check**: "you passed an APK
+  to a bundle upload" is the more actionable message when both would fail.
+- **`--dry-run` names what the preflight found even on a match.** A preview
+  that stays silent tells the user nothing about the check it just ran; the
+  live path stays silent on success.
+
+### Bounds
+
+- **The member cap bounds the classification walk only.** `zip.OpenReader`
+  has already read the whole central directory by then; the cap keeps a
+  crafted archive of millions of tiny entries from turning classification
+  into the slow path the preflight exists to avoid.
+- **The per-member cap is sized for a manifest**: a real
+  `AndroidManifest.xml` is tens of kilobytes. A member is read to the cap plus
+  one byte, so an entry that lies about its uncompressed size is caught by the
+  bytes actually read, not by the header.
+- **The string pools have their own decode budget.** The member cap bounds
+  the manifest's size, not what its pools decode to: every index may alias
+  one long entry, each index decodes its own copy, and a document may carry
+  many pools. Past the budget the preflight degrades to a note, as for any
+  manifest it cannot parse.
+- **A length the protobuf manifest, a zip member or a pool index declares is
+  compared as `uint64`** before any conversion, so a huge value cannot wrap
+  into a plausible `int`. The binary-XML reader converts first and relies on
+  its `< 0` and `<= 0` guards instead, which must stay. An index
+  array whose declared count cannot fit in the chunk is refused before it
+  drives an allocation, and a chunk size of zero, negative or past the
+  document stops the walk.
+
+### Reading the formats
+
+- **The AAB markers are checked before the APK ones.** An AAB has no root
+  `AndroidManifest.xml`, so the two cannot both match; the AAB pair is the
+  more specific test.
+- **A duplicated member name resolves to its first occurrence**, the
+  classic spoofing defence.
+- **Both string-pool encodings are read**: aapt2 writes modified UTF-8,
+  older aapt wrote UTF-16LE, and both occur in the wild.
+- **The `package` attribute carries no namespace**, in both encodings; an
+  `android:`-prefixed attribute named `package` is a different attribute.
+- **The aapt2 protobuf manifest is read by field number** from three
+  messages of `Resources.proto`: `XmlNode` (`element` = 1), `XmlElement`
+  (`name` = 3, `attribute` = 4) and `XmlAttribute` (`namespace_uri` = 1,
+  `name` = 2, `value` = 3). The deprecated group wire types (3 and 4) never
+  appear in aapt2 output and are refused.
+- **A partial answer is still an answer.** A truncated binary-XML tail is
+  clamped to the bytes present, since `<manifest>` sits near the front; a bad
+  string offset costs that one string, not the pool, since only `manifest` and
+  `package` must resolve.
+
+### Fixtures
+
+- **Fixtures store empty members and deflate the rest.** A Deflate writer per
+  member made the 65k-member cap fixtures the slowest tests in the suite,
+  while members with content stay deflated so the decompression limits are
+  still exercised. Production code does not import `internal/artifacttest`.
