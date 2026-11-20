@@ -10,11 +10,8 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// onePNG is the minimal byte prefix imagetree sniffs as a PNG.
 var onePNG = append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 16)...)
 
-// A screenshot symlinked at a private file would be uploaded to a public store
-// listing under the operator's credentials (PRD #459 story 5).
 func TestReadRefusesEscapingImageSymlink(t *testing.T) {
 	secretDir := t.TempDir()
 	secret := filepath.Join(secretDir, "private.png")
@@ -38,14 +35,6 @@ func TestReadRefusesEscapingImageSymlink(t *testing.T) {
 	}
 }
 
-// The higher-leverage variant: one symlinked locale directory would make every
-// file under it escape. Two independent defences stop it, and the test asserts
-// the OUTCOME both share: nothing from outside the tree ends up in the Tree.
-//
-// The first defence is upstream of containment: os.ReadDir reports a symlink
-// with Lstat semantics, so DirEntry.IsDir() is false for a symlinked directory
-// and Read skips it as a stray entry (the package's documented leniency). The
-// containment check is the backstop for any path that does get walked.
 func TestReadDoesNotFollowEscapingLocaleDirectory(t *testing.T) {
 	outside := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(outside, "images"), 0o755); err != nil {
@@ -62,8 +51,6 @@ func TestReadDoesNotFollowEscapingLocaleDirectory(t *testing.T) {
 
 	tr, err := imagetree.Read(dir)
 	if err != nil {
-		// Refusing outright is also acceptable; what must never happen is
-		// silently returning the outside file.
 		return
 	}
 	if len(tr) != 0 {
@@ -71,7 +58,6 @@ func TestReadDoesNotFollowEscapingLocaleDirectory(t *testing.T) {
 	}
 }
 
-// Story 7: a checkout reached entirely through a symlink keeps working.
 func TestReadFullySymlinkedRootPasses(t *testing.T) {
 	real := t.TempDir()
 	imgDir := filepath.Join(real, "en-US", "images")
@@ -96,8 +82,6 @@ func TestReadFullySymlinkedRootPasses(t *testing.T) {
 	}
 }
 
-// Story 6: the locale keys of a Tree come from the Play API on the pull path.
-// A crafted one must not write outside the target directory.
 func TestWriteRefusesTraversingLocale(t *testing.T) {
 	dir := t.TempDir()
 	victim := filepath.Join(dir, "..", "escaped")
@@ -113,9 +97,6 @@ func TestWriteRefusesTraversingLocale(t *testing.T) {
 	}
 }
 
-// Containment covers the DIRECTORY, but the leaf file is written with
-// os.WriteFile, which follows a symlink. A pre-placed icon.png pointing at a
-// file outside the tree would be overwritten by `metadata images pull`.
 func TestWriteRefusesSymlinkedSingularFile(t *testing.T) {
 	victim, original := plantVictim(t)
 
@@ -135,7 +116,6 @@ func TestWriteRefusesSymlinkedSingularFile(t *testing.T) {
 	assertIntact(t, victim, original)
 }
 
-// Same trap, one level down: a gallery slot's 1.png.
 func TestWriteRefusesSymlinkedGalleryFile(t *testing.T) {
 	victim, original := plantVictim(t)
 
@@ -155,8 +135,6 @@ func TestWriteRefusesSymlinkedGalleryFile(t *testing.T) {
 	assertIntact(t, victim, original)
 }
 
-// plantVictim creates a file OUTSIDE any image tree, the target a hostile
-// symlink would aim at, and returns its path and expected contents.
 func plantVictim(t *testing.T) (path, body string) {
 	t.Helper()
 	path = filepath.Join(t.TempDir(), "id_rsa")

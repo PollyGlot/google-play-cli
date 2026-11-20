@@ -1,5 +1,3 @@
-// Package notes_test exercises the release-notes loader against
-// hand-built Opts and t.TempDir() directory layouts.
 package notes_test
 
 import (
@@ -13,9 +11,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 )
 
-// TestLoad_textMode_singleEntryForDefaultLanguage asserts that --release-notes
-// "<text>" produces exactly one entry, assigned to the app's default
-// language.
 func TestLoad_textMode_singleEntryForDefaultLanguage(t *testing.T) {
 	got, err := notes.Load(notes.Opts{
 		Text:            "Bug fixes and performance improvements.",
@@ -35,8 +30,6 @@ func TestLoad_textMode_singleEntryForDefaultLanguage(t *testing.T) {
 	}
 }
 
-// writeFile is a tiny helper that creates a file in dir with given
-// content, t.Fatal-ing on error so tests stay focused on assertions.
 func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
@@ -44,8 +37,6 @@ func writeFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-// sortNotes returns a fresh slice sorted by Locale so map-iteration
-// order doesn't make assertions flaky.
 func sortNotes(in []notes.LocaleNote) []notes.LocaleNote {
 	out := make([]notes.LocaleNote, len(in))
 	copy(out, in)
@@ -53,10 +44,6 @@ func sortNotes(in []notes.LocaleNote) []notes.LocaleNote {
 	return out
 }
 
-// TestLoad_dirMode_perLocaleFiles_emitsAllLocales asserts that
-// --release-notes-dir walks the directory and emits one entry per
-// `<locale>.txt` file. The DefaultLanguage is not relevant when every
-// locale has its own file.
 func TestLoad_dirMode_perLocaleFiles_emitsAllLocales(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "en-US.txt", "English notes")
@@ -84,9 +71,6 @@ func TestLoad_dirMode_perLocaleFiles_emitsAllLocales(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_defaultTxt_emittedAsDefaultLanguage asserts that a
-// lone `default.txt` in the directory is shipped as the DefaultLanguage
-// entry: the simplest "all locales fall back to the same text" case.
 func TestLoad_dirMode_defaultTxt_emittedAsDefaultLanguage(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "default.txt", "Fallback notes")
@@ -106,10 +90,6 @@ func TestLoad_dirMode_defaultTxt_emittedAsDefaultLanguage(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_explicitLocaleWinsOverDefaultTxt asserts the
-// precedence rule: when both `<DefaultLanguage>.txt` and `default.txt`
-// exist, the explicit per-locale file wins and default.txt does NOT
-// produce a duplicate entry.
 func TestLoad_dirMode_explicitLocaleWinsOverDefaultTxt(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "default.txt", "Fallback content")
@@ -130,10 +110,6 @@ func TestLoad_dirMode_explicitLocaleWinsOverDefaultTxt(t *testing.T) {
 	}
 }
 
-// TestLoad_bothTextAndDir_returnsExit2Error asserts the CLI-misuse
-// guardrail: --release-notes and --release-notes-dir are mutually
-// exclusive, so passing both must return an error carrying
-// ExitCode()=2 (CLI misuse per docs/DESIGN.md §9).
 func TestLoad_bothTextAndDir_returnsExit2Error(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "en-US.txt", "irrelevant")
@@ -155,8 +131,6 @@ func TestLoad_bothTextAndDir_returnsExit2Error(t *testing.T) {
 	}
 }
 
-// TestLoad_neitherTextNorDir_returnsEmpty asserts uploading without
-// release notes is valid: Load returns an empty slice and no error.
 func TestLoad_neitherTextNorDir_returnsEmpty(t *testing.T) {
 	got, err := notes.Load(notes.Opts{DefaultLanguage: "en-US"})
 	if err != nil {
@@ -167,10 +141,6 @@ func TestLoad_neitherTextNorDir_returnsEmpty(t *testing.T) {
 	}
 }
 
-// TestLoad_textMode_missingDefaultLanguage_returnsExit2 asserts the
-// fail-fast: --release-notes without a DefaultLanguage has no locale
-// to assign to and must reject (exit 2) rather than silently emitting
-// an empty-locale entry.
 func TestLoad_textMode_missingDefaultLanguage_returnsExit2(t *testing.T) {
 	_, err := notes.Load(notes.Opts{Text: "Bug fixes"})
 	if err == nil {
@@ -185,9 +155,6 @@ func TestLoad_textMode_missingDefaultLanguage_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2 asserts the
-// same fail-fast for the dir-mode fallback: default.txt present + no
-// DefaultLanguage = no locale to assign the fallback to.
 func TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "default.txt", "Fallback")
@@ -205,12 +172,6 @@ func TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode asserts the
-// parity fix from finding #10: `--release-notes "Bug fixes\n"` and a
-// `--release-notes-dir` containing the same `default.txt` body must
-// produce byte-identical wire payloads. Without trim parity, the text-
-// mode entry would carry the trailing newline while the file-mode entry
-// would not, and the two CLI flows would diverge on the wire.
 func TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode(t *testing.T) {
 	const body = "Bug fixes and performance improvements."
 	const noisy = body + "\n  \t\r\n"
@@ -240,10 +201,6 @@ func TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_fileExceedsCap_returnsExit2 asserts finding #12: a
-// release-notes file larger than MaxNoteFileSize must be rejected with
-// a ValidationError (ExitCode()=2) naming the file, rather than being
-// silently loaded into memory.
 func TestLoad_dirMode_fileExceedsCap_returnsExit2(t *testing.T) {
 	dir := t.TempDir()
 	huge := make([]byte, notes.MaxNoteFileSize+1)
@@ -273,9 +230,6 @@ func TestLoad_dirMode_fileExceedsCap_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2 exercises the same
-// cap on the default.txt code path, which uses a distinct readCapped
-// call site.
 func TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2(t *testing.T) {
 	dir := t.TempDir()
 	huge := make([]byte, notes.MaxNoteFileSize+1)
@@ -305,10 +259,6 @@ func TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_atCapBoundary_passesTheByteCap asserts the byte cap is
-// inclusive: a file of exactly MaxNoteFileSize bytes is read, so the refusal
-// it gets is the 500-character note check (*NoteError, exit 20), not the
-// OOM-guard ValidationError (exit 2).
 func TestLoad_dirMode_atCapBoundary_passesTheByteCap(t *testing.T) {
 	dir := t.TempDir()
 	atLimit := make([]byte, notes.MaxNoteFileSize)
@@ -332,17 +282,13 @@ func TestLoad_dirMode_atCapBoundary_passesTheByteCap(t *testing.T) {
 	}
 }
 
-// TestLoad_noteLength covers #786: Play refuses an empty note and one over 500
-// Unicode characters, and used to do so only after the bundle was uploaded.
-// Length is counted in runes (an "é" is one character, two bytes), the refusal
-// is exit 20, and its message carries the locale, the source and the length.
 func TestLoad_noteLength(t *testing.T) {
-	accented := strings.Repeat("é", notes.MaxNoteChars) // 500 runes, 1000 bytes
+	accented := strings.Repeat("é", notes.MaxNoteChars)
 	cases := []struct {
 		name     string
 		opts     func(dir string) notes.Opts
 		wantErr  bool
-		wantText []string // substrings of the error message
+		wantText []string
 	}{
 		{
 			name: "text mode at the limit in runes loads",
@@ -420,11 +366,6 @@ func TestLoad_noteLength(t *testing.T) {
 	}
 }
 
-// TestLoad_dirMode_caseInsensitiveCoversDedupes asserts finding #14: a
-// per-locale file whose stem differs only in case from DefaultLanguage
-// (e.g. `en-us.txt` vs DefaultLanguage `en-US`) must be treated as
-// covering DefaultLanguage, so `default.txt` does NOT add a second
-// near-duplicate entry that Google Play would reject.
 func TestLoad_dirMode_caseInsensitiveCoversDedupes(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "en-us.txt", "Lowercase locale stem")
@@ -448,11 +389,6 @@ func TestLoad_dirMode_caseInsensitiveCoversDedupes(t *testing.T) {
 	}
 }
 
-// TestPrecheck_defaultTxt_refusedOnlyWhenCertainlySent pins the offline rule
-// for default.txt (#786): without the real default language, the precheck
-// refuses default.txt only when no `<locale>.txt` exists, the one layout where
-// it ships whatever the language. Otherwise the full check runs in Load once
-// details.get has named the language, and refuses it only if it is used.
 func TestPrecheck_defaultTxt_refusedOnlyWhenCertainlySent(t *testing.T) {
 	covered := t.TempDir()
 	writeFile(t, covered, "en-US.txt", "Bug fixes\n")

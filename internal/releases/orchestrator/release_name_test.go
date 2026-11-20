@@ -10,8 +10,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// uploadedReleaseNames returns the name of every release the tracks.update
-// PUT carried.
 func uploadedReleaseNames(t *testing.T, body []byte) []string {
 	t.Helper()
 	var track struct {
@@ -29,10 +27,6 @@ func uploadedReleaseNames(t *testing.T, body []byte) []string {
 	return names
 }
 
-// TestUpload_releaseName_namesTheReleaseAndPromoteFindsIt pins #665 end to
-// end: the name set on upload is the one a later promote --release-name
-// matches. The source track promote reads is built from the very release
-// the upload sent, next to a second release so the name is what picks it.
 func TestUpload_releaseName_namesTheReleaseAndPromoteFindsIt(t *testing.T) {
 	up, transport := newPlay(playAPI{editID: "edit-named", versionCode: 142})
 	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
@@ -69,8 +63,6 @@ func TestUpload_releaseName_namesTheReleaseAndPromoteFindsIt(t *testing.T) {
 	}
 }
 
-// TestUpload_noReleaseName_keepsVersionCodeName: without the option the
-// release is still named after its versionCode.
 func TestUpload_noReleaseName_keepsVersionCodeName(t *testing.T) {
 	up, transport := newPlay(playAPI{editID: "edit-default", versionCode: 142})
 	if _, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
@@ -83,8 +75,6 @@ func TestUpload_noReleaseName_keepsVersionCodeName(t *testing.T) {
 	}
 }
 
-// TestUpload_dryRun_releaseName_previewed: the preview shows the name the
-// live call would send.
 func TestUpload_dryRun_releaseName_previewed(t *testing.T) {
 	rt, transport := newPlay(playAPI{})
 	result, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
@@ -101,8 +91,6 @@ func TestUpload_dryRun_releaseName_previewed(t *testing.T) {
 	}
 }
 
-// TestUpload_blankReleaseName_invalidOpts_noHTTP: a whitespace-only name is
-// refused before any request (an empty string means "not set").
 func TestUpload_blankReleaseName_invalidOpts_noHTTP(t *testing.T) {
 	rt, transport := newPlay(playAPI{editID: "edit-blank"})
 	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{

@@ -312,7 +312,9 @@ offending file. The check is syntactic: `xy-ZZ` passes and is Play's to
 refuse, while `en_US`, `en-`, `klingon` and `e` do not. It ignores case (RFC
 5646 tags are case-insensitive), and the primary subtag is 2 or 3 letters
 although RFC 5646 reserves longer ones, which no Play locale uses and which
-would let `klingon` through. It uses no locale registry, which would reject a
+would let `klingon` through. Singleton extension and private-use subtags (RFC
+5646 §2.2.6-7) are refused for the same reason: no Play locale carries one,
+and accepting them would admit arbitrary one-letter subtags. It uses no locale registry, which would reject a
 locale Google added last week, and no `golang.org/x/text`, whose tables would
 weigh on a single static binary (ADR-0007). An unreadable directory is
 refused at the same point, and `default.txt` is exempt: it is a fallback
@@ -527,6 +529,10 @@ reports the error the serial walk would have hit first.
 
 - **Writes inside one Edit stay sequential** (`images apply`, `metadata apply`):
   Google does not document concurrent writes to an Edit.
+- **A fan-out worker never touches the `RunContext`.** One cobra invocation owns
+  one `RunContext`, whose lazy credential resolution and output counters are
+  unguarded: the HTTP client and anything else a worker needs are taken from it
+  before the fan-out starts, and results are written after it ends.
 - **`images apply` and `images validate` hold one image at a time**: the tree
   is scanned for paths, validation reads each file's size and header, the diff
   hashes each file as a stream, and an upload reads its image just before

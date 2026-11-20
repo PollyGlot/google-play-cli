@@ -1,20 +1,3 @@
-// Package imageorchestrator is the side-effecting glue behind `gplay metadata
-// images apply`. It wires auth → the Edit lifecycle → the pure imagediff
-// engine → images.upload / deleteall / delete, applying the ADR-0011 stance
-// with ADR-0013 mechanics: --confirm gates every real write, the offline
-// imagevalidate runs as a fail-fast pre-check (bypassable with --skip-preflight),
-// the sync is additive (online-only images are never deleted: that is
-// --prune, #135), and every slot is reconciled inside a single Edit committed
-// once. It is the image analogue of internal/metadata/orchestrator.
-//
-// Two read paths and one write path:
-//
-//   - Apply(DryRun): open a read-only Edit, fetch live per slot, compute the
-//     diff, discard. Nothing is committed.
-//   - Apply(Confirm): open ONE write Edit, fetch+diff, execute each slot's plan
-//     (append / rewrite = deleteall+reupload), and commit once. A no-op diff
-//     discards instead of committing; any per-slot failure auto-discards, so 0
-//     slots are published (atomic).
 package imageorchestrator
 
 import (
@@ -35,74 +18,39 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
 
-// Opts is the input contract for Apply.
 type Opts struct {
 	Package string
 
-	// Dir is the directory imagetree.Scan walked to build the local tree. Every
-	// file is opened against it again (imagetree.Open) when it is hashed and
-	// when it is uploaded, so a file swapped out of the tree after the scan is
-	// refused, not read.
 	Dir string
 
-	// DryRun computes the diff against live Play without committing (a
-	// read-only Edit). It does NOT require Confirm.
 	DryRun bool
 
-	// Confirm authorizes a real publish. Required for any non-dry-run Apply;
-	// without it Apply returns an *exit.SafetyFlagError naming --confirm
-	// (exit 3). CI=true must NOT flow into this field.
 	Confirm bool
 
-	// Locales/Types restrict the reconciliation to a subset (the --locale /
-	// --type flags). Empty means "all".
 	Locales []string
 	Types   []string
 
-	// Prune deletes a managed slot's online-only images (sha256 in no local
-	// file) and reconciles the slot exactly to local. Opt-in (destructive);
-	// never touches an unmanaged slot (ADR-0013 §1/§3).
 	Prune bool
 
-	// NoValidate bypasses the offline imagevalidate fail-fast pre-check
-	// (ADR-0013 §4: gplay must never be permanently stricter than Play).
 	NoValidate bool
 
-	// ExplicitEditID reuses an already-open explicit Edit (`gplay edits begin`)
-	// instead of opening/committing a per-apply Edit (docs/DESIGN.md §4). Empty
-	// is the implicit default.
 	ExplicitEditID string
 
-	// Commit carries the opt-in edits.commit parameters; the zero value keeps
-	// Google's default. Unused with ExplicitEditID (`gplay edits commit` commits).
 	Commit edits.CommitOptions
 
-	// AIGenerated is the attestation every upload of this apply carries; the
-	// zero value sends none. An image already live is not re-uploaded, so its
-	// attestation is left as it was.
 	AIGenerated images.AIGeneratedState
 }
 
-// Result is what Apply returns. Diff is always populated. On a real apply the
-// summary counters double as the applied tally.
 type Result struct {
 	Package string
 	DryRun  bool
 	Diff    imagediff.Result
 }
 
-// confirmRequired builds the refusal for a real apply invoked without
-// --confirm. It is an *exit.SafetyFlagError, so it exits 3 ("safety flag
-// required", docs/DESIGN.md §9) and names the missing flag in the --output
-// json error envelope's requires[] (ADR-0017 / ADR-0023). It points at
-// --dry-run. Images are live-on-commit with no track/draft fallback, so
-// --confirm is always required for a real apply.
 func confirmRequired() error {
 	return exit.SafetyFlag("confirm", "metadata images apply publishes images live to the store immediately; pass --confirm to proceed (preview first with --dry-run)")
 }
 
-// ValidationError signals the local tree fails the offline image lint that must
-// block a publish. It maps to exit 20.
 type ValidationError struct{ Problems []imagevalidate.Problem }
 
 func (e *ValidationError) Error() string {
@@ -118,11 +66,6 @@ func (e *ValidationError) Error() string {
 }
 func (e *ValidationError) ExitCode() int { return 20 }
 
-// LocaleError tags a failed images.list with its locale: inside an open Edit
-// the package is known, so a 404 there means the language has no Listing to
-// attach images to, and the command says so instead of blaming the package.
-// Error() stays the wrapped error's text and Unwrap keeps the *api.Error
-// reachable, so the exit code and the JSON error envelope are unchanged.
 type LocaleError struct {
 	Locale string
 	Err    error
@@ -131,20 +74,13 @@ type LocaleError struct {
 func (e *LocaleError) Error() string { return e.Err.Error() }
 func (e *LocaleError) Unwrap() error { return e.Err }
 
-// errNoChanges is an internal sentinel: returned from the write Edit's closure
-// when the diff is a no-op so edits.WithEdit auto-discards instead of
-// committing an empty Edit (quota conservation). It never escapes Apply.
 type noChanges struct{}
 
 func (noChanges) Error() string { return "metadata images: no changes to apply" }
 
 var errNoChanges = noChanges{}
 
-// Apply reconciles the local image tree against live Play per opts. local
-// names files (imagetree.Scan): only the slots in scope are read, one image
-// at a time, so memory does not grow with the tree.
 func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Opts) (*Result, error) {
-	// 1. Confirm gate (real writes only), before any network.
 	if !opts.DryRun && !opts.Confirm {
 		return nil, confirmRequired()
 	}
@@ -155,9 +91,6 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Op
 	locales := filterLocales(local, opts.Locales)
 	types := filterTypes(opts.Types)
 
-	// 2. Offline lint as a fail-fast pre-check (unless bypassed). Only the
-	// managed slots in scope are validated. Runs in dry-run and real mode so an
-	// invalid tree never reaches the diff or a write.
 	if !opts.NoValidate {
 		problems, err := imagevalidate.Validate(scopedTree(local, locales, types))
 		if err != nil {
@@ -184,12 +117,6 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Op
 		return result, nil
 	}
 
-	// Real apply: ONE write Edit. Plan inside it, execute, commit once. In
-	// IMPLICIT mode a no-op diff returns errNoChanges so the Edit auto-discards
-	// and any per-slot failure also auto-discards → 0 slots published (atomic).
-	// In EXPLICIT mode (opts.ExplicitEditID set) WithEdit reuses the pinned Edit
-	// and never commits or discards: staged changes wait for `gplay edits
-	// commit`/`discard`.
 	err := edits.WithEdit(ctx, hc, opts.Package, edits.Options{ExplicitEditID: opts.ExplicitEditID, Commit: opts.Commit}, func(editID string) error {
 		plans, inputs, err := planSlots(ctx, hc, opts.Package, editID, opts.Dir, local, locales, types, opts.Prune)
 		if err != nil {
@@ -212,13 +139,6 @@ func Apply(ctx context.Context, hc *http.Client, local imagetree.Staged, opts Op
 	return result, nil
 }
 
-// planSlots fetches live images for every considered (locale, type) slot inside
-// the open Edit, hashes the slot's local files, and reconciles each slot
-// against the local tree. The reads run fanout.Limit at a time; each slot
-// fills only its own input, so the plan keeps (locale, type) order and the
-// error returned is the one the serial loop would have hit first. The inputs
-// come back beside the plans, index for index: their Local hashes are what an
-// upload must find again in the file it sends.
 func planSlots(ctx context.Context, hc *http.Client, pkg, editID, dir string, local imagetree.Staged, locales []string, types []images.Type, prune bool) ([]imagediff.Plan, []imagediff.SlotInput, error) {
 	inputs := make([]imagediff.SlotInput, 0, len(locales)*len(types))
 	for _, loc := range locales {
@@ -245,8 +165,6 @@ func planSlots(ctx context.Context, hc *http.Client, pkg, editID, dir string, lo
 	return imagediff.Plans(inputs, prune), inputs, nil
 }
 
-// hashFiles returns the hex sha256 of each file, streamed so no image is held
-// whole in memory.
 func hashFiles(dir string, paths []string) ([]string, error) {
 	out := make([]string, len(paths))
 	for i, p := range paths {
@@ -265,9 +183,6 @@ func hashFiles(dir string, paths []string) ([]string, error) {
 	return out, nil
 }
 
-// executePlan runs one slot's plan inside the open Edit. files are the slot's
-// local images and shas their planned hashes, both indexed by the plan's
-// Uploads. validate runs the pre-check's rules on each buffer uploaded.
 func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool, ai images.AIGeneratedState) error {
 	switch p.Kind {
 	case imagediff.KindNone:
@@ -290,13 +205,6 @@ func executePlan(ctx context.Context, hc *http.Client, pkg, editID, dir string, 
 	return nil
 }
 
-// uploadAll reads each image just before its upload, so one image at a time
-// is in memory however large the slot. The buffer read is the buffer sent, and
-// it goes out only if its hash is the planned one (ChangedError otherwise) and,
-// unless validate is off, it passes the pre-check's rules itself
-// (ValidationError otherwise). The pre-check and the plan each read the file
-// on their own, so neither proves what an upload holds: a file rewritten
-// between them would be planned unvalidated.
 func uploadAll(ctx context.Context, hc *http.Client, pkg, editID, dir string, files, shas []string, p imagediff.Plan, validate bool, ai images.AIGeneratedState) error {
 	for _, i := range p.Uploads {
 		data, err := readContained(dir, files[i])
@@ -328,10 +236,6 @@ func readContained(dir, p string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-// ChangedError is a local image whose content is no longer the one the plan
-// hashed: it was edited or replaced while the apply ran. Nothing of it was
-// uploaded. It maps to exit 20, the code of a local image refused before
-// upload.
 type ChangedError struct{ Path, Planned, Got string }
 
 func (e *ChangedError) Error() string {
@@ -339,8 +243,6 @@ func (e *ChangedError) Error() string {
 }
 func (e *ChangedError) ExitCode() int { return 20 }
 
-// filterLocales returns the managed local locales restricted to the --locale
-// allow-list (empty = all), sorted.
 func filterLocales(local imagetree.Staged, allow []string) []string {
 	allowSet := toSet(allow)
 	out := make([]string, 0, len(local))
@@ -353,9 +255,6 @@ func filterLocales(local imagetree.Staged, allow []string) []string {
 	return out
 }
 
-// filterTypes returns the 8 image types restricted to the --type allow-list
-// (empty = all), in canonical order. An unknown --type value is silently
-// dropped (the command validates the flag and refuses unknown types upfront).
 func filterTypes(allow []string) []images.Type {
 	allowSet := toSet(allow)
 	out := make([]images.Type, 0, len(images.Types()))
@@ -367,8 +266,6 @@ func filterTypes(allow []string) []images.Type {
 	return out
 }
 
-// scopedTree builds the subset of local restricted to the considered
-// locales/types: the managed slots the validator should check.
 func scopedTree(local imagetree.Staged, locales []string, types []images.Type) imagetree.Staged {
 	tySet := make(map[images.Type]bool, len(types))
 	for _, ty := range types {

@@ -31,6 +31,10 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   the conflict hint; Google has shipped the same reason on a 429, which keeps
   its 60 (retry with backoff) rather than being downgraded
   ([ADR-0006](./0006-apps-add-validates-via-api.md)).
+- **`releases promote` from an empty source track is exit 2**, not the exit 30
+  of an absent resource: the user named a track that holds nothing to promote,
+  an input error the API was never asked about. `rollout`, `halt`, `resume` and
+  `complete` on a track with no matching release stay exit 30.
 
 ### Failures without a status
 

@@ -17,11 +17,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
 )
 
-// tokenScriptRT is the single injected transport for both the /token exchange
-// and the API calls. The token endpoint answers with the scripted outcome
-// (tokenErr as a transport failure, else tokenStatus + tokenBody); any request
-// that gets past it to the API is a test failure, since a refused credential
-// must never reach androidpublisher.
 type tokenScriptRT struct {
 	t           *testing.T
 	tokenStatus int
@@ -42,9 +37,6 @@ func (s *tokenScriptRT) serve(req *http.Request) (*http.Response, error) {
 	return testkit.Response(s.tokenStatus, s.tokenBody), nil
 }
 
-// runReadOnlyEdit drives the `tracks list` shape end to end through the
-// kernel under --output json: resolve the Account, build the authed client,
-// open a read-only Edit. It returns the surfaced error and the envelope.
 func runReadOnlyEdit(t *testing.T, rt http.RoundTripper, retry int) (envelopeShape, error) {
 	t.Helper()
 	boot := newBoot(t)
@@ -69,11 +61,6 @@ func runReadOnlyEdit(t *testing.T, rt http.RoundTripper, retry int) (envelopeSha
 	return decodeOneEnvelope(t, stdout.String()), err
 }
 
-// TestRun_tokenRefused_exit10NotRetried (#584): a /token exchange refused
-// with 400 invalid_grant (Google's answer for a deleted key, a bad signature
-// or clock skew) is an auth failure, exit 10 AUTH_FAILED and not retryable
-// (DESIGN §9), and --retry 3 sends exactly one token request instead of
-// replaying the dead credential.
 func TestRun_tokenRefused_exit10NotRetried(t *testing.T) {
 	for _, status := range []int{400, 401} {
 		rt := &tokenScriptRT{t: t, tokenStatus: status, tokenBody: `{"error":"invalid_grant","error_description":"Invalid JWT Signature."}`}
@@ -90,9 +77,6 @@ func TestRun_tokenRefused_exit10NotRetried(t *testing.T) {
 	}
 }
 
-// TestRun_tokenNetworkFailure_staysExit50 is the counterpart: a genuine
-// transport failure reaching the token endpoint (no HTTP response) is still a
-// retry-safe network error.
 func TestRun_tokenNetworkFailure_staysExit50(t *testing.T) {
 	rt := &tokenScriptRT{t: t, tokenErr: errors.New("dial tcp 127.0.0.1:1: connect: connection refused")}
 	env, err := runReadOnlyEdit(t, testkit.RoundTripFunc(rt.serve), 0)

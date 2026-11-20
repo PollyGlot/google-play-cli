@@ -9,8 +9,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
-// A pinned explicit Edit is read in place: the plan sees the changes staged
-// in it, and neither opens nor discards an Edit of its own.
 func TestComplete_plan_readsInsideThePinnedEdit(t *testing.T) {
 	rt := newPromoteFake(stateAPI{
 		sourceTrackGetResp: `{"track":"beta","releases":[` +

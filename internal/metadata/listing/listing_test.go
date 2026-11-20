@@ -6,9 +6,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 )
 
-// TestSpecs_canonicalTable pins the four managed fields' file names, API
-// keys, char limits, and required-ness: the contract every metadata
-// module builds on. A change here is a deliberate contract change.
 func TestSpecs_canonicalTable(t *testing.T) {
 	want := []struct {
 		field    listing.Field
@@ -35,8 +32,6 @@ func TestSpecs_canonicalTable(t *testing.T) {
 	}
 }
 
-// TestSpecs_returnsCopy guards that mutating the returned slice cannot
-// corrupt the package-level table.
 func TestSpecs_returnsCopy(t *testing.T) {
 	got := listing.Specs()
 	got[0].File = "hacked.txt"
@@ -45,9 +40,6 @@ func TestSpecs_returnsCopy(t *testing.T) {
 	}
 }
 
-// TestSpecByFile_knownAndUnknown asserts the file→Spec lookup recognizes
-// the fastlane names and rejects everything else (so the codec ignores
-// strays and changelogs/).
 func TestSpecByFile_knownAndUnknown(t *testing.T) {
 	if s, ok := listing.SpecByFile("full_description.txt"); !ok || s.Field != listing.FullDescription {
 		t.Errorf("SpecByFile(full_description.txt) = %+v, %v; want FullDescription, true", s, ok)
@@ -59,8 +51,6 @@ func TestSpecByFile_knownAndUnknown(t *testing.T) {
 	}
 }
 
-// TestSpecByKey_mapsAPIJSONKeys asserts the API-key lookup, used when
-// projecting an edits.listings response onto the model.
 func TestSpecByKey_mapsAPIJSONKeys(t *testing.T) {
 	if s, ok := listing.SpecByKey("shortDescription"); !ok || s.Field != listing.ShortDescription {
 		t.Errorf("SpecByKey(shortDescription) = %+v, %v", s, ok)
@@ -70,13 +60,11 @@ func TestSpecByKey_mapsAPIJSONKeys(t *testing.T) {
 	}
 }
 
-// TestCharCount_countsRunesNotBytes asserts char limits are measured in
-// Unicode code points the way Play measures them.
 func TestCharCount_countsRunesNotBytes(t *testing.T) {
 	cases := map[string]int{
 		"":      0,
 		"hello": 5,
-		"café":  4, // é is one rune, two bytes
+		"café":  4,
 		"日本語":   3,
 	}
 	for in, want := range cases {
@@ -86,12 +74,10 @@ func TestCharCount_countsRunesNotBytes(t *testing.T) {
 	}
 }
 
-// TestListing_missingVsEmpty asserts the model distinguishes an unmanaged
-// field (absent from Fields) from a managed-but-empty one (present, "").
 func TestListing_missingVsEmpty(t *testing.T) {
 	l := listing.NewListing("en-US")
 	l.Set(listing.Title, "Hello")
-	l.Set(listing.ShortDescription, "") // managed clear
+	l.Set(listing.ShortDescription, "")
 
 	if v, ok := l.Get(listing.Title); !ok || v != "Hello" {
 		t.Errorf("Get(Title) = %q, %v; want Hello, true", v, ok)
@@ -104,8 +90,6 @@ func TestListing_missingVsEmpty(t *testing.T) {
 	}
 }
 
-// TestZeroListing_setIsSafe asserts Set lazily allocates so a zero
-// Listing is usable without NewListing.
 func TestZeroListing_setIsSafe(t *testing.T) {
 	var l listing.Listing
 	l.Set(listing.Video, "https://youtu.be/x")
@@ -117,8 +101,6 @@ func TestZeroListing_setIsSafe(t *testing.T) {
 	}
 }
 
-// TestTree_localesSorted asserts Locales returns a deterministic, sorted
-// view for stable output across runs.
 func TestTree_localesSorted(t *testing.T) {
 	tr := listing.Tree{
 		"fr-FR": listing.NewListing("fr-FR"),
