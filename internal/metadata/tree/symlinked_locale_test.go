@@ -59,6 +59,7 @@ func TestReadFollowsLocaleSymlinkedInsideTheTree(t *testing.T) {
 }
 
 func TestReadRefusesLocaleSymlinkedOutsideTheTree(t *testing.T) {
+	t.Setenv(pathguard.EnvAllowExternalSymlinks, "")
 	dir := outsideLocale(t)
 
 	tr, err := Read(dir)
