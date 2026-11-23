@@ -237,7 +237,7 @@ jobs:
           fi
           if [ "$open" -gt 0 ]; then
             git fetch -q --depth 1 origin "$BRANCH"
-            delta=$(git diff FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json)
+            delta=$(git diff FETCH_HEAD -- 'docs/discovery/*.json' docs/discovery/paths.txt internal/schemaindex/schema_index.json)
             moved=$(printf '%s\n' "$delta" \
               | grep -E '^[+-]' \
               | grep -vE '^(\+\+\+|---) ' \
