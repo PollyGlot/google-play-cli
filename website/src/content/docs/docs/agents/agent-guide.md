@@ -99,7 +99,7 @@ env vars, or the stored Account. Nothing blocks on a TTY.
 
 ## Offline API introspection
 
-`gplay schema` queries an embedded index of the Android Publisher API
+`gplay schema` queries an embedded index of the Google Play APIs
 (methods, request/response types, enums) with **no network and no
 credentials**:
 
