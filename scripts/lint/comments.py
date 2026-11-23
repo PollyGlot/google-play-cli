@@ -47,7 +47,7 @@ DIRECTIVE_WORDS = (
     r"[@#]__(PURE|NO_SIDE_EFFECTS)__",
 )
 DIRECTIVE = re.compile(r"^\s*\{?\s*(#!|(//+|/\*+|#+|--|\*)\s*(" + "|".join(DIRECTIVE_WORDS) + "))", re.I)
-LICENSE = re.compile(r"copyright|license|spdx", re.I)
+LICENSE = re.compile(r"copyright|license|spdx|\bBSD-\d", re.I)
 COUNTED = ("comment", "doc", "docstring")
 AAA_WORD = r"(arrange|act|assert|given|when|then)"
 AAA = re.compile(rf"^\s*(//+|#|--)\s*{AAA_WORD}(\s*(&|and|/|,|\+|-)\s*{AAA_WORD})*\s*[:.]?\s*$", re.I)
@@ -56,6 +56,7 @@ RULE_CHARS = re.compile(r"[─━═=\-*#~_+]{3,}")
 JSDOC_TYPE = re.compile(r"@(type|param|returns?|typedef|template|satisfies|import|callback|property)\b[^\n]*\{")
 REFERENCE = re.compile(r"\bADR[- ]?\d|#\d+|\b[A-Z]{1,3}-\d{2,}")
 MARK = re.compile(r"^\s*//\s*MARK:|^\s*(//|#)\s*#?(end)?region\b", re.I)
+EMPTY = re.compile(r"^\s*(//+|#+|/\*+\s*\*/)\s*$")
 
 
 @dataclass
@@ -128,6 +129,7 @@ def scan(root: Path, rel: str, lang: str) -> list[Block]:
         return []
     tree = get_parser(lang).parse(src)
     lines = src.decode("utf8", "replace").split("\n")
+    raw_lines = src.split(b"\n")
     found = [(n, False, False) for n in comment_nodes(tree.root_node)]
     if lang == "python":
         found += [(n, True, sole) for n, sole in docstring_nodes(tree.root_node)]
@@ -135,10 +137,11 @@ def scan(root: Path, rel: str, lang: str) -> list[Block]:
     for node, is_doc, sole in found:
         (sr, sc), (er, ec) = node.start_point, node.end_point
         text = src[node.start_byte:node.end_byte].decode("utf8", "replace")
-        own = lines[sr][:sc].strip() == ""
-        trailing = lines[er][ec:].strip() == "" if er < len(lines) else True
+        own = raw_lines[sr][:sc].strip() == b""
+        trailing = raw_lines[er][ec:].strip() == b"" if er < len(raw_lines) else True
+        marker = not is_doc and not own and EMPTY.match(text)
         raw.append(Block(rel, sr + 1, er + 1, sc, own, trailing,
-                         "docstring" if is_doc else "comment", sole, text))
+                         "docstring" if is_doc else "directive" if marker else "comment", sole, text))
     raw.sort(key=lambda b: (b.start, b.col))
     merged: list[Block] = []
     for b in raw:
@@ -150,7 +153,7 @@ def scan(root: Path, rel: str, lang: str) -> list[Block]:
         else:
             merged.append(b)
     for b in merged:
-        if b.kind == "docstring":
+        if b.kind in ("docstring", "directive"):
             continue
         first = b.text.lstrip()
         if DIRECTIVE.search(first):
