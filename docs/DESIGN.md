@@ -622,7 +622,9 @@ reports the error the serial walk would have hit first.
 The Google Play Developer API has no `apps.list`, so `gplay apps list` reads a
 **local registry**:
 
-- Populated by `gplay init --package X` (auto-adds) or `gplay apps add X`
+- Populated by `gplay apps add X` only. `gplay init --package X` pins the
+  package to the Project and does not register it; its output points at
+  `gplay apps add`
 - Stored in `~/.gplay/config.json` alongside Accounts
 - `gplay apps view --package X` still hits the live API (via `edits.details`
   etc.) — only enumeration is local
