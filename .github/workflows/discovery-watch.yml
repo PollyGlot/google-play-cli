@@ -81,7 +81,7 @@ run-name: Discovery Watch${{ inputs.tag && format(' ({0})', inputs.tag) || '' }}
 # GitHub fires its cron hours late, so one fixed-time t3code task on the same
 # machine runs the whole week's Discovery work on Mondays in a single thread: it
 # dispatches this workflow with notify=false, waits for the run, triages the
-# refresh PR itself and has two other models refute the verdict. Its prompt is
+# refresh PR itself and has Codex refute a merge verdict. Its prompt is
 # docs/agents/discovery-weekly.md. The cron runs a day later as a catch-up: after
 # a Monday run it finds the open PR already carrying the snapshots and pushes
 # nothing (firing the webhook only if that PR never got a verdict), and when the
@@ -237,7 +237,7 @@ jobs:
           fi
           if [ "$open" -gt 0 ]; then
             git fetch -q --depth 1 origin "$BRANCH"
-            delta=$(git diff FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json)
+            delta=$(git diff FETCH_HEAD -- 'docs/discovery/*.json' docs/discovery/paths.txt internal/schemaindex/schema_index.json)
             moved=$(printf '%s\n' "$delta" \
               | grep -E '^[+-]' \
               | grep -vE '^(\+\+\+|---) ' \

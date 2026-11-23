@@ -3,7 +3,7 @@
 **This file is the prompt of the weekly Discovery task**, a fixed-time t3code
 task on the maintainer's always-on machine, Mondays 07:00 Paris time. One run,
 one thread: it starts the refresh, waits for it, triages what it produced and
-gets the verdict refuted, so the maintainer reads a single report.
+has a merge verdict refuted, so the maintainer reads a single report.
 
 GitHub fires its crons hours late, which is why this task dispatches the
 `discovery-watch` workflow itself. The workflow's own cron runs on Tuesdays as
@@ -66,15 +66,15 @@ week's commit, not this one. Triage it too when it is labelled
 `discovery:schema` or `discovery:surface` and carries neither
 `discovery:verdict-merge` nor `discovery:needs-decision`. To triage, follow
 [discovery-triage.md](discovery-triage.md) to the letter, in this thread, with
-that PR number as its input. Its hard limits are yours. Its step 7 starts the
-two refutation seats (Codex and Fable) as child tasks of this thread: wait for
-both before posting.
+that PR number as its input. Its hard limits are yours. Before a
+`discovery:verdict-merge`, its step 7 starts one Codex refutation seat as a
+child task of this thread: wait for it before posting.
 
 A PR this run did not refresh that already carries a verdict label was triaged
 earlier, by a previous Monday or by the fallback webhook task. Read its verdict comment (the one starting with
-`<!-- discovery-triage-verdict -->`): a `**Refutation:**` line that does not
-name both seats as having run is an anomaly, and so is a verdict label without
-that comment. Do not triage it again.
+`<!-- discovery-triage-verdict -->`): a `discovery:verdict-merge` whose
+`**Refutation:**` line does not say Codex ran is an anomaly, and so is a
+verdict label without that comment. Do not triage it again.
 
 ## 4. Limits of this run
 
@@ -96,7 +96,7 @@ Link every PR, issue and run (`https://github.com/PollyGlot/google-play-cli/...`
 |---|---|
 | Refresh | <emoji> run [#id](url) : <pas de changement / revision-only fusionnée / PR [#n](url) schema|surface> |
 | Verdict | <emoji> <`discovery:verdict-merge` / `discovery:needs-decision` (raison en une phrase) / sans objet> |
-| Réfutation | <emoji> Codex <n> déplacé(s), Fable <n> déplacé(s) / sans objet> |
+| Réfutation | <emoji> Codex <n> déplacé(s) / sans objet (needs-decision ou pas de PR)> |
 | Tickets | <emoji> <liens, ou "aucun"> |
 | Anomalies | <emoji> <une phrase courte chacune, ou "rien"> |
 ```
