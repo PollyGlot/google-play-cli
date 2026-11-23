@@ -355,3 +355,72 @@ func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 		t.Errorf("PUTs issued = %d, want 0 (nothing uploaded on short read)", len(rt.puts))
 	}
 }
+
+func TestResumable_308AcksEveryByte_finalizesWithProbe(t *testing.T) {
+	rt := &resumeRT{t: t, putSteps: []step{
+		{status: 308, rng: "bytes=0-2047"},
+		{status: 200, body: `{"versionCode":11}`},
+	}}
+	body, status, err := run(t, rt, 2048)
+	if err != nil {
+		t.Fatalf("ResumableUpload: %v", err)
+	}
+	if status != 200 || string(body) != `{"versionCode":11}` {
+		t.Fatalf("got status=%d body=%q, want the probe's resource", status, body)
+	}
+	if len(rt.puts) != 2 {
+		t.Fatalf("PUT count = %d, want 2 (chunk, probe)", len(rt.puts))
+	}
+	if rt.puts[1].contentRange != "bytes */2048" || rt.puts[1].bodyLen != 0 {
+		t.Errorf("second PUT = {range=%q len=%d}, want the probe {bytes */2048, 0}", rt.puts[1].contentRange, rt.puts[1].bodyLen)
+	}
+	assertNoEmptyChunk(t, rt.puts)
+	if len(rt.waits) != 0 {
+		t.Errorf("waits = %v, want none before the first probe after a full acknowledgement", rt.waits)
+	}
+}
+
+func TestResumable_308AcksEveryByte_probeNeverFinalizes_stallBoundTerminates(t *testing.T) {
+	rt := &resumeRT{t: t, putSteps: repeat(9, step{status: 308, rng: "bytes=0-2047"})}
+	_, _, err := run(t, rt, 2048)
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "stalled") {
+		t.Fatalf("err = %v, want the stall error", err)
+	}
+	if len(rt.puts) != 9 {
+		t.Fatalf("PUT count = %d, want 9 (chunk + 8 probes)", len(rt.puts))
+	}
+	if rt.puts[0].contentRange != "bytes 0-2047/2048" {
+		t.Errorf("first PUT = %q, want the chunk bytes 0-2047/2048", rt.puts[0].contentRange)
+	}
+	for i, p := range rt.puts[1:] {
+		if p.contentRange != "bytes */2048" || p.bodyLen != 0 {
+			t.Errorf("PUT #%d = {range=%q len=%d}, want a probe after the acknowledgement", i+2, p.contentRange, p.bodyLen)
+		}
+	}
+	assertNoEmptyChunk(t, rt.puts)
+	assertBackoffCurve(t, rt.waits, 1, 2, 3, 4, 5, 6, 7)
+}
+
+func TestResumable_emptyArtifact_singlePutWithZeroRange(t *testing.T) {
+	rt := &resumeRT{t: t, putSteps: []step{{status: 200, body: `{"versionCode":13}`}}}
+	body, _, err := run(t, rt, 0)
+	if err != nil {
+		t.Fatalf("ResumableUpload: %v", err)
+	}
+	if string(body) != `{"versionCode":13}` {
+		t.Fatalf("body = %q", body)
+	}
+	if len(rt.puts) != 1 || rt.puts[0].contentRange != "bytes */0" || rt.puts[0].bodyLen != 0 {
+		t.Fatalf("PUTs = %+v, want exactly one {bytes */0, 0}", rt.puts)
+	}
+}
+
+func assertNoEmptyChunk(t *testing.T, puts []putRecord) {
+	t.Helper()
+	for i, p := range puts {
+		if p.bodyLen == 0 && !strings.HasPrefix(p.contentRange, "bytes */") {
+			t.Errorf("PUT #%d sent an empty chunk with Content-Range %q", i+1, p.contentRange)
+		}
+	}
+}
