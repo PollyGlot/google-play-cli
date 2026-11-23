@@ -220,7 +220,7 @@ Constraints:
   excluded it if it qualifies. If it does not, it stays 🔴 and is a fix item.
 - Re-run `go test ./internal/coveragedoc/ ./internal/apiregistry/` after the
   regeneration; both must be green.
-- The rolling branch is force-pushed weekly. If your push is rejected because
+- The rolling branch is force-pushed whenever Google moves. If your push is rejected because
   the branch moved, do not force-push: re-read the PR and start the run over.
 
 ## 6. When to open a ticket (`/to-spec`)

@@ -226,10 +226,14 @@ jobs:
           # open schema/surface PR that already carries them is left alone, and
           # only handed to the triage agent if it never got a verdict. A
           # revision-only PR is re-pushed as before, which retries its merge.
-          if [ "$KIND" != revision-only ] \
-            && gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+          open=0
+          if [ "$KIND" != revision-only ]; then
+            open=$(gh pr list --head "$BRANCH" --state open --json number --jq length)
+          fi
+          if [ "$open" -gt 0 ]; then
             git fetch -q --depth 1 origin "$BRANCH"
-            moved=$(git diff FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json \
+            delta=$(git diff FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json)
+            moved=$(printf '%s\n' "$delta" \
               | grep -E '^[+-]' \
               | grep -vE '^(\+\+\+|---) ' \
               | grep -vE '^[+-]  "revision": "[^"]+",?$' \
@@ -303,8 +307,16 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
           KIND: ${{ steps.diff.outputs.kind }}
+          UNCHANGED: ${{ steps.pr.outputs.unchanged }}
         run: |
           set -euo pipefail
+          # A verdict describes the commit it was given. New snapshots were just
+          # pushed, so whatever verdict the PR carries is about a commit that no
+          # longer exists: drop it, which also lets the next verdict fire a fresh
+          # labeled event.
+          if [ "${UNCHANGED:-}" != "true" ]; then
+            gh pr edit "$PR" --remove-label discovery:verdict-merge --remove-label discovery:needs-decision
+          fi
           # The branch is rolling, so last week's kind must not survive into this
           # week's classification: drop the other kind's label. Never remove the
           # label being added in the same call: gh applies --add-label before
@@ -496,7 +508,7 @@ jobs:
           echo "Triage agent (${RUNTIME:-routine}) called for PR #$PR ($KIND), HTTP $code."
 
       # Runs even when nothing changed, and even when a step above failed: a
-      # silent Monday must be distinguishable from a dead workflow.
+      # silent run must be distinguishable from a dead workflow.
       - name: Job summary
         if: always()
         env:
@@ -526,9 +538,11 @@ jobs:
               echo
               echo "- Classification: \`$KIND\`"
               echo "- Rolling PR: #$PR"
-              if [ "${UNCHANGED:-}" = "true" ]; then
+              if [ -z "${PR:-}" ]; then
+                echo "- Outcome: **the PR step failed** before pushing or labelling anything; see its log."
+              elif [ "${UNCHANGED:-}" = "true" ]; then
                 if [ "${UNTRIAGED:-}" = "true" ]; then
-                  echo "- Outcome: **already open with these snapshots** but never triaged: nothing pushed, handed to the triage agent."
+                  echo "- Outcome: **already open with these snapshots** but never triaged: nothing pushed."
                 else
                   echo "- Outcome: **already open with these snapshots** and already triaged: nothing pushed or handed on."
                 fi
