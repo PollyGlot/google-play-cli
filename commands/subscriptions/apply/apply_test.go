@@ -1033,3 +1033,20 @@ func TestRun_malformedCatalogFile_isUsageErrorBeforeAnyCall(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_danglingCatalogFile_namesTheFileNotTheDirectory(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{"premium.json": `{"productId":"premium"}`})
+	if err := os.Symlink(filepath.Join(dir, "gone.json"), filepath.Join(dir, "gold.json")); err != nil {
+		t.Fatal(err)
+	}
+	rt := &subsRT{}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 20)
+	if !strings.Contains(err.Error(), "gold.json") || strings.Contains(err.Error(), "does not exist: run") {
+		t.Errorf("err %q should name the dangling file, not call the directory missing", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("refused catalog reached the API: %v", rt.calls)
+	}
+}

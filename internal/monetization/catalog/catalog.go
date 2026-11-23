@@ -26,8 +26,6 @@ type FileError struct {
 
 func (e *FileError) Error() string { return fmt.Sprintf("read catalog file %q: %v", e.Name, e.Err) }
 
-func (e *FileError) Unwrap() error { return e.Err }
-
 func (e *FileError) ExitCode() int { return 20 }
 
 func Read(dir string) (map[string]json.RawMessage, error) {
