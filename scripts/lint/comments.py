@@ -47,7 +47,7 @@ DIRECTIVE_WORDS = (
     r"[@#]__(PURE|NO_SIDE_EFFECTS)__",
 )
 DIRECTIVE = re.compile(r"^\s*\{?\s*(#!|(//+|/\*+|#+|--|\*)\s*(" + "|".join(DIRECTIVE_WORDS) + "))", re.I)
-LICENSE = re.compile(r"copyright|license|spdx|\bBSD-\d", re.I)
+LICENSE = re.compile(r"copyright|license|spdx|\(BSD-\d[\w-]*\)", re.I)
 COUNTED = ("comment", "doc", "docstring")
 AAA_WORD = r"(arrange|act|assert|given|when|then)"
 AAA = re.compile(rf"^\s*(//+|#|--)\s*{AAA_WORD}(\s*(&|and|/|,|\+|-)\s*{AAA_WORD})*\s*[:.]?\s*$", re.I)
@@ -137,16 +137,16 @@ def scan(root: Path, rel: str, lang: str) -> list[Block]:
     for node, is_doc, sole in found:
         (sr, sc), (er, ec) = node.start_point, node.end_point
         text = src[node.start_byte:node.end_byte].decode("utf8", "replace")
-        own = raw_lines[sr][:sc].strip() == b""
-        trailing = raw_lines[er][ec:].strip() == b"" if er < len(raw_lines) else True
-        marker = not is_doc and not own and EMPTY.match(text)
+        own = raw_lines[sr][:sc].decode("utf8", "replace").strip() == ""
+        trailing = raw_lines[er][ec:].decode("utf8", "replace").strip() == "" if er < len(raw_lines) else True
+        marker = not is_doc and not own and trailing and EMPTY.match(text)
         raw.append(Block(rel, sr + 1, er + 1, sc, own, trailing,
                          "docstring" if is_doc else "directive" if marker else "comment", sole, text))
     raw.sort(key=lambda b: (b.start, b.col))
     merged: list[Block] = []
     for b in raw:
         prev = merged[-1] if merged else None
-        if (prev and b.own and prev.own and prev.kind == b.kind == "comment"
+        if (prev and b.own and prev.own and prev.trailing and prev.kind == b.kind == "comment"
                 and b.start == prev.end + 1 and b.col == prev.col
                 and not DIRECTIVE.search(b.text) and not DIRECTIVE.search(prev.text.split("\n")[-1])):
             prev.end, prev.text, prev.trailing = b.end, prev.text + "\n" + b.text, b.trailing
