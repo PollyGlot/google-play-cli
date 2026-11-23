@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/catalog"
 )
 
@@ -41,6 +42,25 @@ func TestRead_mismatchedProductID_refuses(t *testing.T) {
 	_, err := catalog.Read(dir)
 	if err == nil || !strings.Contains(err.Error(), "premium.json") {
 		t.Fatalf("err = %v, want a mismatch error naming the file", err)
+	}
+}
+
+func TestRead_unreadableFile_isClientSideError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "premium.json")
+	write(t, dir, "premium.json", `{"productId":"premium"}`)
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("file stays readable (running as root)")
+	}
+	_, err := catalog.Read(dir)
+	if got := exit.For(err); got != 20 {
+		t.Fatalf("exit = %d (err %v), want 20", got, err)
+	}
+	if !strings.Contains(err.Error(), "premium.json") {
+		t.Errorf("err %q should name the file", err)
 	}
 }
 

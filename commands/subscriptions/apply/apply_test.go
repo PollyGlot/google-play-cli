@@ -1015,3 +1015,21 @@ func TestRun_latencyToleranceUnknown_isUsageErrorBeforeAnyCall(t *testing.T) {
 		t.Errorf("refused input reached the API: %v", rt.calls)
 	}
 }
+
+func TestRun_malformedCatalogFile_isUsageErrorBeforeAnyCall(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"invalid JSON":       {"x.json": `{not json`},
+		"productId mismatch": {"premium.json": `{"productId":"other"}`},
+		"empty stem":         {".json": `{}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := &subsRT{}
+			rc, _ := newRC(t, rt)
+			_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: writeCatalog(t, files)})
+			assertExit(t, err, 2)
+			if len(rt.calls) != 0 {
+				t.Errorf("refused catalog reached the API: %v", rt.calls)
+			}
+		})
+	}
+}
