@@ -368,7 +368,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 			DefaultLanguage: notes.OfflineDefaultLanguage,
 		})
 		if err != nil {
-			return nil, &dryRunError{msg: err.Error()}
+			return nil, &dryRunError{msg: err.Error(), cause: err}
 		}
 		for _, n := range loaded {
 			if n.Locale == notes.OfflineDefaultLanguage {
@@ -392,10 +392,14 @@ func dryRunResult(opts Opts) (*Result, error) {
 	}, nil
 }
 
-type dryRunError struct{ msg string }
+type dryRunError struct {
+	msg   string
+	cause error
+}
 
 func (e *dryRunError) Error() string { return "dry-run: " + e.msg }
 func (e *dryRunError) ExitCode() int { return 20 }
+func (e *dryRunError) Unwrap() error { return e.cause }
 
 func dryRunReleaseName(opts Opts) string {
 	if opts.ReleaseName != "" {

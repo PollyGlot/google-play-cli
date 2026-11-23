@@ -51,7 +51,11 @@ gathers them here.
   messages.
 - **An escape is a usage error (exit 2) naming the path**: a bad input, not a
   transient failure, so a retry is pointless and the message must say which
-  path to fix.
+  path to fix. It keeps exit 2 whatever wraps it: the refusal is its own kind
+  (`exit.ContainmentError`), and `exit.For` lets it win over the exit code of
+  an outer wrapper, so a tree command that reports its other read failures as
+  exit 20 (a missing directory, a dangling or file-pointing locale link) still
+  reports an escape as exit 2 (#894).
 - **The strict check names the escape hatch only to say it does not apply.**
   An operator who set `GPLAY_ALLOW_EXTERNAL_SYMLINKS` and is still refused
   would otherwise conclude it is broken; the truth is that the path was built
