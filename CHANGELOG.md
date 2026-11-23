@@ -5,6 +5,18 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1](https://github.com/PollyGlot/google-play-cli/compare/v2.5.0...v2.5.1) (2026-11-23)
+
+
+### Bug Fixes
+
+* **api:** finalize a fully acknowledged resumable upload with the probe, not an empty chunk ([#889](https://github.com/PollyGlot/google-play-cli/issues/889)) ([f07e51e](https://github.com/PollyGlot/google-play-cli/commit/f07e51e2b4afecab257fe845e8337cf5de813c4f))
+* **metadata:** follow or refuse a symlinked locale directory instead of skipping it, so --prune keeps its Listing ([#892](https://github.com/PollyGlot/google-play-cli/issues/892)) ([e383695](https://github.com/PollyGlot/google-play-cli/commit/e383695af32c6ae9ce3f054c4cb493feba8adcd2))
+* **monetization:** refuse a malformed catalog file as a usage error before auth ([#901](https://github.com/PollyGlot/google-play-cli/issues/901)) ([1b69b85](https://github.com/PollyGlot/google-play-cli/commit/1b69b858f29039d1a2dd21215d740252458ca96d))
+* **pathguard:** exit 2 on an escaping symlink from tree commands, not 20 ([#902](https://github.com/PollyGlot/google-play-cli/issues/902)) ([036f669](https://github.com/PollyGlot/google-play-cli/commit/036f669b095ded16a2da7708bc9da76544b5a269))
+* **schema:** stop the help from restricting the Schema index to the Android Publisher API ([#899](https://github.com/PollyGlot/google-play-cli/issues/899)) ([7b31ea7](https://github.com/PollyGlot/google-play-cli/commit/7b31ea73ddd284a069963a460b5adf483a56bbc1))
+* **team:** refuse a blank --role or --permissions instead of emptying the permission set ([#890](https://github.com/PollyGlot/google-play-cli/issues/890)) ([268d0ab](https://github.com/PollyGlot/google-play-cli/commit/268d0aba297ffa9adbe09f15a7983f20514409e3))
+
 ## [2.5.0](https://github.com/PollyGlot/google-play-cli/compare/v2.4.2...v2.5.0) (2026-11-16)
 
 
