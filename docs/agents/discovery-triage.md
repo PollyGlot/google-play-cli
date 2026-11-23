@@ -9,7 +9,9 @@ wakes you up with one input: **the PR number**. It arrives as the line
 `PR: #<number>` of the text you were fired with (next to `Kind:`, `URL:` and
 `Repository:` lines), either in the routine's fire payload or in the prompt
 of the t3code webhook task (the `AGENT_RUNTIME` repository variable picks
-which runtime the workflow calls). Take only the number from that text and
+which runtime the workflow calls), or from the weekly task of
+[discovery-weekly.md](discovery-weekly.md), which runs this brief inline.
+Take only the number from that text and
 check everything else with `gh`. Fired without it (a cron run, a manual "run now"),
 use the open PR whose head branch is `chore/discovery-refresh`.
 
@@ -176,7 +178,8 @@ do it yourself instead of filing a ticket. A method qualifies only when **all**
 of these hold:
 
 - its id starts with `androidpublisher.purchases.`;
-- its path in `paths.txt` contains `/tokens/{token}`;
+- its path in `paths.txt` contains `/tokens/{token}` or `/tokens/{purchaseToken}`
+  (Google spells the same parameter both ways);
 - a sibling of the same resource (same id up to the last dot) is already in
   `internal/apiregistry/exclusions.go`.
 
@@ -300,7 +303,7 @@ verbatim failing lines). <One sentence on what that proves.>
   change in the Discovery doc, zero behavioural surface.
 
 **Tickets opened:** #<n> (or: none, the fix basket is empty).
-**Refutation:** Codex, <n> item(s) moved (or: not available on this runtime).
+**Refutation:** Codex, <n> item(s) moved; Fable, <n> item(s) moved (or: not available on this runtime).
 **COVERAGE.md:** <commit sha> regenerated, <n> new 🔴 row(s) (or: unchanged).
 **Verdict:** `discovery:verdict-merge` (or `discovery:needs-decision`, because …).
 ````
@@ -315,14 +318,17 @@ Rules on the baskets:
 - **Every dismissed item names its reason.** "Not relevant" is not a reason.
 - Refute your own items before posting: for each fix item, try to prove it wrong
   against the real code. It survives only if confirmed and worth a change.
-- **Second opinion from another provider, when the runtime has one.** On t3code,
-  before setting `discovery:verdict-merge`, hand the draft verdict and the PR
-  number to a Codex child task (`delegate_task`, read-only) and ask it to refute
-  every item and the clearance itself against the code. A refutation that
-  survives your own re-check moves the item to its right basket, or the label
-  to `discovery:needs-decision`. Say in the verdict that it ran (`**Refutation:**
-  Codex, <n> item(s) moved` or `none moved`). Without such a tool, skip it and
-  write `**Refutation:** not available on this runtime`.
+- **Two refutation seats, on every verdict, when the runtime has them.** On
+  t3code, before posting, hand the draft verdict, the draft label and the PR
+  number to two read-only child tasks started in parallel with `delegate_task`:
+  Codex (another provider) and Fable. Ask each to refute every item, the
+  basket it sits in, and the label itself against the code. This runs for
+  `discovery:needs-decision` too: a refuted reason changes what the maintainer
+  is asked to decide. A refutation that survives your own re-check moves the
+  item to its right basket, or the label to `discovery:needs-decision`. Report
+  both seats (`**Refutation:** Codex, <n> moved; Fable, <n> moved`). A seat the
+  runtime cannot start is named as such (`Fable, not available`); without
+  `delegate_task` at all, write `**Refutation:** not available on this runtime`.
 
 ## 8. Finish with exactly one label
 

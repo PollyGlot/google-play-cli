@@ -75,6 +75,15 @@ name: Discovery Watch
 # The relay holds a request up to 24 hours while the machine is offline. The
 # DISCOVERY_TRIAGE_ENABLED kill switch applies to both runtimes.
 #
+# Weekly task (the normal Monday path)
+# ---------------------------------------------------------------------------
+# GitHub fires the Monday cron hours late, so one fixed-time t3code task on the
+# same machine runs the whole week's Discovery work in a single thread: it
+# dispatches this workflow with notify=false, waits for the run, triages the
+# refresh PR itself and has two other models refute the verdict. Its prompt is
+# docs/agents/discovery-weekly.md. The webhook above stays as the fallback for
+# the late cron and for "pr" replays.
+#
 # The four discovery:* labels already exist in the repository:
 #   discovery:schema / discovery:surface  — set by this workflow (the input)
 #   discovery:verdict-merge               — set by the routine, merges the PR
@@ -93,6 +102,11 @@ on:
         description: 'Refresh PR to hand back to the triage routine (skips the snapshot regeneration entirely)'
         required: false
         type: string
+      notify:
+        description: 'Fire the triage agent webhook on a schema/surface refresh (false: the dispatching weekly task triages it itself)'
+        required: false
+        type: boolean
+        default: true
 
 # Read-only by default: every write (push, PR, label, merge) goes through the
 # gplay App token minted below, never through GITHUB_TOKEN.
@@ -376,6 +390,7 @@ jobs:
         if: steps.target.outputs.pr != ''
         env:
           ENABLED: ${{ vars.DISCOVERY_TRIAGE_ENABLED }}
+          NOTIFY: ${{ inputs.notify }}
           RUNTIME: ${{ vars.AGENT_RUNTIME }}
           ROUTINE_URL: ${{ secrets.DISCOVERY_TRIAGE_WEBHOOK_URL }}
           # The routine's "call via API" URL is authenticated with a Bearer token
@@ -397,6 +412,12 @@ jobs:
           }
           if [ "${ENABLED:-}" != "true" ]; then
             skip "the DISCOVERY_TRIAGE_ENABLED repository variable is not \`true\` (kill switch off)"
+          fi
+          # A schedule run has no inputs, so only an explicit `false` from the
+          # weekly task (docs/agents/discovery-weekly.md) silences the webhook:
+          # that task triages the PR in its own thread.
+          if [ "${NOTIFY:-}" = "false" ]; then
+            skip "dispatched with notify=false, the weekly Discovery task triages this PR in its own thread"
           fi
           echo "runtime=${RUNTIME:-routine}" >> "$GITHUB_OUTPUT"
           # One attempt, no --retry: curl retries 5xx too, and firing the agent
@@ -450,6 +471,7 @@ jobs:
         if: always()
         env:
           INPUT_PR: ${{ inputs.pr }}
+          NOTIFY: ${{ inputs.notify }}
           CHANGED: ${{ steps.diff.outputs.changed }}
           KIND: ${{ steps.diff.outputs.kind }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -494,6 +516,8 @@ jobs:
               echo
               if [ "${CALLED:-}" = "true" ]; then
                 echo "Called on the \`$RUNTIME\` runtime for PR #$TARGET_PR (\`$TARGET_KIND\`). Expect a verdict comment and a \`discovery:verdict-merge\` or \`discovery:needs-decision\` label on the PR."
+              elif [ "${NOTIFY:-}" = "false" ]; then
+                echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."
               elif [ -n "${REASON:-}" ]; then
                 echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."
                 echo
