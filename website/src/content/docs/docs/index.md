@@ -43,7 +43,7 @@ is what you'd build today if you started fresh.
 | `gplay metadata` | Sync store listings (per-locale text) and store images with your repo |
 | `gplay compliance` | Push and validate the Data Safety declaration |
 | `gplay team` | Manage Play Console users and their per-app permission grants |
-| `gplay schema` | Offline introspection of the Android Publisher API surface |
+| `gplay schema` | Offline introspection of the Google Play API surface gplay calls |
 
 The full, generated command reference lives at
 [CLI reference](/docs/reference/): one page per command, produced from the

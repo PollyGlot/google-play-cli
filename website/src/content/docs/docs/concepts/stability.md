@@ -74,7 +74,7 @@ Generated from the binary's own command registry, so it matches what
 - `gplay releases system-apks`: Create, list and download system APK variants (device system images)
 - `gplay reports`: Read the monthly Bulk reports (installs, ...) from the Reporting bucket
 - `gplay reviews history`: Read the full review history for a package from the monthly CSV reports
-- `gplay schema`: Introspect the Android Publisher API surface offline
+- `gplay schema`: Introspect the Google Play API surface gplay calls, offline
 - `gplay signing`: Manage Play App Signing with a self-hosted Cloud KMS key (enterprise key custody)
 - `gplay subscriptions`: Pull and apply the app's subscription catalog as files (declarative)
 - `gplay vitals releases`: List the tracks, releases and version codes that carry vitals data

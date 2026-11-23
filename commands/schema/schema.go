@@ -374,14 +374,15 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "schema [query]",
-		Short: "Introspect the Android Publisher API surface offline",
-		Long: `Query an embedded, offline projection of the Android Publisher API
-(the Schema index): does a method exist, what does it send and return, what
-fields and enums does a type carry.
+		Short: "Introspect the Google Play API surface gplay calls, offline",
+		Long: `Query an embedded, offline projection of every Google Play API gplay
+calls (the Schema index): does a method exist, what does it send and return,
+what fields and enums does a type carry. Method ids carry their API's Discovery
+service name, so ` + "`gplay schema --list`" + ` shows which APIs the index covers.
 
 This command is OFFLINE: it makes no API call and needs no credentials. It
 queries an index compiled into the binary, derived from the committed Discovery
-snapshot.
+snapshots.
 
 The query matches, case-insensitively, across three projections:
   - the native RPC method id   (e.g. ` + "`edits.tracks.update`" + `)
