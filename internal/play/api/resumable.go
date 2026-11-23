@@ -67,66 +67,73 @@ func ResumableUploadWithInitiateBody(
 	stalls := 0
 	backOff := func() bool { return resumeSleep(ctx, resumeBackoff(stalls)) }
 	for {
-		resp, release, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
-
 		var stalled *Error
-		switch {
-		case putErr != nil:
-			release()
-			var localErr *LocalIOError
-			if errors.As(putErr, &localErr) {
-				return nil, 0, putErr
+		if offset == size && size > 0 {
+			stalled = &Error{Operation: op, Resource: target, StatusCode: 308, Message: "resumable upload stalled: server acknowledged every byte but did not finalize after " + strconv.Itoa(maxResumeStalls) + " probes"}
+			if stalls > 0 && !backOff() {
+				return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
 			}
-			if ctx.Err() != nil {
-				return nil, 0, putErr
-			}
-			stalled = &Error{Operation: op, Resource: target, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
+		} else {
+			resp, release, putErr := resumablePutChunk(noRetryCtx, hc, sessionURI, contentType, r, offset, size, op)
 
-		case resp.StatusCode == 308:
-			newOffset := committedOffset(resp, offset)
-			drain(resp)
-			release()
-			if verr := validOffset(newOffset, size, op, target); verr != nil {
-				return nil, 0, verr
-			}
-			if newOffset <= offset {
-				if stalls++; stalls >= maxResumeStalls {
-					return nil, 0, &Error{Operation: op, Resource: target, StatusCode: 308, Message: "resumable upload stalled: server acknowledged no progress after " + strconv.Itoa(maxResumeStalls) + " chunks"}
+			switch {
+			case putErr != nil:
+				release()
+				var localErr *LocalIOError
+				if errors.As(putErr, &localErr) {
+					return nil, 0, putErr
 				}
-				if !backOff() {
-					return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
+				if ctx.Err() != nil {
+					return nil, 0, putErr
 				}
-			} else {
-				stalls = 0
+				stalled = &Error{Operation: op, Resource: target, Message: "resumable upload stalled: server accepted no further bytes after " + strconv.Itoa(maxResumeStalls) + " resume attempts", Cause: putErr}
+
+			case resp.StatusCode == 308:
+				newOffset := committedOffset(resp, offset)
+				drain(resp)
+				release()
+				if verr := validOffset(newOffset, size, op, target); verr != nil {
+					return nil, 0, verr
+				}
+				if newOffset <= offset {
+					if stalls++; stalls >= maxResumeStalls {
+						return nil, 0, &Error{Operation: op, Resource: target, StatusCode: 308, Message: "resumable upload stalled: server acknowledged no progress after " + strconv.Itoa(maxResumeStalls) + " chunks"}
+					}
+					if !backOff() {
+						return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
+					}
+				} else {
+					stalls = 0
+				}
+				offset = newOffset
+				continue
+
+			case resp.StatusCode >= 200 && resp.StatusCode < 300:
+				out, rerr := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead))
+				drain(resp)
+				release()
+				if rerr == nil {
+					return out, resp.StatusCode, nil
+				}
+				stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "read response body: " + rerr.Error(), Cause: &bodyReadError{err: rerr}}
+				if ctx.Err() != nil {
+					return nil, 0, stalled
+				}
+
+			case resp.StatusCode >= 500:
+				drain(resp)
+				release()
+				stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
+
+			default:
+				err := errorFromResponse(resp, op, target)
+				release()
+				return nil, 0, err
 			}
-			offset = newOffset
-			continue
 
-		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			out, rerr := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead))
-			drain(resp)
-			release()
-			if rerr == nil {
-				return out, resp.StatusCode, nil
+			if !backOff() {
+				return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
 			}
-			stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "read response body: " + rerr.Error(), Cause: &bodyReadError{err: rerr}}
-			if ctx.Err() != nil {
-				return nil, 0, stalled
-			}
-
-		case resp.StatusCode >= 500:
-			drain(resp)
-			release()
-			stalled = &Error{Operation: op, Resource: target, StatusCode: resp.StatusCode, Message: "resumable upload stalled: upstream 5xx and no progress after " + strconv.Itoa(maxResumeStalls) + " resume attempts"}
-
-		default:
-			err := errorFromResponse(resp, op, target)
-			release()
-			return nil, 0, err
-		}
-
-		if !backOff() {
-			return nil, 0, &Error{Operation: op, Resource: target, Message: ctx.Err().Error(), Cause: ctx.Err()}
 		}
 		newOffset, done, doneBody, doneStatus, perr := resumableProbe(noRetryCtx, hc, sessionURI, size, op, target)
 		if perr != nil {
