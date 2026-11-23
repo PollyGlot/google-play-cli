@@ -94,13 +94,23 @@ gathers them here.
 - **Containment comes before any touch of the file.** An escaping path is
   neither opened nor stat'd, so a refusal reveals nothing about whether its
   target exists, and the content is never loaded to be dropped later.
-- **The walk does not descend into a symlinked directory entry.** The
-  directory listing reports entries with `lstat` semantics, so a locale
-  directory or an image gallery directory that is itself a symlink reads as
-  a stray entry and is skipped, hatch or not (#843 tracks whether it should
-  be followed or refused instead). Containment is the backstop for every
-  path the walk does follow: a symlinked `images/` directory, an image file
-  or a field file.
+- **A symlinked locale directory is followed or refused, never skipped.**
+  The directory listing reports entries with `lstat` semantics, so the walk
+  resolves a locale entry that is a symlink itself (#843): containment
+  decides first, as for any path the operator arranged (followed inside the
+  tree, or outside it under the hatch with one `NOTE:` for the locale;
+  refused otherwise), then a dangling link or one pointing at a file is
+  refused with an error naming the path. Skipping it would drop the locale
+  from the local tree, and `apply --prune` would then delete its live
+  Listing. This holds for the Listing tree and for both image walks (`Scan`
+  and the retired-slot report). Paths under a locale followed out of the
+  tree are contained against that locale's resolved directory, so they do
+  not each repeat the `NOTE:`.
+- **The walk does not descend into a symlinked image gallery directory.** A
+  gallery directory under `images/` that is itself a symlink still reads as
+  a stray entry and is skipped, hatch or not. Containment is the backstop
+  for every path the walk does follow: a symlinked locale or `images/`
+  directory, an image file or a field file.
 - **Names found on disk use the relaxable check; names from the API use the
   strict one.** The read side checks every name it found by listing the
   operator's own directory with the form `GPLAY_ALLOW_EXTERNAL_SYMLINKS`

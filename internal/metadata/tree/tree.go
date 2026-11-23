@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/listing"
 	"github.com/PollyGlot/google-play-cli/internal/metadata/locale"
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
@@ -46,11 +47,16 @@ func Read(dir string) (listing.Tree, error) {
 	}
 	tr := make(listing.Tree)
 	for _, e := range entries {
-		if !e.IsDir() {
+		loc := e.Name()
+		path := filepath.Join(dir, loc)
+		localeRoot, ok, err := LocaleRoot(root, path, e)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
 			continue
 		}
-		loc := e.Name()
-		l, unrecognized, err := readLocale(root, filepath.Join(dir, loc), loc)
+		l, unrecognized, err := readLocale(localeRoot, path, loc)
 		if err != nil {
 			return nil, err
 		}
@@ -65,6 +71,33 @@ func Read(dir string) (listing.Tree, error) {
 		tr[loc] = l
 	}
 	return tr, nil
+}
+
+func LocaleRoot(root, path string, e fs.DirEntry) (string, bool, error) {
+	if e.IsDir() {
+		return root, true, nil
+	}
+	if e.Type()&fs.ModeSymlink == 0 {
+		return "", false, nil
+	}
+	if _, err := pathguard.ContainUserPath(root, path); err != nil {
+		return "", false, err
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return "", false, exit.Usagef("locale entry %q is a symlink whose target cannot be read (%v): point it at a locale directory or remove it", path, err)
+	}
+	if !fi.IsDir() {
+		return "", false, exit.Usagef("locale entry %q is a symlink to a file, not a directory: point it at a locale directory or remove it", path)
+	}
+	resolved, err := pathguard.Root(path)
+	if err != nil {
+		return "", false, err
+	}
+	if rel, err := filepath.Rel(root, resolved); err == nil && filepath.IsLocal(rel) {
+		return root, true, nil
+	}
+	return resolved, true, nil
 }
 
 func readLocale(root, path, locale string) (listing.Listing, []string, error) {

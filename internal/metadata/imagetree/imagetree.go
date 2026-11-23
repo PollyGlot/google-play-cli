@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/PollyGlot/google-play-cli/internal/exit"
+	"github.com/PollyGlot/google-play-cli/internal/metadata/tree"
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
 	"github.com/PollyGlot/google-play-cli/internal/play/images"
 )
@@ -259,11 +260,15 @@ func Scan(dir string) (Staged, error) {
 		return nil, err
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		locale := e.Name()
+		localeRoot, ok, err := tree.LocaleRoot(root, filepath.Join(dir, locale), e)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
 			continue
 		}
-		locale := e.Name()
-		slots, err := scanLocale(root, filepath.Join(dir, locale, imagesSubdir))
+		slots, err := scanLocale(localeRoot, filepath.Join(dir, locale, imagesSubdir))
 		if err != nil {
 			return nil, err
 		}
@@ -326,9 +331,15 @@ func Retired(dir string) ([]string, error) {
 		}
 		return nil, err
 	}
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return nil, err
+	}
 	var out []string
 	for _, l := range locales {
-		if !l.IsDir() {
+		if _, ok, err := tree.LocaleRoot(root, filepath.Join(dir, l.Name()), l); err != nil {
+			return nil, err
+		} else if !ok {
 			continue
 		}
 		entries, err := os.ReadDir(filepath.Join(dir, l.Name(), imagesSubdir))
