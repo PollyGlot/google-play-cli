@@ -77,12 +77,13 @@ name: Discovery Watch
 #
 # Weekly task (the normal Monday path)
 # ---------------------------------------------------------------------------
-# GitHub fires the Monday cron hours late, so one fixed-time t3code task on the
-# same machine runs the whole week's Discovery work in a single thread: it
+# GitHub fires its cron hours late, so one fixed-time t3code task on the same
+# machine runs the whole week's Discovery work on Mondays in a single thread: it
 # dispatches this workflow with notify=false, waits for the run, triages the
 # refresh PR itself and has two other models refute the verdict. Its prompt is
-# docs/agents/discovery-weekly.md. The webhook above stays as the fallback for
-# the late cron and for "pr" replays.
+# docs/agents/discovery-weekly.md. The cron runs a day later as a catch-up: after
+# a Monday run it finds the open PR already carrying the snapshots and does
+# nothing, and when the machine was down it refreshes and fires the webhook.
 #
 # The four discovery:* labels already exist in the repository:
 #   discovery:schema / discovery:surface  — set by this workflow (the input)
@@ -95,7 +96,7 @@ name: Discovery Watch
 # snapshots, dispatch this workflow with the "pr" input.
 on:
   schedule:
-    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+    - cron: '0 6 * * 2' # Tuesdays 06:00 UTC, catch-up for the Monday weekly task
   workflow_dispatch:
     inputs:
       pr:
@@ -216,6 +217,18 @@ jobs:
           BRANCH=chore/discovery-refresh
           git config user.name "gplay[bot]"
           git config user.email "gplay[bot]@users.noreply.github.com"
+          # A second run the same week (the late cron after the weekly task's
+          # dispatch) regenerates the same snapshots. Force-pushing them would
+          # drop the triage's commits and wake a second triage, so an open PR
+          # that already carries them is left alone.
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN \
+            && git fetch -q --depth 1 origin "$BRANCH" \
+            && git diff --quiet FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json; then
+            echo "unchanged=true" >> "$GITHUB_OUTPUT"
+            echo "pr=$(gh pr view "$BRANCH" --json number --jq .number)" >> "$GITHUB_OUTPUT"
+            echo "The open rolling PR already carries these snapshots: nothing pushed."
+            exit 0
+          fi
           git checkout -B "$BRANCH"
           git add docs/discovery/ internal/schemaindex/schema_index.json
           case "$KIND" in
@@ -268,7 +281,7 @@ jobs:
       # machine-readable label: a downstream bot then finds the PR and its kind
       # without parsing the title, which is prose and free to change.
       - name: Label a schema or surface refresh
-        if: inputs.pr == '' && steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only'
+        if: inputs.pr == '' && steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only' && steps.pr.outputs.unchanged != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -296,7 +309,7 @@ jobs:
       #      are computed at different times against a force-pushed branch);
       #   2. green CI, waited for rather than assumed.
       - name: Guard the merge blast radius
-        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only'
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only' && steps.pr.outputs.unchanged != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -315,7 +328,7 @@ jobs:
 
       - name: Wait for CI and squash-merge
         id: merge
-        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only'
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only' && steps.pr.outputs.unchanged != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -346,7 +359,7 @@ jobs:
       # both paths converge here rather than duplicating the curl.
       - name: Resolve the triage target
         id: target
-        if: inputs.pr != '' || (steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only')
+        if: inputs.pr != '' || (steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only' && steps.pr.outputs.unchanged != 'true')
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           INPUT_PR: ${{ inputs.pr }}
@@ -475,6 +488,7 @@ jobs:
           CHANGED: ${{ steps.diff.outputs.changed }}
           KIND: ${{ steps.diff.outputs.kind }}
           PR: ${{ steps.pr.outputs.pr }}
+          UNCHANGED: ${{ steps.pr.outputs.unchanged }}
           MERGED: ${{ steps.merge.outputs.merged }}
           TARGET_PR: ${{ steps.target.outputs.pr }}
           TARGET_KIND: ${{ steps.target.outputs.kind }}
@@ -494,18 +508,22 @@ jobs:
               echo
               echo "- Classification: \`$KIND\`"
               echo "- Rolling PR: #$PR"
-              case "$KIND" in
-                revision-only)
-                  if [ "${MERGED:-}" = "true" ]; then
-                    echo "- Outcome: **auto-merged** (revision stamp only, blast radius verified, CI green)."
-                  else
-                    echo "- Outcome: **not merged** — the guard refused, or CI went red. Needs a human."
-                  fi
-                  ;;
-                *)
-                  echo "- Outcome: labelled \`discovery:$KIND\` and left open for triage."
-                  ;;
-              esac
+              if [ "${UNCHANGED:-}" = "true" ]; then
+                echo "- Outcome: **already open with these snapshots**, nothing pushed, labelled or handed to the triage agent."
+              else
+                case "$KIND" in
+                  revision-only)
+                    if [ "${MERGED:-}" = "true" ]; then
+                      echo "- Outcome: **auto-merged** (revision stamp only, blast radius verified, CI green)."
+                    else
+                      echo "- Outcome: **not merged** — the guard refused, or CI went red. Needs a human."
+                    fi
+                    ;;
+                  *)
+                    echo "- Outcome: labelled \`discovery:$KIND\` and left open for triage."
+                    ;;
+                esac
+              fi
             fi
             # Whether the routine was woken up is the one fact that decides
             # whether a human still has to look at the PR, so it gets its own
@@ -516,7 +534,7 @@ jobs:
               echo
               if [ "${CALLED:-}" = "true" ]; then
                 echo "Called on the \`$RUNTIME\` runtime for PR #$TARGET_PR (\`$TARGET_KIND\`). Expect a verdict comment and a \`discovery:verdict-merge\` or \`discovery:needs-decision\` label on the PR."
-              elif [ "${NOTIFY:-}" = "false" ]; then
+              elif [ "${NOTIFY:-}" = "false" ] && [ -n "${REASON:-}" ]; then
                 echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."
               elif [ -n "${REASON:-}" ]; then
                 echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."

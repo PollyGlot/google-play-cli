@@ -5,10 +5,11 @@ task on the maintainer's always-on machine, Mondays 07:00 Paris time. One run,
 one thread: it starts the refresh, waits for it, triages what it produced and
 gets the verdict refuted, so the maintainer reads a single report.
 
-GitHub fires the `discovery-watch` cron hours late, which is why this task
-dispatches the workflow itself. The cron and the webhook task stay as the
-fallback when this machine is down: a schema/surface refresh they produce is
-triaged by the webhook task, and this run only checks that verdict.
+GitHub fires its crons hours late, which is why this task dispatches the
+`discovery-watch` workflow itself. The workflow's own cron runs on Tuesdays as
+the catch-up for a Monday this machine missed: a schema/surface refresh it
+produces is triaged by the webhook task. After a Monday run it finds the open PR
+already carrying the snapshots and does nothing.
 
 Work in a fresh git worktree of the google-play-cli checkout, created from
 `origin/main`. Repository: `PollyGlot/google-play-cli` (pass `-R` to every
@@ -16,14 +17,19 @@ Work in a fresh git worktree of the google-play-cli checkout, created from
 
 ## 1. Start the refresh and wait for it
 
+First the kill switch: if `gh variable get DISCOVERY_TRIAGE_ENABLED -R
+PollyGlot/google-play-cli` does not print `true`, the maintainer has paused the
+triage. Still do steps 1 and 2, skip step 3, and report the pause.
+
 ```bash
 gh workflow run discovery-watch.yml -R PollyGlot/google-play-cli -f notify=false
-gh run list -R PollyGlot/google-play-cli -w discovery-watch.yml -e workflow_dispatch -L 1 \
+gh run list -R PollyGlot/google-play-cli -w discovery-watch.yml -e workflow_dispatch -L 5 \
   --json databaseId,status,createdAt,url
 ```
 
-The run you want is the one created after your dispatch; if the list does not
-show it yet, list again a few seconds later. `notify=false` keeps the workflow
+Note the UTC time just before the dispatch. The run you want is the earliest
+`workflow_dispatch` run created after it (a replay started
+meanwhile comes later); if none is listed yet, list again a few seconds later. `notify=false` keeps the workflow
 from firing the webhook task: you triage the PR here. Wait for the run with
 `gh run watch <id> -R PollyGlot/google-play-cli --exit-status` as a background
 command you wait on, not a sleep loop.
@@ -39,7 +45,9 @@ run: report it and stop.
 - **revision-only**: the workflow merged the rolling PR itself (or refused, which
   is an anomaly);
 - **schema or surface**: the rolling PR `chore/discovery-refresh` is open and
-  labelled `discovery:schema` or `discovery:surface`.
+  labelled `discovery:schema` or `discovery:surface`, with this run's commit;
+- **already open with these snapshots**: the PR is open from an earlier run and
+  Google has not moved since; nothing was pushed.
 
 A failed run is an anomaly; still do step 3, an older refresh PR may be waiting.
 
@@ -50,15 +58,18 @@ gh pr list -R PollyGlot/google-play-cli --state open --head chore/discovery-refr
   --json number,labels --jq '.[] | {number, labels: [.labels[].name]}'
 ```
 
-For each PR labelled `discovery:schema` or `discovery:surface` that carries
-neither `discovery:verdict-merge` nor `discovery:needs-decision`, follow
+Triage the PR when this run refreshed it (step 2 said schema or surface),
+whatever label it carries: an old `discovery:needs-decision` describes last
+week's commit, not this one. Triage it too when it is labelled
+`discovery:schema` or `discovery:surface` and carries neither
+`discovery:verdict-merge` nor `discovery:needs-decision`. To triage, follow
 [discovery-triage.md](discovery-triage.md) to the letter, in this thread, with
 that PR number as its input. Its hard limits are yours. Its step 7 starts the
 two refutation seats (Codex and Fable) as child tasks of this thread: wait for
 both before posting.
 
-A PR that already carries a verdict label was triaged by the fallback webhook
-task. Read its verdict comment (the one starting with
+A PR this run did not refresh that already carries a verdict label was triaged
+earlier, by a previous Monday or by the fallback webhook task. Read its verdict comment (the one starting with
 `<!-- discovery-triage-verdict -->`): a `**Refutation:**` line that does not
 name both seats as having run is an anomaly, and so is a verdict label without
 that comment. Do not triage it again.
