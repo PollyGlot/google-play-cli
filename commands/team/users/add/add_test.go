@@ -180,9 +180,10 @@ func toStrings(v any) []string {
 
 func TestAdd_blankSelector_exit2(t *testing.T) {
 	cases := map[string]addcmd.Input{
-		`--permissions ""`:    {Permissions: []string{}, PermsSet: true},
-		`--permissions " , "`: {Permissions: []string{" ", " "}, PermsSet: true},
-		`--role ""`:           {Role: "", RoleSet: true},
+		`--permissions ""`:       {Permissions: []string{}, PermsSet: true},
+		`--permissions " , "`:    {Permissions: []string{" ", " "}, PermsSet: true},
+		`--permissions "\u00a0"`: {Permissions: []string{"\u00a0"}, PermsSet: true},
+		`--role ""`:              {Role: "", RoleSet: true},
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {

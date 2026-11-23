@@ -53,7 +53,7 @@ func RefuseBlankSelector(roleSet bool, role string, permsSet bool, perms []strin
 		return nil
 	}
 	for _, p := range perms {
-		if strings.Trim(p, " \t,") != "" {
+		if strings.TrimSpace(p) != "" {
 			return nil
 		}
 	}
