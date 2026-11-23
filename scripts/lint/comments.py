@@ -47,7 +47,7 @@ DIRECTIVE_WORDS = (
     r"[@#]__(PURE|NO_SIDE_EFFECTS)__",
 )
 DIRECTIVE = re.compile(r"^\s*\{?\s*(#!|(//+|/\*+|#+|--|\*)\s*(" + "|".join(DIRECTIVE_WORDS) + "))", re.I)
-LICENSE = re.compile(r"copyright|license|spdx|\(BSD-\d[\w-]*\)", re.I)
+LICENSE = re.compile(r"copyright|license|spdx|\(BSD-\d(-Clause)?\)", re.I)
 COUNTED = ("comment", "doc", "docstring")
 AAA_WORD = r"(arrange|act|assert|given|when|then)"
 AAA = re.compile(rf"^\s*(//+|#|--)\s*{AAA_WORD}(\s*(&|and|/|,|\+|-)\s*{AAA_WORD})*\s*[:.]?\s*$", re.I)
@@ -137,8 +137,8 @@ def scan(root: Path, rel: str, lang: str) -> list[Block]:
     for node, is_doc, sole in found:
         (sr, sc), (er, ec) = node.start_point, node.end_point
         text = src[node.start_byte:node.end_byte].decode("utf8", "replace")
-        own = raw_lines[sr][:sc].decode("utf8", "replace").strip() == ""
-        trailing = raw_lines[er][ec:].decode("utf8", "replace").strip() == "" if er < len(raw_lines) else True
+        own = raw_lines[sr][:sc].strip() == b""
+        trailing = raw_lines[er][ec:].strip() == b"" if er < len(raw_lines) else True
         marker = not is_doc and not own and trailing and EMPTY.match(text)
         raw.append(Block(rel, sr + 1, er + 1, sc, own, trailing,
                          "docstring" if is_doc else "directive" if marker else "comment", sole, text))
