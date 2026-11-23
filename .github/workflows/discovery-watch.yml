@@ -115,8 +115,9 @@ on:
 permissions:
   contents: read
 
-# A Monday schedule and a manual dispatch must not force-push the rolling
-# branch at the same time; queue the second run instead of cancelling either.
+# The weekly task's dispatch, the catch-up cron and a manual dispatch must not
+# force-push the rolling branch at the same time; queue the second run instead
+# of cancelling either.
 concurrency:
   group: discovery-refresh
   cancel-in-progress: false
@@ -219,7 +220,8 @@ jobs:
           git config user.name "gplay[bot]"
           git config user.email "gplay[bot]@users.noreply.github.com"
           # A second run the same week (the Tuesday catch-up after the weekly
-          # task's Monday dispatch) regenerates the same snapshots. Force-pushing
+          # task's Monday dispatch) regenerates the same snapshots, give or take
+          # a revision stamp, which the comparison ignores. Force-pushing
           # them would drop the triage's commits and wake a second triage, so an
           # open schema/surface PR that already carries them is left alone, and
           # only handed to the triage agent if it never got a verdict. A
@@ -227,7 +229,12 @@ jobs:
           if [ "$KIND" != revision-only ] \
             && gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
             git fetch -q --depth 1 origin "$BRANCH"
-            if git diff --quiet FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json; then
+            moved=$(git diff FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json \
+              | grep -E '^[+-]' \
+              | grep -vE '^(\+\+\+|---) ' \
+              | grep -vE '^[+-]  "revision": "[^"]+",?$' \
+              || true)
+            if [ -z "$moved" ]; then
               verdict=$(gh pr view "$BRANCH" --json labels \
                 --jq '[.labels[].name | select(. == "discovery:verdict-merge" or . == "discovery:needs-decision")] | length')
               echo "unchanged=true" >> "$GITHUB_OUTPUT"
@@ -291,7 +298,7 @@ jobs:
       # machine-readable label: a downstream bot then finds the PR and its kind
       # without parsing the title, which is prose and free to change.
       - name: Label a schema or surface refresh
-        if: inputs.pr == '' && steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only' && steps.pr.outputs.unchanged != 'true'
+        if: inputs.pr == '' && steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}

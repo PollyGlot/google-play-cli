@@ -254,7 +254,7 @@ most valuable, name the rest in the verdict comment, and finish on
 
 ## 7. The verdict comment: one per PR, updated in place
 
-The refresh PR is rolling and is force-pushed every Monday. A new comment each
+The refresh PR is rolling and is force-pushed whenever Google moves. A new comment each
 week would bury the current state, so there is **exactly one** verdict comment,
 identified by a stable HTML marker as its first line:
 
@@ -334,8 +334,13 @@ Rules on the baskets:
 
 ```bash
 gh pr edit "$PR" --repo PollyGlot/google-play-cli \
-  --remove-label discovery:needs-decision --add-label discovery:verdict-merge
+  --remove-label discovery:needs-decision --remove-label discovery:verdict-merge
+gh pr edit "$PR" --repo PollyGlot/google-play-cli --add-label discovery:verdict-merge
 ```
+
+Two calls, removal first: a label already on the PR from an earlier verdict
+fires no `labeled` event when added again, and CI merges on that event. One
+call that removes and adds the same label nets to nothing.
 
 | Label                      | When                                                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |

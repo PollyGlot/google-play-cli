@@ -28,7 +28,7 @@ gh run list -R PollyGlot/google-play-cli -w discovery-watch.yml -e workflow_disp
   --json databaseId,status,createdAt,url
 ```
 
-Note the UTC time just before the dispatch. The run you want is the earliest
+Note the UTC time one minute before the dispatch (clocks drift). The run you want is the earliest
 `workflow_dispatch` run created after it (a replay started
 meanwhile comes later); if none is listed yet, list again a few seconds later. `notify=false` keeps the workflow
 from firing the webhook task: you triage the PR here. Wait for the run with
