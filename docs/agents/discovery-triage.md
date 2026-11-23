@@ -303,7 +303,7 @@ verbatim failing lines). <One sentence on what that proves.>
   change in the Discovery doc, zero behavioural surface.
 
 **Tickets opened:** #<n> (or: none, the fix basket is empty).
-**Refutation:** Codex, <n> item(s) moved; Fable, <n> item(s) moved (or: not available on this runtime).
+**Refutation:** Codex, <n> item(s) moved (or: not needed, `discovery:needs-decision`; or: not available on this runtime).
 **COVERAGE.md:** <commit sha> regenerated, <n> new 🔴 row(s) (or: unchanged).
 **Verdict:** `discovery:verdict-merge` (or `discovery:needs-decision`, because …).
 ````
@@ -318,17 +318,16 @@ Rules on the baskets:
 - **Every dismissed item names its reason.** "Not relevant" is not a reason.
 - Refute your own items before posting: for each fix item, try to prove it wrong
   against the real code. It survives only if confirmed and worth a change.
-- **Two refutation seats, on every verdict, when the runtime has them.** On
-  t3code, before posting, hand the draft verdict, the draft label and the PR
-  number to two read-only child tasks started in parallel with `delegate_task`:
-  Codex (another provider) and Fable. Ask each to refute every item, the
-  basket it sits in, and the label itself against the code. This runs for
-  `discovery:needs-decision` too: a refuted reason changes what the maintainer
-  is asked to decide. A refutation that survives your own re-check moves the
-  item to its right basket, or the label to `discovery:needs-decision`. Report
-  both seats (`**Refutation:** Codex, <n> moved; Fable, <n> moved`). A seat the
-  runtime cannot start is named as such (`Fable, not available`); without
-  `delegate_task` at all, write `**Refutation:** not available on this runtime`.
+- **One refutation seat, before a `discovery:verdict-merge` only.** That label
+  merges the PR without a human, so on t3code, before posting it, hand the
+  draft verdict and the PR number to one read-only Codex child task (another
+  provider, `delegate_task`) and ask it to refute every item, its basket, and
+  the clearance itself against the code. A refutation that survives your own
+  re-check moves the item to its right basket, or the label to
+  `discovery:needs-decision`. A `discovery:needs-decision` verdict goes to the
+  maintainer, who is the review: skip the seat and write `**Refutation:** not
+  needed`. Without `delegate_task`, write `**Refutation:** not available on
+  this runtime`.
 
 ## 8. Finish with exactly one label
 
