@@ -1,4 +1,5 @@
 name: Discovery Watch
+run-name: Discovery Watch${{ inputs.tag && format(' ({0})', inputs.tag) || '' }}
 
 # Weekly check of Google's Discovery documents against the offline snapshots
 # under docs/discovery/. When Google publishes a new revision, this opens (or
@@ -75,6 +76,17 @@ name: Discovery Watch
 # The relay holds a request up to 24 hours while the machine is offline. The
 # DISCOVERY_TRIAGE_ENABLED kill switch applies to both runtimes.
 #
+# Weekly task (the normal Monday path)
+# ---------------------------------------------------------------------------
+# GitHub fires its cron hours late, so one fixed-time t3code task on the same
+# machine runs the whole week's Discovery work on Mondays in a single thread: it
+# dispatches this workflow with notify=false, waits for the run, triages the
+# refresh PR itself and has two other models refute the verdict. Its prompt is
+# docs/agents/discovery-weekly.md. The cron runs a day later as a catch-up: after
+# a Monday run it finds the open PR already carrying the snapshots and pushes
+# nothing (firing the webhook only if that PR never got a verdict), and when the
+# machine was down it refreshes and fires the webhook.
+#
 # The four discovery:* labels already exist in the repository:
 #   discovery:schema / discovery:surface  — set by this workflow (the input)
 #   discovery:verdict-merge               — set by the routine, merges the PR
@@ -86,11 +98,20 @@ name: Discovery Watch
 # snapshots, dispatch this workflow with the "pr" input.
 on:
   schedule:
-    - cron: '0 6 * * 1' # Mondays 06:00 UTC
+    - cron: '0 6 * * 2' # Tuesdays 06:00 UTC, catch-up for the Monday weekly task
   workflow_dispatch:
     inputs:
       pr:
         description: 'Refresh PR to hand back to the triage routine (skips the snapshot regeneration entirely)'
+        required: false
+        type: string
+      notify:
+        description: 'Fire the triage agent webhook on a schema/surface refresh (false: the dispatching weekly task triages it itself)'
+        required: false
+        type: boolean
+        default: true
+      tag:
+        description: 'Label shown in the run name, so the dispatcher can find its own run'
         required: false
         type: string
 
@@ -99,8 +120,9 @@ on:
 permissions:
   contents: read
 
-# A Monday schedule and a manual dispatch must not force-push the rolling
-# branch at the same time; queue the second run instead of cancelling either.
+# The weekly task's dispatch, the catch-up cron and a manual dispatch must not
+# force-push the rolling branch at the same time; queue the second run instead
+# of cancelling either.
 concurrency:
   group: discovery-refresh
   cancel-in-progress: false
@@ -202,6 +224,37 @@ jobs:
           BRANCH=chore/discovery-refresh
           git config user.name "gplay[bot]"
           git config user.email "gplay[bot]@users.noreply.github.com"
+          # A second run the same week (the Tuesday catch-up after the weekly
+          # task's Monday dispatch) regenerates the same snapshots, give or take
+          # a revision stamp, which the comparison ignores. Force-pushing
+          # them would drop the triage's commits and wake a second triage, so an
+          # open schema/surface PR that already carries them is left alone, and
+          # only handed to the triage agent if it never got a verdict. A
+          # revision-only PR is re-pushed as before, which retries its merge.
+          open=0
+          if [ "$KIND" != revision-only ]; then
+            open=$(gh pr list --head "$BRANCH" --state open --json number --jq length)
+          fi
+          if [ "$open" -gt 0 ]; then
+            git fetch -q --depth 1 origin "$BRANCH"
+            delta=$(git diff FETCH_HEAD -- docs/discovery/ internal/schemaindex/schema_index.json)
+            moved=$(printf '%s\n' "$delta" \
+              | grep -E '^[+-]' \
+              | grep -vE '^(\+\+\+|---) ' \
+              | grep -vE '^[+-]  "revision": "[^"]+",?$' \
+              || true)
+            if [ -z "$moved" ]; then
+              verdict=$(gh pr view "$BRANCH" --json labels \
+                --jq '[.labels[].name | select(. == "discovery:verdict-merge" or . == "discovery:needs-decision")] | length')
+              echo "unchanged=true" >> "$GITHUB_OUTPUT"
+              if [ "$verdict" -eq 0 ]; then
+                echo "untriaged=true" >> "$GITHUB_OUTPUT"
+              fi
+              echo "pr=$(gh pr view "$BRANCH" --json number --jq .number)" >> "$GITHUB_OUTPUT"
+              echo "The open rolling PR already carries these snapshots: nothing pushed."
+              exit 0
+            fi
+          fi
           git checkout -B "$BRANCH"
           git add docs/discovery/ internal/schemaindex/schema_index.json
           case "$KIND" in
@@ -259,8 +312,16 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
           KIND: ${{ steps.diff.outputs.kind }}
+          UNCHANGED: ${{ steps.pr.outputs.unchanged }}
         run: |
           set -euo pipefail
+          # A verdict describes the commit it was given. New snapshots were just
+          # pushed, so whatever verdict the PR carries is about a commit that no
+          # longer exists: drop it, which also lets the next verdict fire a fresh
+          # labeled event.
+          if [ "${UNCHANGED:-}" != "true" ]; then
+            gh pr edit "$PR" --remove-label discovery:verdict-merge --remove-label discovery:needs-decision
+          fi
           # The branch is rolling, so last week's kind must not survive into this
           # week's classification: drop the other kind's label. Never remove the
           # label being added in the same call: gh applies --add-label before
@@ -282,7 +343,7 @@ jobs:
       #      are computed at different times against a force-pushed branch);
       #   2. green CI, waited for rather than assumed.
       - name: Guard the merge blast radius
-        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only'
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only' && steps.pr.outputs.unchanged != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -301,7 +362,7 @@ jobs:
 
       - name: Wait for CI and squash-merge
         id: merge
-        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only'
+        if: steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind == 'revision-only' && steps.pr.outputs.unchanged != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ steps.pr.outputs.pr }}
@@ -332,7 +393,7 @@ jobs:
       # both paths converge here rather than duplicating the curl.
       - name: Resolve the triage target
         id: target
-        if: inputs.pr != '' || (steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only')
+        if: inputs.pr != '' || (steps.diff.outputs.changed == 'true' && steps.diff.outputs.kind != 'revision-only' && (steps.pr.outputs.unchanged != 'true' || steps.pr.outputs.untriaged == 'true'))
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           INPUT_PR: ${{ inputs.pr }}
@@ -376,6 +437,7 @@ jobs:
         if: steps.target.outputs.pr != ''
         env:
           ENABLED: ${{ vars.DISCOVERY_TRIAGE_ENABLED }}
+          NOTIFY: ${{ inputs.notify }}
           RUNTIME: ${{ vars.AGENT_RUNTIME }}
           ROUTINE_URL: ${{ secrets.DISCOVERY_TRIAGE_WEBHOOK_URL }}
           # The routine's "call via API" URL is authenticated with a Bearer token
@@ -397,6 +459,12 @@ jobs:
           }
           if [ "${ENABLED:-}" != "true" ]; then
             skip "the DISCOVERY_TRIAGE_ENABLED repository variable is not \`true\` (kill switch off)"
+          fi
+          # A schedule run has no inputs, so only an explicit `false` from the
+          # weekly task (docs/agents/discovery-weekly.md) silences the webhook:
+          # that task triages the PR in its own thread.
+          if [ "${NOTIFY:-}" = "false" ]; then
+            skip "dispatched with notify=false, the weekly Discovery task triages this PR in its own thread"
           fi
           echo "runtime=${RUNTIME:-routine}" >> "$GITHUB_OUTPUT"
           # One attempt, no --retry: curl retries 5xx too, and firing the agent
@@ -445,14 +513,17 @@ jobs:
           echo "Triage agent (${RUNTIME:-routine}) called for PR #$PR ($KIND), HTTP $code."
 
       # Runs even when nothing changed, and even when a step above failed: a
-      # silent Monday must be distinguishable from a dead workflow.
+      # silent run must be distinguishable from a dead workflow.
       - name: Job summary
         if: always()
         env:
           INPUT_PR: ${{ inputs.pr }}
+          NOTIFY: ${{ inputs.notify }}
           CHANGED: ${{ steps.diff.outputs.changed }}
           KIND: ${{ steps.diff.outputs.kind }}
           PR: ${{ steps.pr.outputs.pr }}
+          UNCHANGED: ${{ steps.pr.outputs.unchanged }}
+          UNTRIAGED: ${{ steps.pr.outputs.untriaged }}
           MERGED: ${{ steps.merge.outputs.merged }}
           TARGET_PR: ${{ steps.target.outputs.pr }}
           TARGET_KIND: ${{ steps.target.outputs.kind }}
@@ -472,18 +543,28 @@ jobs:
               echo
               echo "- Classification: \`$KIND\`"
               echo "- Rolling PR: #$PR"
-              case "$KIND" in
-                revision-only)
-                  if [ "${MERGED:-}" = "true" ]; then
-                    echo "- Outcome: **auto-merged** (revision stamp only, blast radius verified, CI green)."
-                  else
-                    echo "- Outcome: **not merged** — the guard refused, or CI went red. Needs a human."
-                  fi
-                  ;;
-                *)
-                  echo "- Outcome: labelled \`discovery:$KIND\` and left open for triage."
-                  ;;
-              esac
+              if [ -z "${PR:-}" ]; then
+                echo "- Outcome: **the PR step failed**; see its log for whether the branch was pushed."
+              elif [ "${UNCHANGED:-}" = "true" ]; then
+                if [ "${UNTRIAGED:-}" = "true" ]; then
+                  echo "- Outcome: **already open with these snapshots** but never triaged: nothing pushed."
+                else
+                  echo "- Outcome: **already open with these snapshots** and already triaged: nothing pushed or handed on."
+                fi
+              else
+                case "$KIND" in
+                  revision-only)
+                    if [ "${MERGED:-}" = "true" ]; then
+                      echo "- Outcome: **auto-merged** (revision stamp only, blast radius verified, CI green)."
+                    else
+                      echo "- Outcome: **not merged** — the guard refused, or CI went red. Needs a human."
+                    fi
+                    ;;
+                  *)
+                    echo "- Outcome: labelled \`discovery:$KIND\` and left open for triage."
+                    ;;
+                esac
+              fi
             fi
             # Whether the routine was woken up is the one fact that decides
             # whether a human still has to look at the PR, so it gets its own
@@ -494,6 +575,8 @@ jobs:
               echo
               if [ "${CALLED:-}" = "true" ]; then
                 echo "Called on the \`$RUNTIME\` runtime for PR #$TARGET_PR (\`$TARGET_KIND\`). Expect a verdict comment and a \`discovery:verdict-merge\` or \`discovery:needs-decision\` label on the PR."
+              elif [ "${NOTIFY:-}" = "false" ] && [ -n "${REASON:-}" ]; then
+                echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."
               elif [ -n "${REASON:-}" ]; then
                 echo "**Not called** for PR #$TARGET_PR (\`$TARGET_KIND\`): $REASON."
                 echo
