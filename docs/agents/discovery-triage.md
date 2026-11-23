@@ -79,7 +79,7 @@ Cap the schema diff you actually read: if it exceeds a few hundred lines, group
 it by schema name (`grep -E '^\+ +"[A-Za-z]+": \{'`) and query the interesting
 ones, rather than paging through it.
 
-## 2. Hard evidence first: the registry test
+## 2. Hard evidence first: the test suite
 
 Before you form any opinion, run the deterministic check and **quote its result
 as the first line of your verdict**:
@@ -87,8 +87,12 @@ as the first line of your verdict**:
 ```bash
 git fetch origin "$(gh pr view "$PR" --repo PollyGlot/google-play-cli --json headRefName -q .headRefName)"
 git checkout FETCH_HEAD
-go test ./internal/apiregistry/
+go test ./...
 ```
+
+The whole suite is offline and runs in minutes; it is the check CI requires
+before any merge, so a failure you skip here only surfaces later as a red PR.
+The packages that matter most for a refresh are below.
 
 `internal/apiregistry` declares every API method a shipped `gplay` command
 calls, mapped to that command. Its test anchors each entry to the refreshed
@@ -106,11 +110,11 @@ break users:
 
 Rules:
 
-- **Test red ⇒ the fix basket is non-empty**, whatever the diff looks like, and
+- **Any test red ⇒ the fix basket is non-empty**, whatever the diff looks like, and
   the failure message (it names both the method id and the command) is a fix
   item on its own. A red test also means the PR is **not** clear to merge:
   finish on `discovery:needs-decision`.
-- **Test green ⇒ nothing gplay ships today is broken.** Say so explicitly. It
+- **Suite green ⇒ nothing gplay ships today is broken.** Say so explicitly. It
   does not clear the diff: additions are still yours to judge.
 - Never paraphrase the test. Quote the failing lines verbatim.
 
@@ -157,7 +161,7 @@ method is a **runtime** API (called per-request by the developer's backend with
 an ephemeral token, e.g. Play Integrity, real-time purchase verification), it is
 out of scope by nature: dismissed basket, reason "runtime API, ADR-0026".
 
-For every method id **removed** from `paths.txt`: the registry test of step 2
+For every method id **removed** from `paths.txt`: the registry test in step 2
 already decided. Red means a shipped command breaks (fix). Green means gplay
 never called it, so it is noted, with the COVERAGE.md row that must lose its
 line.
@@ -284,7 +288,7 @@ comment, edit the most recent and say so in the verdict.
 <!-- discovery-triage-verdict -->
 ## Discovery triage verdict — <surface|schema>, run <YYYY-MM-DD>
 
-**Hard evidence.** `go test ./internal/apiregistry/` → **ok** (or: **FAIL**,
+**Hard evidence.** `go test ./...` → **ok** (or: **FAIL**,
 verbatim failing lines). <One sentence on what that proves.>
 
 ### To fix
@@ -344,8 +348,8 @@ call that removes and adds the same label nets to nothing.
 
 | Label                      | When                                                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `discovery:verdict-merge`  | Registry test green, no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated, `go test ./internal/coveragedoc/ ./internal/apiregistry/` green. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json`, your COVERAGE.md commit and, if any, your step 5a exclusions. A token method you excluded in 5a is not a fix item: list it under Noted with its commit. |
-| `discovery:needs-decision` | Registry test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set and your step 5 commits; **or** you could not complete a step and said so. |
+| `discovery:verdict-merge`  | `go test ./...` green on the final head (after your step 5 commits), no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json`, your COVERAGE.md commit and, if any, your step 5a exclusions. A token method you excluded in 5a is not a fix item: list it under Noted with its commit. |
+| `discovery:needs-decision` | Any test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set and your step 5 commits; **or** you could not complete a step and said so. |
 
 Set one, remove the other. The label is the handoff: `discovery:verdict-merge`
 lets CI merge the PR, `discovery:needs-decision` notifies the maintainer. You
