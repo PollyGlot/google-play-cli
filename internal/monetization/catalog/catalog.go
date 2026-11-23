@@ -19,6 +19,15 @@ type Entry struct {
 	Raw       json.RawMessage
 }
 
+type FileError struct {
+	Name string
+	Err  error
+}
+
+func (e *FileError) Error() string { return fmt.Sprintf("read catalog file %q: %v", e.Name, e.Err) }
+
+func (e *FileError) ExitCode() int { return 20 }
+
 func Read(dir string) (map[string]json.RawMessage, error) {
 	dirents, err := os.ReadDir(dir)
 	if err != nil {
@@ -31,20 +40,20 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 		}
 		b, err := os.ReadFile(filepath.Join(dir, de.Name()))
 		if err != nil {
-			return nil, fmt.Errorf("read catalog file %q: %w", de.Name(), err)
+			return nil, &FileError{Name: de.Name(), Err: err}
 		}
 		var probe struct {
 			ProductID string `json:"productId"`
 		}
 		if err := json.Unmarshal(b, &probe); err != nil {
-			return nil, fmt.Errorf("catalog file %q is not a JSON subscription resource: %w", de.Name(), err)
+			return nil, exit.Usagef("catalog file %q is not a JSON catalog resource: %v", de.Name(), err)
 		}
 		id := strings.TrimSuffix(de.Name(), ".json")
 		if id == "" {
-			return nil, fmt.Errorf("catalog file %q has an empty filename stem: the stem is the product ID and cannot be empty", de.Name())
+			return nil, exit.Usagef("catalog file %q has an empty filename stem: the stem is the product ID and cannot be empty", de.Name())
 		}
 		if probe.ProductID != "" && probe.ProductID != id {
-			return nil, fmt.Errorf("catalog file %q declares productId %q: the filename stem is the reconciliation key and must match", de.Name(), probe.ProductID)
+			return nil, exit.Usagef("catalog file %q declares productId %q: the filename stem is the reconciliation key and must match", de.Name(), probe.ProductID)
 		}
 		local[id] = json.RawMessage(b)
 	}

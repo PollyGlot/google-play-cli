@@ -754,3 +754,39 @@ func TestRun_latencyToleranceUnknown_isUsageErrorBeforeAnyCall(t *testing.T) {
 		t.Errorf("refused input reached the API: %v", rt.calls)
 	}
 }
+
+func TestRun_malformedCatalogFile_isUsageErrorBeforeAnyCall(t *testing.T) {
+	for name, files := range map[string]map[string]string{
+		"invalid JSON":       {"x.json": `{not json`},
+		"productId mismatch": {"coins100.json": `{"productId":"other"}`},
+		"empty stem":         {".json": `{}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := &iapRT{}
+			_, err := applycmd.Run(newRC(t, rt), applycmd.Input{Package: "com.example.app", Dir: writeCatalog(t, files)})
+			assertExit(t, err, 2)
+			if strings.Contains(err.Error(), "subscription") {
+				t.Errorf("one-time product catalog refusal %q names a subscription", err.Error())
+			}
+			if len(rt.calls) != 0 {
+				t.Errorf("refused catalog reached the API: %v", rt.calls)
+			}
+		})
+	}
+}
+
+func TestRun_danglingCatalogFile_namesTheFileNotTheDirectory(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{"coins100.json": `{"productId":"coins100"}`})
+	if err := os.Symlink(filepath.Join(dir, "gone.json"), filepath.Join(dir, "coins200.json")); err != nil {
+		t.Fatal(err)
+	}
+	rt := &iapRT{}
+	_, err := applycmd.Run(newRC(t, rt), applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 20)
+	if !strings.Contains(err.Error(), "coins200.json") || strings.Contains(err.Error(), "does not exist: run") {
+		t.Errorf("err %q should name the dangling file, not call the directory missing", err)
+	}
+	if len(rt.calls) != 0 {
+		t.Errorf("refused catalog reached the API: %v", rt.calls)
+	}
+}
