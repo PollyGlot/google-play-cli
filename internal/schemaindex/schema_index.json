@@ -1,5 +1,5 @@
 {
-  "revision": "20261116",
+  "revision": "20261119",
   "services": {
     "androidpublisher": {
       "rootUrl": "https://androidpublisher.googleapis.com/",
@@ -3590,6 +3590,29 @@
       "request": "SubscriptionPurchasesDeferRequest",
       "response": "SubscriptionPurchasesDeferResponse"
     },
+    "androidpublisher.purchases.subscriptionsv2.activateoffertargeting": {
+      "httpMethod": "POST",
+      "path": "applications/{packageName}/purchases/subscriptionsv2/tokens/{purchaseToken}:activateOfferTargeting",
+      "description": "Activates targeting for a specific offer.",
+      "parameters": [
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package of the application for which this subscription was purchased. Required."
+        },
+        {
+          "name": "purchaseToken",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The purchase token provided to the user's device when the subscription was purchased. Required."
+        }
+      ],
+      "request": "ActivateOfferTargetingRequest",
+      "response": "ActivateOfferTargetingResponse"
+    },
     "androidpublisher.purchases.subscriptionsv2.cancel": {
       "httpMethod": "POST",
       "path": "applications/{packageName}/purchases/subscriptionsv2/tokens/{token}:cancel",
@@ -3635,6 +3658,29 @@
       ],
       "request": "CancelPlanTransitionRequest",
       "response": "CancelPlanTransitionResponse"
+    },
+    "androidpublisher.purchases.subscriptionsv2.deactivateoffertargeting": {
+      "httpMethod": "POST",
+      "path": "applications/{packageName}/purchases/subscriptionsv2/tokens/{purchaseToken}:deactivateOfferTargeting",
+      "description": "Deactivates targeting for a specific offer.",
+      "parameters": [
+        {
+          "name": "packageName",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The package of the application for which this subscription was purchased. Required."
+        },
+        {
+          "name": "purchaseToken",
+          "in": "path",
+          "type": "string",
+          "required": true,
+          "description": "Required. The purchase token provided to the user's device when the subscription was purchased. Required."
+        }
+      ],
+      "request": "DeactivateOfferTargetingRequest",
+      "response": "DeactivateOfferTargetingResponse"
     },
     "androidpublisher.purchases.subscriptionsv2.defer": {
       "httpMethod": "POST",
@@ -5361,6 +5407,18 @@
         }
       }
     },
+    "ActivateOfferTargetingRequest": {
+      "description": "Request to activate targeting for a specific offer.",
+      "properties": {
+        "offerId": {
+          "type": "string",
+          "description": "Required. The specific discounted offer ID to target for base item. Required."
+        }
+      }
+    },
+    "ActivateOfferTargetingResponse": {
+      "description": "Response for ActivateOfferTargeting."
+    },
     "ActivateOneTimeProductOfferRequest": {
       "description": "Request message for ActivateOneTimeProductOffer.",
       "properties": {
@@ -6476,6 +6534,10 @@
             "DEVELOPER_REQUESTED_STOP_PAYMENTS"
           ],
           "description": "Required. The type of cancellation for the purchased subscription."
+        },
+        "etag": {
+          "type": "string",
+          "description": "Optional. The ETag representing the subscription state. If provided, the cancellation will only proceed if it matches the current server state."
         }
       }
     },
@@ -6946,6 +7008,18 @@
         }
       }
     },
+    "DeactivateOfferTargetingRequest": {
+      "description": "Request to deactivate targeting for a specific offer.",
+      "properties": {
+        "offerId": {
+          "type": "string",
+          "description": "Required. The specific discounted offer ID to target for base item. Required."
+        }
+      }
+    },
+    "DeactivateOfferTargetingResponse": {
+      "description": "Response for DeactivateOfferTargeting."
+    },
     "DeactivateOneTimeProductOfferRequest": {
       "description": "Request message for DeactivateOneTimeProductOffer.",
       "properties": {
@@ -7234,6 +7308,19 @@
     },
     "DeveloperInitiatedCancellation": {
       "description": "Information specific to cancellations initiated by developers."
+    },
+    "DeveloperTargetedOffer": {
+      "description": "Information about a developer-targeted offer for a subscription line item.",
+      "properties": {
+        "activateTime": {
+          "type": "string",
+          "description": "Optional. Time at which the offer targeting was activated."
+        },
+        "offerId": {
+          "type": "string",
+          "description": "Optional. The developer-created offer ID targeted for the subscription."
+        }
+      }
     },
     "DeviceCompatibilityRequirements": {
       "description": "Defines a set of device compatibility requirements for the app. A device must satisfy all of the requirements in a set to be considered compatible with the app.",
@@ -11204,6 +11291,10 @@
           "type": "string",
           "description": "[Required] The base plan ID to which this plan would be transitioned."
         },
+        "offerId": {
+          "type": "string",
+          "description": "The offer ID. Only present for discounted offers. This is only set if the target plan is not a base plan."
+        },
         "productId": {
           "type": "string",
           "description": "[Required] The product ID to which this plan would be transitioned, (for example, 'monthly001')."
@@ -12175,6 +12266,30 @@
         }
       }
     },
+    "RetentionPerUserTargetingRule": {
+      "description": "Represents a targeting rule for retaining existing users via Developer API."
+    },
+    "RetentionTargetingRule": {
+      "description": "Represents a targeting rule for retaining existing users.",
+      "properties": {
+        "allowMultipleClaims": {
+          "type": "boolean",
+          "description": "Optional. Whether this offer can be claimed multiple times by a user. If set to false, a user who has ever subscribed to this offer will never be eligible for it again. If set to true, a user may become eligible again after the duration specified in `min_offer_cooldown_duration` has passed since the end of the previous retention offer's discount period. Defaults to false if not specified."
+        },
+        "minDuration": {
+          "type": "string",
+          "description": "Optional. The minimum duration a user must have been a paid subscriber to be eligible, specified in ISO 8601 format. If not specified, no minimum subscription time is considered for this rule."
+        },
+        "minOfferCooldownDuration": {
+          "type": "string",
+          "description": "Optional. The minimum duration that must pass after the previous retention offer's discount period ends before the user is eligible again. Specified in ISO 8601 format. Applicable only if allow_multiple_claims is true."
+        },
+        "scope": {
+          "$ref": "TargetingRuleScope",
+          "description": "Optional. The scope of subscriptions this rule considers. Only allows \"this subscription\"."
+        }
+      }
+    },
     "Review": {
       "description": "An Android app review.",
       "properties": {
@@ -12245,6 +12360,10 @@
     "RevocationContext": {
       "description": "Revocation context of the purchases.subscriptionsv2.revoke API.",
       "properties": {
+        "etag": {
+          "type": "string",
+          "description": "Optional. The ETag representing the subscription state. If provided, the revocation will only proceed if it matches the current server state."
+        },
         "fullRefund": {
           "$ref": "RevocationContextFullRefund",
           "description": "Optional. Used when users should be refunded the full amount of latest charge on each item in the subscription."
@@ -12699,6 +12818,10 @@
           "type": "string",
           "description": "Required. Immutable. The ID of the base plan to which this offer is an extension."
         },
+        "endTime": {
+          "type": "string",
+          "description": "Optional. The timestamp when this subscription offer ceases to be available regardless of the state of the offer. If unset, the offer has no end date."
+        },
         "offerId": {
           "type": "string",
           "description": "Required. Immutable. Unique ID of this subscription offer. Must be unique within the base plan."
@@ -12729,6 +12852,10 @@
           "$ref": "RegionalSubscriptionOfferConfig",
           "repeated": true,
           "description": "Required. The region-specific configuration of this offer. Must contain at least one entry."
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Optional. The timestamp when this subscription offer becomes available to eligible users. Optional. If unset, it becomes active depending on the state of the offer."
         },
         "state": {
           "type": "string",
@@ -12775,6 +12902,14 @@
           "$ref": "AcquisitionTargetingRule",
           "description": "Offer targeting rule for new user acquisition."
         },
+        "retentionPerUserRule": {
+          "$ref": "RetentionPerUserTargetingRule",
+          "description": "Offer targeting rule for retaining existing users via Developer API."
+        },
+        "retentionRule": {
+          "$ref": "RetentionTargetingRule",
+          "description": "Offer targeting rule for retaining existing users."
+        },
         "upgradeRule": {
           "$ref": "UpgradeTargetingRule",
           "description": "Offer targeting rule for upgrading users' existing plans."
@@ -12795,6 +12930,11 @@
         "deferredItemReplacement": {
           "$ref": "DeferredItemReplacement",
           "description": "Information for deferred item replacement."
+        },
+        "developerTargetedOffers": {
+          "$ref": "DeveloperTargetedOffer",
+          "repeated": true,
+          "description": "Optional. Details of developer-targeted offers registered for this line item."
         },
         "expiryTime": {
           "type": "string",

@@ -54,7 +54,7 @@ while IFS= read -r line; do
     ids=$((ids + 1))
     path=$(printf '%s\n' "$paths" | awk -F'\t' -v id="$id" '$1 == id { print $3 }')
     [ -n "$path" ] || fail "$id is not in paths.txt at $HEAD_SHA."
-    [[ $path == */tokens/\{token\}* ]] || fail "$id does not act on a purchase token ($path)."
+    [[ $path == */tokens/\{token\}* || $path == */tokens/\{purchaseToken\}* ]] || fail "$id does not act on a purchase token ($path)."
     grep -qF "\"${id%.*}." "$FILE" || fail "no sibling of $id is excluded on main yet."
     continue
   fi

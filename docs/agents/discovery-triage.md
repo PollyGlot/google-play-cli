@@ -9,7 +9,9 @@ wakes you up with one input: **the PR number**. It arrives as the line
 `PR: #<number>` of the text you were fired with (next to `Kind:`, `URL:` and
 `Repository:` lines), either in the routine's fire payload or in the prompt
 of the t3code webhook task (the `AGENT_RUNTIME` repository variable picks
-which runtime the workflow calls). Take only the number from that text and
+which runtime the workflow calls), or from the weekly task of
+[discovery-weekly.md](discovery-weekly.md), which runs this brief inline.
+Take only the number from that text and
 check everything else with `gh`. Fired without it (a cron run, a manual "run now"),
 use the open PR whose head branch is `chore/discovery-refresh`.
 
@@ -77,7 +79,7 @@ Cap the schema diff you actually read: if it exceeds a few hundred lines, group
 it by schema name (`grep -E '^\+ +"[A-Za-z]+": \{'`) and query the interesting
 ones, rather than paging through it.
 
-## 2. Hard evidence first: the registry test
+## 2. Hard evidence first: the test suite
 
 Before you form any opinion, run the deterministic check and **quote its result
 as the first line of your verdict**:
@@ -85,8 +87,12 @@ as the first line of your verdict**:
 ```bash
 git fetch origin "$(gh pr view "$PR" --repo PollyGlot/google-play-cli --json headRefName -q .headRefName)"
 git checkout FETCH_HEAD
-go test ./internal/apiregistry/
+go test ./...
 ```
+
+The whole suite is offline and runs in minutes; it is the check CI requires
+before any merge, so a failure you skip here only surfaces later as a red PR.
+The packages that matter most for a refresh are below.
 
 `internal/apiregistry` declares every API method a shipped `gplay` command
 calls, mapped to that command. Its test anchors each entry to the refreshed
@@ -104,11 +110,11 @@ break users:
 
 Rules:
 
-- **Test red ⇒ the fix basket is non-empty**, whatever the diff looks like, and
+- **Any test red ⇒ the fix basket is non-empty**, whatever the diff looks like, and
   the failure message (it names both the method id and the command) is a fix
   item on its own. A red test also means the PR is **not** clear to merge:
   finish on `discovery:needs-decision`.
-- **Test green ⇒ nothing gplay ships today is broken.** Say so explicitly. It
+- **Suite green ⇒ nothing gplay ships today is broken.** Say so explicitly. It
   does not clear the diff: additions are still yours to judge.
 - Never paraphrase the test. Quote the failing lines verbatim.
 
@@ -155,7 +161,7 @@ method is a **runtime** API (called per-request by the developer's backend with
 an ephemeral token, e.g. Play Integrity, real-time purchase verification), it is
 out of scope by nature: dismissed basket, reason "runtime API, ADR-0026".
 
-For every method id **removed** from `paths.txt`: the registry test of step 2
+For every method id **removed** from `paths.txt`: the registry test in step 2
 already decided. Red means a shipped command breaks (fix). Green means gplay
 never called it, so it is noted, with the COVERAGE.md row that must lose its
 line.
@@ -176,7 +182,8 @@ do it yourself instead of filing a ticket. A method qualifies only when **all**
 of these hold:
 
 - its id starts with `androidpublisher.purchases.`;
-- its path in `paths.txt` contains `/tokens/{token}`;
+- its path in `paths.txt` contains `/tokens/{token}` or `/tokens/{purchaseToken}`
+  (Google spells the same parameter both ways);
 - a sibling of the same resource (same id up to the last dot) is already in
   `internal/apiregistry/exclusions.go`.
 
@@ -217,7 +224,7 @@ Constraints:
   excluded it if it qualifies. If it does not, it stays 🔴 and is a fix item.
 - Re-run `go test ./internal/coveragedoc/ ./internal/apiregistry/` after the
   regeneration; both must be green.
-- The rolling branch is force-pushed weekly. If your push is rejected because
+- The rolling branch is force-pushed whenever Google moves. If your push is rejected because
   the branch moved, do not force-push: re-read the PR and start the run over.
 
 ## 6. When to open a ticket (`/to-spec`)
@@ -251,7 +258,7 @@ most valuable, name the rest in the verdict comment, and finish on
 
 ## 7. The verdict comment: one per PR, updated in place
 
-The refresh PR is rolling and is force-pushed every Monday. A new comment each
+The refresh PR is rolling and is force-pushed whenever Google moves. A new comment each
 week would bury the current state, so there is **exactly one** verdict comment,
 identified by a stable HTML marker as its first line:
 
@@ -281,7 +288,7 @@ comment, edit the most recent and say so in the verdict.
 <!-- discovery-triage-verdict -->
 ## Discovery triage verdict — <surface|schema>, run <YYYY-MM-DD>
 
-**Hard evidence.** `go test ./internal/apiregistry/` → **ok** (or: **FAIL**,
+**Hard evidence.** `go test ./...` → **ok** (or: **FAIL**,
 verbatim failing lines). <One sentence on what that proves.>
 
 ### To fix
@@ -300,7 +307,7 @@ verbatim failing lines). <One sentence on what that proves.>
   change in the Discovery doc, zero behavioural surface.
 
 **Tickets opened:** #<n> (or: none, the fix basket is empty).
-**Refutation:** Codex, <n> item(s) moved (or: not available on this runtime).
+**Refutation:** Codex, <n> item(s) moved (or: not needed, `discovery:needs-decision`; or: not available on this runtime).
 **COVERAGE.md:** <commit sha> regenerated, <n> new 🔴 row(s) (or: unchanged).
 **Verdict:** `discovery:verdict-merge` (or `discovery:needs-decision`, because …).
 ````
@@ -315,26 +322,34 @@ Rules on the baskets:
 - **Every dismissed item names its reason.** "Not relevant" is not a reason.
 - Refute your own items before posting: for each fix item, try to prove it wrong
   against the real code. It survives only if confirmed and worth a change.
-- **Second opinion from another provider, when the runtime has one.** On t3code,
-  before setting `discovery:verdict-merge`, hand the draft verdict and the PR
-  number to a Codex child task (`delegate_task`, read-only) and ask it to refute
-  every item and the clearance itself against the code. A refutation that
-  survives your own re-check moves the item to its right basket, or the label
-  to `discovery:needs-decision`. Say in the verdict that it ran (`**Refutation:**
-  Codex, <n> item(s) moved` or `none moved`). Without such a tool, skip it and
-  write `**Refutation:** not available on this runtime`.
+- **One refutation seat, before a `discovery:verdict-merge` only.** That label
+  merges the PR without a human, so on t3code, before posting it, hand the
+  draft verdict and the PR number to one read-only Codex child task (another
+  provider, `delegate_task`) and ask it to refute every item, its basket, and
+  the clearance itself against the code. A refutation that survives your own
+  re-check moves the item to its right basket, or the label to
+  `discovery:needs-decision`. A `discovery:needs-decision` verdict goes to the
+  maintainer, who is the review: skip the seat and write `**Refutation:** not
+  needed`. Without `delegate_task`, write `**Refutation:** not available on
+  this runtime`.
 
 ## 8. Finish with exactly one label
 
 ```bash
+LABEL=discovery:verdict-merge   # or discovery:needs-decision, per the table below
 gh pr edit "$PR" --repo PollyGlot/google-play-cli \
-  --remove-label discovery:needs-decision --add-label discovery:verdict-merge
+  --remove-label discovery:needs-decision --remove-label discovery:verdict-merge
+gh pr edit "$PR" --repo PollyGlot/google-play-cli --add-label "$LABEL"
 ```
+
+Two calls, removal first: a label already on the PR from an earlier verdict
+fires no `labeled` event when added again, and CI merges on that event. One
+call that removes and adds the same label nets to nothing.
 
 | Label                      | When                                                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `discovery:verdict-merge`  | Registry test green, no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated, `go test ./internal/coveragedoc/ ./internal/apiregistry/` green. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json`, your COVERAGE.md commit and, if any, your step 5a exclusions. A token method you excluded in 5a is not a fix item: list it under Noted with its commit. |
-| `discovery:needs-decision` | Registry test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set and your step 5 commits; **or** you could not complete a step and said so. |
+| `discovery:verdict-merge`  | `go test ./...` green on the final head (after your step 5 commits), no fix item threatens a shipped command, tickets (if any) filed, COVERAGE.md regenerated. The snapshot refresh itself is safe: the PR touches only `docs/discovery/**`, `internal/schemaindex/schema_index.json`, your COVERAGE.md commit and, if any, your step 5a exclusions. A token method you excluded in 5a is not a fix item: list it under Noted with its commit. |
+| `discovery:needs-decision` | Any test red; **or** the diff exceeds 2 tickets' worth of work; **or** a scope call under ADR-0026 you cannot make alone; **or** the PR touches a file outside the snapshot set and your step 5 commits; **or** you could not complete a step and said so. |
 
 Set one, remove the other. The label is the handoff: `discovery:verdict-merge`
 lets CI merge the PR, `discovery:needs-decision` notifies the maintainer. You
