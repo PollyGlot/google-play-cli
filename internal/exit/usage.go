@@ -22,3 +22,11 @@ func (e *UsageError) ExitCode() int { return 2 }
 func Usagef(format string, a ...any) *UsageError {
 	return &UsageError{Msg: fmt.Sprintf(format, a...)}
 }
+
+type ContainmentError struct{ UsageError }
+
+func (e *ContainmentError) Unwrap() error { return &e.UsageError }
+
+func Containmentf(format string, a ...any) *ContainmentError {
+	return &ContainmentError{UsageError{Msg: fmt.Sprintf(format, a...)}}
+}

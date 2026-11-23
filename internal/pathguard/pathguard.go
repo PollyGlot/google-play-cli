@@ -80,7 +80,7 @@ func Contain(root, path string) (string, error) {
 				" %s is set, but it does not cover this path: it is derived from data the API returned (a locale, a package name), not from your own directory tree.",
 				EnvAllowExternalSymlinks)
 		}
-		return "", exit.Usagef(
+		return "", exit.Containmentf(
 			"refusing to use %q: it resolves to %q, outside %q. A symlink or a %q component in a repo-controlled path cannot be followed out of its directory.%s",
 			path, resolved, root, "..", hatch)
 	}
@@ -96,12 +96,12 @@ func ContainUserPath(root, path string) (string, error) {
 		return abs, nil
 	}
 	if !externalSymlinksAllowed() {
-		return "", exit.Usagef(
+		return "", exit.Containmentf(
 			"refusing to use %q: it resolves to %q, outside %q. A symlink or a %q component in a repo-controlled path cannot be followed out of its directory. If this tree legitimately shares files with another one (a monorepo layout), set %s=1 to follow links out of it.",
 			path, resolved, root, "..", EnvAllowExternalSymlinks)
 	}
 	if !spelledUnder(root, abs) {
-		return "", exit.Usagef(
+		return "", exit.Containmentf(
 			"refusing to use %q: it resolves to %q, outside %q. %s follows a symlink pointing out of the tree; it does not allow a %q component climbing above the root.",
 			path, resolved, root, EnvAllowExternalSymlinks, "..")
 	}
