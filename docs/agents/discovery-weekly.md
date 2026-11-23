@@ -23,14 +23,15 @@ PollyGlot/google-play-cli` does not print `true`, the maintainer has paused the
 triage. Still do steps 1 and 2, skip step 3, and report the pause.
 
 ```bash
-gh workflow run discovery-watch.yml -R PollyGlot/google-play-cli -f notify=false
-gh run list -R PollyGlot/google-play-cli -w discovery-watch.yml -e workflow_dispatch -L 5 \
-  --json databaseId,status,createdAt,url
+TAG="weekly-$(date -u +%Y%m%dT%H%M%SZ)"
+gh workflow run discovery-watch.yml -R PollyGlot/google-play-cli -f notify=false -f tag="$TAG"
+gh run list -R PollyGlot/google-play-cli -w discovery-watch.yml -e workflow_dispatch -L 10 \
+  --json databaseId,displayTitle,status,url --jq ".[] | select(.displayTitle | contains(\"$TAG\"))"
 ```
 
-Note the UTC time one minute before the dispatch (clocks drift). The run you want is the earliest
-`workflow_dispatch` run created after it (a replay started
-meanwhile comes later); if none is listed yet, list again a few seconds later. `notify=false` keeps the workflow
+The `tag` input lands in the run name, so the run carrying `$TAG` is yours and
+no other dispatch can be mistaken for it. If it is not listed yet, list again a
+few seconds later, for two minutes at most. `notify=false` keeps the workflow
 from firing the webhook task: you triage the PR here. Wait for the run with
 `gh run watch <id> -R PollyGlot/google-play-cli --exit-status` as a background
 command you wait on, not a sleep loop.

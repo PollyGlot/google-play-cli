@@ -333,9 +333,10 @@ Rules on the baskets:
 ## 8. Finish with exactly one label
 
 ```bash
+LABEL=discovery:verdict-merge   # or discovery:needs-decision, per the table below
 gh pr edit "$PR" --repo PollyGlot/google-play-cli \
   --remove-label discovery:needs-decision --remove-label discovery:verdict-merge
-gh pr edit "$PR" --repo PollyGlot/google-play-cli --add-label discovery:verdict-merge
+gh pr edit "$PR" --repo PollyGlot/google-play-cli --add-label "$LABEL"
 ```
 
 Two calls, removal first: a label already on the PR from an earlier verdict

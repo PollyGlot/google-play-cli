@@ -1,4 +1,5 @@
 name: Discovery Watch
+run-name: Discovery Watch${{ inputs.tag && format(' ({0})', inputs.tag) || '' }}
 
 # Weekly check of Google's Discovery documents against the offline snapshots
 # under docs/discovery/. When Google publishes a new revision, this opens (or
@@ -109,6 +110,10 @@ on:
         required: false
         type: boolean
         default: true
+      tag:
+        description: 'Label shown in the run name, so the dispatcher can find its own run'
+        required: false
+        type: string
 
 # Read-only by default: every write (push, PR, label, merge) goes through the
 # gplay App token minted below, never through GITHUB_TOKEN.
@@ -539,7 +544,7 @@ jobs:
               echo "- Classification: \`$KIND\`"
               echo "- Rolling PR: #$PR"
               if [ -z "${PR:-}" ]; then
-                echo "- Outcome: **the PR step failed** before pushing or labelling anything; see its log."
+                echo "- Outcome: **the PR step failed**; see its log for whether the branch was pushed."
               elif [ "${UNCHANGED:-}" = "true" ]; then
                 if [ "${UNTRIAGED:-}" = "true" ]; then
                   echo "- Outcome: **already open with these snapshots** but never triaged: nothing pushed."
