@@ -128,3 +128,29 @@ func TestNewCommand_flags(t *testing.T) {
 		}
 	}
 }
+
+func TestSet_blankSelector_exit2PointsToClear(t *testing.T) {
+	cases := map[string]setcmd.Input{
+		`--permissions ""`:    {Permissions: []string{}, PermsSet: true},
+		`--permissions " , "`: {Permissions: []string{" ", " "}, PermsSet: true},
+		`--role ""`:           {Role: "", RoleSet: true},
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			rt := teamtest.New()
+			rc := teamtest.NewRC(t, rt)
+			in.Email = "bob@example.com"
+			in.DryRun = true
+			_, err := setcmd.Run(rc, in)
+			if got := exitCodeOf(t, err); got != 2 {
+				t.Fatalf("exit = %d, want 2; err=%v", got, err)
+			}
+			if !strings.Contains(err.Error(), "--clear") {
+				t.Errorf("message should point to --clear; got %q", err.Error())
+			}
+			if calls := rt.Calls(); len(calls) != 0 {
+				t.Errorf("a blank selector must reach no HTTP; calls=%v", calls)
+			}
+		})
+	}
+}

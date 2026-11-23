@@ -1,6 +1,8 @@
 package teamcmd
 
 import (
+	"strings"
+
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/team/vocab"
 )
@@ -41,4 +43,19 @@ func ResolvePerms(scope vocab.Scope, role string, perms []string, clear bool) (e
 	default:
 		return vocab.ResolvePermissions(scope, perms)
 	}
+}
+
+func RefuseBlankSelector(roleSet bool, role string, permsSet bool, perms []string, remedy string) error {
+	if roleSet && strings.TrimSpace(role) == "" {
+		return exit.Usagef("--role is blank: %s", remedy)
+	}
+	if !permsSet {
+		return nil
+	}
+	for _, p := range perms {
+		if strings.Trim(p, " \t,") != "" {
+			return nil
+		}
+	}
+	return exit.Usagef("--permissions is blank: %s", remedy)
 }
