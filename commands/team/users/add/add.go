@@ -192,6 +192,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("pass --role <bundle> or --permissions <alias,…> (run `gplay team permissions` to list them)")
 	}
 
+	if err := teamcmd.RefuseBlankSelector(in.RoleSet, in.Role, in.PermsSet, in.Permissions, "pass a non-empty --role <bundle> or --permissions <alias,…> (run `gplay team permissions` to list them)"); err != nil {
+		return nil, err
+	}
+
 	policy, err := ifexists.Check(in.IfExists, policies...)
 	if err != nil {
 		return nil, err
