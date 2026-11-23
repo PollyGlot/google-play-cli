@@ -9,7 +9,8 @@ GitHub fires its crons hours late, which is why this task dispatches the
 `discovery-watch` workflow itself. The workflow's own cron runs on Tuesdays as
 the catch-up for a Monday this machine missed: a schema/surface refresh it
 produces is triaged by the webhook task. After a Monday run it finds the open PR
-already carrying the snapshots and does nothing.
+already carrying the snapshots, pushes nothing, and wakes the webhook task only
+if that PR never got a verdict.
 
 Work in a fresh git worktree of the google-play-cli checkout, created from
 `origin/main`. Repository: `PollyGlot/google-play-cli` (pass `-R` to every
