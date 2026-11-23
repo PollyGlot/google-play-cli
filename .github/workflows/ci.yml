@@ -403,7 +403,7 @@ jobs:
       - name: Em dash gate (help text and error messages reach users)
         run: bash scripts/dash-gate.sh
 
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Comment ratchet (no file gains comment lines)
         run: scripts/lint/comments.py check
