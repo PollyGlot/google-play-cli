@@ -59,11 +59,19 @@ var exclusions = []Exclusion{
 		Reason:   "runtime: acts on a subscription purchase token, not on a catalog resource",
 	},
 	{
+		MethodID: "androidpublisher.purchases.subscriptionsv2.activateoffertargeting",
+		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
+	},
+	{
 		MethodID: "androidpublisher.purchases.subscriptionsv2.cancel",
 		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
 	},
 	{
 		MethodID: "androidpublisher.purchases.subscriptionsv2.cancelplantransition",
+		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
+	},
+	{
+		MethodID: "androidpublisher.purchases.subscriptionsv2.deactivateoffertargeting",
 		Reason:   "runtime: acts on a subscription purchase token (v2 shape)",
 	},
 	{

@@ -90,4 +90,6 @@ method to the snapshot's `flatPath` rather than by a reviewer's eye.
 Discovery triage routine runs on a `discovery:schema` or `discovery:surface`
 refresh PR (PRD [#501](https://github.com/PollyGlot/google-play-cli/issues/501)):
 registry test first, four-basket verdict, COVERAGE.md regeneration, then one label.
-Read it before triaging a refresh by hand too.
+Read it before triaging a refresh by hand too. On Mondays the weekly task of
+[docs/agents/discovery-weekly.md](../agents/discovery-weekly.md) runs the refresh
+and this triage in a single thread.
