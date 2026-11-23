@@ -138,6 +138,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("--role, --permissions, and --clear are mutually exclusive")
 	}
 
+	if err := teamcmd.RefuseBlankSelector(in.RoleSet, in.Role, in.PermsSet, in.Permissions, "pass a non-empty --role <bundle> or --permissions <alias,…>, or --clear to empty the set on purpose"); err != nil {
+		return nil, err
+	}
+
 	enums, warnings, err := teamcmd.ResolvePerms(vocab.Account, in.Role, in.Permissions, in.Clear)
 	if err != nil {
 		return nil, err

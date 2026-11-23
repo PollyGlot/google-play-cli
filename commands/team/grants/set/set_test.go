@@ -192,3 +192,30 @@ func toStrings(v any) []string {
 	}
 	return out
 }
+
+func TestGrantsSet_blankSelector_exit2(t *testing.T) {
+	cases := map[string]setcmd.Input{
+		`--permissions ""`:    {Permissions: []string{}, PermsSet: true},
+		`--permissions " , "`: {Permissions: []string{" ", " "}, PermsSet: true},
+		`--role ""`:           {Role: "", RoleSet: true},
+	}
+	for name, in := range cases {
+		t.Run(name, func(t *testing.T) {
+			rt := teamtest.New(teamtest.UsersList(bobNoGrant))
+			rc := teamtest.NewRC(t, rt)
+			in.Email = "bob@example.com"
+			in.Package = "com.example.foo"
+			in.DryRun = true
+			_, err := setcmd.Run(rc, in)
+			if got := exitCodeOf(t, err); got != 2 {
+				t.Fatalf("exit = %d, want 2; err=%v", got, err)
+			}
+			if strings.Contains(err.Error(), "--clear") {
+				t.Errorf("grants set has no --clear; message must not mention it; got %q", err.Error())
+			}
+			if calls := rt.Calls(); len(calls) != 0 {
+				t.Errorf("a blank selector must reach no HTTP; calls=%v", calls)
+			}
+		})
+	}
+}
