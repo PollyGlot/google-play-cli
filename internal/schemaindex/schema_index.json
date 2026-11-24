@@ -1,5 +1,5 @@
 {
-  "revision": "20261119",
+  "revision": "20261124",
   "services": {
     "androidpublisher": {
       "rootUrl": "https://androidpublisher.googleapis.com/",
