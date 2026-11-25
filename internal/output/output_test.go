@@ -276,6 +276,7 @@ func TestWriteAckOrRaw(t *testing.T) {
 		{"whitespace only", " \n\t", "{\n  \"ok\": true\n}\n"},
 		{"bare object", "{}", "{}"},
 		{"spaced object", "{ }", "{ }"},
+		{"padded object keeps its padding", " \n{}\n", " \n{}\n"},
 		{"body", `{"kind":"x"}`, `{"kind":"x"}`},
 	}
 	for _, c := range cases {
