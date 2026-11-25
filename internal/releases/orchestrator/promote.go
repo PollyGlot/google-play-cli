@@ -182,38 +182,12 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 		}
 
 		release := buildPromoteRelease(source, opts)
-		if opts.ReleaseNotes == "" && opts.ReleaseNotesDir == "" {
-			release.ReleaseNotes = source.ReleaseNotes
-			for _, n := range source.ReleaseNotes {
-				result.Locales = append(result.Locales, n.Language)
-			}
-		} else {
-			needLang := opts.ReleaseNotes != "" || hasDefaultTxt(opts.ReleaseNotesDir)
-			loadOpts := notes.Opts{Text: opts.ReleaseNotes, Dir: opts.ReleaseNotesDir}
-			if needLang {
-				lang, err := details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
-				if err != nil {
-					return err
-				}
-				result.DefaultLanguage = lang
-				loadOpts.DefaultLanguage = lang
-			}
-			loaded, err := notes.Load(loadOpts)
-			if err != nil {
-				return err
-			}
-			if dropped := droppedSourceLocales(source.ReleaseNotes, loaded); len(dropped) > 0 {
-				return &InvalidOptsError{
-					Message: "release-notes override would drop locales the source release carries: " +
-						strings.Join(dropped, ", ") +
-						". Add files for these locales to the override, or run without --release-notes(-dir) to carry over the source's notes verbatim.",
-				}
-			}
-			release.ReleaseNotes = make([]tracks.LocalizedText, 0, len(loaded))
-			for _, n := range loaded {
-				release.ReleaseNotes = append(release.ReleaseNotes, tracks.LocalizedText{Language: n.Locale, Text: n.Text})
-				result.Locales = append(result.Locales, n.Locale)
-			}
+		release.ReleaseNotes, result.DefaultLanguage, err = promoteReleaseNotes(ctx, hc, opts, editID, source)
+		if err != nil {
+			return err
+		}
+		for _, n := range release.ReleaseNotes {
+			result.Locales = append(result.Locales, n.Language)
 		}
 		_, raw, err := tracks.Update(ctx, hc, opts.Package, editID, opts.ToTrack, release)
 		if err != nil {
@@ -261,11 +235,45 @@ func readPromotion(ctx context.Context, hc *http.Client, opts PromoteOpts, editI
 	return promotion{source: *source, versionCode: versionCode, replaced: dst.Releases}, nil
 }
 
+func promoteReleaseNotes(ctx context.Context, hc *http.Client, opts PromoteOpts, editID string, source tracks.Release) ([]tracks.LocalizedText, string, error) {
+	if opts.ReleaseNotes == "" && opts.ReleaseNotesDir == "" {
+		return source.ReleaseNotes, "", nil
+	}
+	loadOpts := notes.Opts{Text: opts.ReleaseNotes, Dir: opts.ReleaseNotesDir}
+	if opts.ReleaseNotes != "" || hasDefaultTxt(opts.ReleaseNotesDir) {
+		lang, err := details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
+		if err != nil {
+			return nil, "", err
+		}
+		loadOpts.DefaultLanguage = lang
+	}
+	loaded, err := notes.Load(loadOpts)
+	if err != nil {
+		return nil, "", err
+	}
+	if dropped := droppedSourceLocales(source.ReleaseNotes, loaded); len(dropped) > 0 {
+		return nil, "", &InvalidOptsError{
+			Message: "release-notes override would drop locales the source release carries: " +
+				strings.Join(dropped, ", ") +
+				". Add files for these locales to the override, or run without --release-notes(-dir) to carry over the source's notes verbatim.",
+		}
+	}
+	releaseNotes := make([]tracks.LocalizedText, 0, len(loaded))
+	for _, n := range loaded {
+		releaseNotes = append(releaseNotes, tracks.LocalizedText{Language: n.Locale, Text: n.Text})
+	}
+	return releaseNotes, loadOpts.DefaultLanguage, nil
+}
+
 func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, error) {
 	var p promotion
 	read := func(editID string) error {
 		var err error
 		p, err = readPromotion(ctx, hc, opts, editID)
+		if err != nil {
+			return err
+		}
+		_, _, err = promoteReleaseNotes(ctx, hc, opts, editID, p.source)
 		return err
 	}
 	var err error
