@@ -168,3 +168,29 @@ func TestWrite_keepsHTMLCharactersLiteral(t *testing.T) {
 		t.Errorf("premium.json =\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestCount_matchesWhatAnEmptyWriteWouldRemove(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "premium.json", `{"productId":"premium"}`)
+	write(t, dir, "draft.json", `{not json`)
+	write(t, dir, ".json", `{}`)
+	write(t, dir, "README.md", `not a catalog file`)
+	if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "dangling.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "nested.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	n := catalog.Count(dir)
+	removed, err := catalog.Write(dir, nil)
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if n != 4 || len(removed) != n {
+		t.Errorf("Count = %d, Write removed %v: the guard must count every file a pull would erase", n, removed)
+	}
+	if got := catalog.Count(filepath.Join(dir, "absent")); got != 0 {
+		t.Errorf("Count(missing dir) = %d, want 0", got)
+	}
+}
