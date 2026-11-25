@@ -144,7 +144,40 @@ func TestRun_variadic_saveFailure_reportsBeforePropagating(t *testing.T) {
 	if !strings.Contains(out, "com.example.a") || !strings.Contains(out, "com.example.b") {
 		t.Errorf("stderr should carry the per-package report before the Save error; got %q", out)
 	}
-	if !strings.Contains(out, "2 registered, 0 failed") {
+	if !strings.Contains(out, "0 registered, 2 failed") {
+		t.Errorf("stderr should count every package as failed; got %q", out)
+	}
+	if strings.Contains(out, "registered \"") {
+		t.Errorf("stderr reports a package as registered although the save failed; got %q", out)
+	}
+	for _, p := range []string{"com.example.a", "com.example.b"} {
+		if !strings.Contains(out, "✗ "+p+": simulated disk failure") {
+			t.Errorf("stderr should carry the save-failure line for %s; got %q", p, out)
+		}
+	}
+}
+
+func TestRun_variadic_saveFailure_keepsValidationLines(t *testing.T) {
+	rc := newRC(t, failOnCall(t))
+	var stderr bytes.Buffer
+	rc.Stderr = &stderr
+	rc.FS = saveFailFS{}
+
+	_, err := addcmd.Run(rc, addcmd.Input{Packages: []string{"nodot", "com.example.a"}, NoVerify: true})
+	if err == nil || !strings.Contains(err.Error(), "simulated disk failure") {
+		t.Fatalf("Run: want the Save error, got %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "✗ nodot: apps add: \"nodot\" is not a valid Android package name") {
+		t.Errorf("the validation failure lost its own line; got %q", out)
+	}
+	if !strings.Contains(out, "✗ com.example.a: simulated disk failure") {
+		t.Errorf("the accepted package should carry the save-failure line; got %q", out)
+	}
+	if strings.Contains(out, "registered (unverified) \"com.example.a\"") {
+		t.Errorf("com.example.a reported as registered although the save failed; got %q", out)
+	}
+	if !strings.Contains(out, "0 registered, 2 failed") {
 		t.Errorf("stderr should carry the batch tally; got %q", out)
 	}
 }
