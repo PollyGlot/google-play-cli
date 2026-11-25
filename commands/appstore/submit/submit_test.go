@@ -307,6 +307,23 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 }
 
 func TestRun_jsonPassthrough(t *testing.T) {
+	fake := newFake(0, `{"reviewId":"rev-1","unmodelled":{"x":1}}`)
+	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
+		StorePackage: "s", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := got.Renderers().JSON(&buf); err != nil {
+		t.Fatalf("render JSON: %v", err)
+	}
+	if buf.String() != `{"reviewId":"rev-1","unmodelled":{"x":1}}` {
+		t.Errorf("JSON = %s, want the verbatim API body", buf.String())
+	}
+}
+
+func TestRun_jsonPassesTheUpdateIDThrough(t *testing.T) {
 	fake := newFake(0, `{"updateId":"v1"}`)
 	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
@@ -319,7 +336,7 @@ func TestRun_jsonPassthrough(t *testing.T) {
 		t.Fatalf("render JSON: %v", err)
 	}
 	if buf.String() != `{"updateId":"v1"}` {
-		t.Errorf("JSON = %s, want the verbatim API body", buf.String())
+		t.Errorf("JSON = %s, want the verbatim updateId body", buf.String())
 	}
 }
 
