@@ -599,3 +599,31 @@ func TestCheckPackageAccess_networkFailureOnInsert_returnsExit50(t *testing.T) {
 		t.Errorf("ExitCode = %d, want 50", r.ExitCode)
 	}
 }
+
+func TestCheckPackageAccess_insertExitCodes(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   int
+	}{
+		{"malformed 2xx body", http.StatusOK, `{"id":`, 30},
+		{"2xx body without an Edit ID", http.StatusOK, `{}`, 30},
+		{"rate limited", http.StatusTooManyRequests, `{"error":{"code":429,"message":"quota"}}`, 60},
+		{"conflict", http.StatusConflict, `{"error":{"code":409,"message":"conflict"}}`, 60},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &packageRT{
+				t: t,
+				insertResp: func(*http.Request) (*http.Response, error) {
+					return testkit.Response(tc.status, tc.body), nil
+				},
+			}
+			results := doctor.Run(ctxWithRT(t, rt.serve), makeSignedSA(t), nil, doctor.CheckPackageAccess("com.example.app"))
+			if len(results) != 1 || results[0].Passed || results[0].ExitCode != tc.want {
+				t.Errorf("results = %+v, want one failed check with exit %d", results, tc.want)
+			}
+		})
+	}
+}

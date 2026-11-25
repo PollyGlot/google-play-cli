@@ -244,8 +244,42 @@ func TestDo_bodyReadFailureExits50(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "decode response") {
 		t.Fatalf("err = %v, want a decode error", err)
 	}
-	if code := exit.For(err); code != api.StatusToExitCode(0) {
-		t.Errorf("malformed body exit = %d, want %d (unchanged by the executor)", code, api.StatusToExitCode(0))
+	if d := exit.Classify(err); d.ExitCode != 30 || d.Code != exit.CodeAPIError || d.Retryable {
+		t.Errorf("malformed body diagnostic = %+v, want exit 30 API_ERROR not retryable", d)
+	}
+}
+
+func TestDo_failureBeforeSending(t *testing.T) {
+	cases := []struct {
+		name string
+		call api.Call
+		want int
+	}{
+		{"request body cannot be opened", api.Call{
+			Method: mOrdersGet, Params: map[string]string{"packageName": pkg, "orderId": "x"}, Target: pkg,
+			Body: &api.Stream{Open: func() (io.ReadCloser, error) { return os.Open(filepath.Join(t.TempDir(), "missing.bin")) }},
+		}, 20},
+		{"URL cannot be built", api.Call{Method: mOrdersGet, Params: map[string]string{"packageName": pkg}, Target: pkg}, 1},
+		{"body cannot be encoded", api.Call{
+			Method: mOrdersGet, Params: map[string]string{"packageName": pkg, "orderId": "x"}, Target: pkg,
+			Body: map[string]any{"bad": func() {}},
+		}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &execRT{resp: answer(200, `{}`)}
+			_, err := api.Do(context.Background(), hc(rt), tc.call)
+			if len(rt.reqs) != 0 {
+				t.Fatalf("sent %d request(s), want none", len(rt.reqs))
+			}
+			if code := exit.For(err); code != tc.want {
+				t.Errorf("exit = %d, want %d (err = %v)", code, tc.want, err)
+			}
+			var apiErr *api.Error
+			if !errors.As(err, &apiErr) || !api.NeverSent(apiErr.Cause) {
+				t.Errorf("NeverSent(%v) = false, want true", err)
+			}
+		})
 	}
 }
 
