@@ -76,6 +76,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 
 	if addedAny {
 		if err := g.Save(rc.Ctx, fsOrDefault(rc), rc.ConfigPath); err != nil {
+			for i := range results {
+				if results[i].err == nil {
+					results[i].err = err
+				}
+			}
 			reportBatch(rc, results, account, in.NoVerify)
 			return nil, err
 		}

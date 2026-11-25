@@ -175,7 +175,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		RegionsVersion:          subscriptions.RegionsVersion{Version: regionsVersion},
 	})
 	if err != nil {
-		return nil, subscriptionscmd.Classify(pkg, err)
+		return nil, subscriptionscmd.ClassifyAt(pkg, subscriptionscmd.Target(product, basePlan, ""), err)
 	}
 	rc.Confirmf("migrated existing subscribers of %s/%s for %q (%d region(s))", product, basePlan, pkg, len(regions))
 	return Payload{Product: product, BasePlan: basePlan, Regions: regions, Oldest: oldest, Raw: raw}, nil

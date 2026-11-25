@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -175,5 +178,69 @@ func TestPromote_dryRun_carriesRequestedVersionCodeAndRequires(t *testing.T) {
 				t.Errorf("Requires = %v, want %v", result.Requires, tc.want)
 			}
 		})
+	}
+}
+
+func TestPromote_plan_refusesAnOverrideThatDropsASourceLocale_likeTheLiveRun(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Fresh English notes"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	source := `{"track":"beta","releases":[{"name":"2.5.0","status":"completed","versionCodes":["150"],` +
+		`"releaseNotes":[{"language":"en-US","text":"English"},{"language":"fr-FR","text":"Français"}]}]}`
+	run := func(plan bool) error {
+		rt := newPromoteFake(promoteAPI{
+			editID:             "edit-notes",
+			sourceTrackGetResp: source,
+			destTrack:          "production",
+			destTrackGetResp:   productionHaltedAndDraft,
+			updateHandler: func(c testkit.Call) (int, string) {
+				t.Errorf("plan=%v: tracks.update sent despite a dropped locale: %s", plan, c.Path)
+				return http.StatusInternalServerError, ""
+			},
+		})
+		_, err := orchestrator.Promote(context.Background(), &http.Client{Transport: rt}, orchestrator.PromoteOpts{
+			Package: "com.example.app", FromTrack: "beta", ToTrack: "production", ReleaseNotesDir: dir, Plan: plan,
+		})
+		return err
+	}
+	planErr, liveErr := run(true), run(false)
+	if planErr == nil || exit.For(planErr) != 2 || !strings.Contains(planErr.Error(), "fr-FR") {
+		t.Fatalf("plan err = %v (exit %d), want exit 2 naming fr-FR", planErr, exit.For(planErr))
+	}
+	if liveErr == nil || planErr.Error() != liveErr.Error() {
+		t.Errorf("plan err = %q, live err = %v, want the same refusal", planErr, liveErr)
+	}
+}
+
+func TestPromote_plan_withACompleteOverrideIsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Fresh English notes"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	source := `{"track":"beta","releases":[{"name":"2.5.0","status":"completed","versionCodes":["150"],` +
+		`"releaseNotes":[{"language":"en-US","text":"English"}]}]}`
+	plan := func(notesDir string) *orchestrator.PromotePlan {
+		rt := newPromoteFake(promoteAPI{
+			editID:             "edit-notes",
+			sourceTrackGetResp: source,
+			destTrack:          "production",
+			destTrackGetResp:   productionHaltedAndDraft,
+		})
+		result, err := orchestrator.Promote(context.Background(), &http.Client{Transport: rt}, orchestrator.PromoteOpts{
+			Package: "com.example.app", FromTrack: "beta", ToTrack: "production", ReleaseNotesDir: notesDir, Plan: true,
+		})
+		if err != nil {
+			t.Fatalf("Promote --plan (notes dir %q): %v", notesDir, err)
+		}
+		for _, c := range apiCalls(rt) {
+			if strings.HasPrefix(c, "PUT ") || strings.HasSuffix(c, ":commit") {
+				t.Errorf("plan wrote: %s", c)
+			}
+		}
+		return result.Promotion
+	}
+	if with, without := plan(dir), plan(""); !reflect.DeepEqual(with, without) {
+		t.Errorf("plan with a complete override = %+v, want it equal to the plan without one %+v", with, without)
 	}
 }

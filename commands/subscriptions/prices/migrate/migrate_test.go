@@ -15,6 +15,7 @@ import (
 
 	migratecmd "github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/migrate"
 	"github.com/PollyGlot/google-play-cli/internal/auth/serviceaccount"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
@@ -142,6 +143,25 @@ func TestRun_validation_exit2_noNetwork(t *testing.T) {
 		if len(fake.Calls()) != 0 {
 			t.Errorf("case %d must not reach the network; calls=%v", i, fake.Calls())
 		}
+	}
+}
+
+func TestRun_notFound_namesProductAndBasePlan(t *testing.T) {
+	fake := testkit.NewFake(testkit.Any(http.StatusNotFound, `{"error":{"code":404,"message":"Base plan not found","errors":[{"reason":"notFound"}]}}`))
+	rc := newRC(t, fake)
+	in := validInput()
+	in.Confirm = true
+	_, err := migratecmd.Run(rc, in)
+	assertExit(t, err, 30)
+	if d := exit.Classify(err); d.Code != exit.CodeNotFound {
+		t.Errorf("diagnostic = %+v, want NOT_FOUND", d)
+	}
+	msg := err.Error()
+	if want := `subscription product "premium" base plan "monthly" not found in package "com.example.app"`; !strings.Contains(msg, want) {
+		t.Errorf("error %q should name %s", msg, want)
+	}
+	if strings.Contains(msg, `package "com.example.app" not found`) {
+		t.Errorf("error %q blames the package for a missing base plan", msg)
 	}
 }
 

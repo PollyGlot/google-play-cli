@@ -539,6 +539,7 @@ func TestRun_offerDelete_notFound_aborts(t *testing.T) {
 	if d := exit.Classify(err); d.Code != exit.CodeNotFound {
 		t.Errorf("diagnostic = %+v, want NOT_FOUND", d)
 	}
+	assertNamesTarget(t, err, `product "premium" base plan "monthly" offer "intro"`)
 	if rt.saw("DELETE", "/subscriptions/gone") {
 		t.Errorf("calls = %v, a 404 must abort before the subscription delete", rt.calls)
 	}
@@ -736,6 +737,7 @@ func TestRun_basePlanDelete_notFound_keepsNotFound(t *testing.T) {
 	if d := exit.Classify(err); d.Code != exit.CodeNotFound || d.Operation != "monetization.subscriptions.basePlans.delete" {
 		t.Errorf("diagnostic = %+v, want NOT_FOUND on basePlans.delete", d)
 	}
+	assertNamesTarget(t, err, `product "premium" base plan "trial"`)
 	if rt.saw("DELETE", "/subscriptions/gone") {
 		t.Errorf("calls = %v, a 404 must abort before the subscription delete", rt.calls)
 	}
@@ -950,6 +952,59 @@ func TestRun_missingDir_exit2(t *testing.T) {
 	assertExit(t, err, 2)
 	if len(rt.calls) != 0 {
 		t.Errorf("must not reach the network; calls=%v", rt.calls)
+	}
+}
+
+func TestRun_productDelete_notFound_namesProduct(t *testing.T) {
+	dir := writeCatalog(t, map[string]string{
+		"premium.json": `{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly","state":"ACTIVE"}]}`,
+	})
+	rt := &subsRT{refuse: map[string]scriptedRefusal{
+		"DELETE /subscriptions/gone": {404, `{"error":{"code":404,"message":"Subscription not found","errors":[{"reason":"notFound"}]}}`},
+	}}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir, Confirm: true})
+	assertExit(t, err, 30)
+	if d := exit.Classify(err); d.Code != exit.CodeNotFound {
+		t.Errorf("diagnostic = %+v, want NOT_FOUND", d)
+	}
+	assertNamesTarget(t, err, `product "gone"`)
+}
+
+func TestRun_offerStateChange_notFound_namesOffer(t *testing.T) {
+	dir := offersCatalog(t, `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"INACTIVE","phases":[{"duration":"P1W"}]}`)
+	rt := &subsRT{offersBody: liveOfferIn("ACTIVE"), refuse: map[string]scriptedRefusal{
+		"POST /offers/intro:deactivate": {404, `{"error":{"code":404,"message":"Offer not found","errors":[{"reason":"notFound"}]}}`},
+	}}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 30)
+	assertNamesTarget(t, err, `product "premium" base plan "monthly" offer "intro"`)
+}
+
+func TestRun_listNotFound_blamesThePackage(t *testing.T) {
+	rt := &subsRT{refuse: map[string]scriptedRefusal{
+		"GET /applications/com.example.app/subscriptions": {404, `{"error":{"code":404,"message":"Package not found","errors":[{"reason":"notFound"}]}}`},
+	}}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: driftedCatalog(t), Confirm: true})
+	assertExit(t, err, 30)
+	if d := exit.Classify(err); d.Code != exit.CodeNotFound {
+		t.Errorf("diagnostic = %+v, want NOT_FOUND", d)
+	}
+	if want := `package "com.example.app" not found`; !strings.Contains(err.Error(), want) {
+		t.Errorf("error %q should say %s", err.Error(), want)
+	}
+}
+
+func assertNamesTarget(t *testing.T, err error, target string) {
+	t.Helper()
+	msg := err.Error()
+	if want := "subscription " + target + ` not found in package "com.example.app"`; !strings.Contains(msg, want) {
+		t.Errorf("error %q should name %s", msg, want)
+	}
+	if strings.Contains(msg, `package "com.example.app" not found`) {
+		t.Errorf("error %q blames the package for a missing resource", msg)
 	}
 }
 

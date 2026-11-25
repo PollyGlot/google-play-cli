@@ -323,6 +323,23 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	}
 }
 
+func TestRun_jsonPassesTheUpdateIDThrough(t *testing.T) {
+	fake := newFake(0, `{"updateId":"v1"}`)
+	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
+		StorePackage: "s", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := got.Renderers().JSON(&buf); err != nil {
+		t.Fatalf("render JSON: %v", err)
+	}
+	if buf.String() != `{"updateId":"v1"}` {
+		t.Errorf("JSON = %s, want the verbatim updateId body", buf.String())
+	}
+}
+
 func TestRun_jsonEmptyBodyFallback(t *testing.T) {
 	fake := newFake(0, " ")
 	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
@@ -416,6 +433,16 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 		if !strings.Contains(long, phrase) {
 			t.Errorf("Long does not mention %q: %s", phrase, cmd.Long)
 		}
+	}
+}
+
+func TestNewCommand_helpDocumentsTheUpdateID(t *testing.T) {
+	long := submitcmd.NewCommand(kernel.Boot{}).Long
+	if !strings.Contains(long, "updateId") {
+		t.Errorf("Long must name the updateId the response carries: %s", long)
+	}
+	if strings.Contains(long, "carries no fields") {
+		t.Errorf("Long must not claim an empty response: %s", long)
 	}
 }
 

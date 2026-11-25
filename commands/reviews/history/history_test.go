@@ -248,6 +248,16 @@ func TestRun_notFound_exit30_namesConsoleAndPermission(t *testing.T) {
 	}
 }
 
+func TestRun_truncatedExport_exit20(t *testing.T) {
+	rt := &historyRT{getBody: append(utf16LE(reportCSV), 'x')}
+	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))
+
+	_, err := Run(rc, Input{Package: "com.example.app", Month: "2026-06"})
+	if code := exitCodeOf(t, err); code != 20 {
+		t.Fatalf("a UTF-16 export with an odd byte count should be exit 20, got %d (err: %v)", code, err)
+	}
+}
+
 func TestRun_badMonth_exit2_noNetwork(t *testing.T) {
 	rt := &historyRT{getBody: utf16LE(reportCSV)}
 	rc, _, _, _ := newRC(t, testkit.RoundTripFunc(rt.serve))

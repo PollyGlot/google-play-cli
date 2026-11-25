@@ -1,14 +1,12 @@
 package history
 
 import (
-	"encoding/binary"
 	"encoding/csv"
 	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/PollyGlot/google-play-cli/internal/reports"
 )
@@ -52,8 +50,10 @@ var header = map[string]func(*Row, string){
 }
 
 func Parse(raw []byte) ([]Row, error) {
-	text := decodeUTF16(raw)
-	text = strings.TrimPrefix(text, "\uFEFF")
+	text, err := reports.DecodeText(raw)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
@@ -84,21 +84,6 @@ func Parse(raw []byte) ([]Row, error) {
 		rows = append(rows, row)
 	}
 	return rows, nil
-}
-
-func decodeUTF16(b []byte) string {
-	order := binary.ByteOrder(binary.LittleEndian)
-	switch {
-	case len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE:
-		order, b = binary.LittleEndian, b[2:]
-	case len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF:
-		order, b = binary.BigEndian, b[2:]
-	}
-	u16 := make([]uint16, 0, len(b)/2)
-	for i := 0; i+1 < len(b); i += 2 {
-		u16 = append(u16, order.Uint16(b[i:i+2]))
-	}
-	return string(utf16.Decode(u16))
 }
 
 func monthRE(pkg string) *regexp.Regexp {

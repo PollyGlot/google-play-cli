@@ -327,9 +327,10 @@ refused (exit 2) rather than resolved silently. A file with no packageName
 inherits the resolved one.
 
 ` + "`gplay appstore create`" + ` must have run for this hosted app first. The call is
-Edit-free: it opens no Edit and joins none. The response carries no fields (the
-acknowledgement IS the result), so --output json passes the API response
-through verbatim, falling back to a gplay-shaped success object only
+Edit-free: it opens no Edit and joins none. The response carries updateId, the
+identifier of the version submitted in this update, which correlates later
+publishing signals from Google with this update; --output json passes the API
+response through verbatim, falling back to a gplay-shaped success object only
 when the API answers with no body at all. GPLAY_READONLY refuses the write
 (exit 4) but lets --dry-run run. A 403 names the app store enrollment the call
 requires.`,
