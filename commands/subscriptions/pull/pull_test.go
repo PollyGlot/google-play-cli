@@ -220,6 +220,27 @@ func TestRun_emptyLiveNonEmptyLocal_refuses(t *testing.T) {
 	}
 }
 
+func TestRun_emptyLiveWithMalformedLocalFile_refusesAndKeepsEveryFile(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{"premium.json": `{"productId":"premium"}`, "draft.json": `{not json`}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt := &subsRT{status: 200, body: `{}`}
+	_, err := pullcmd.Run(newRC(t, rt), pullcmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 2)
+	if !strings.Contains(err.Error(), "refusing to erase") || !strings.Contains(err.Error(), "2 catalog file(s)") {
+		t.Errorf("refusal %q should count both local files", err.Error())
+	}
+	for name := range files {
+		if _, statErr := os.Stat(filepath.Join(dir, name)); statErr != nil {
+			t.Errorf("%s must survive the refusal: %v", name, statErr)
+		}
+	}
+}
+
 func TestRun_missingPackage_exit2_noNetwork(t *testing.T) {
 	rt := &subsRT{}
 	rc := newRC(t, rt)

@@ -35,7 +35,7 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 	}
 	local := map[string]json.RawMessage{}
 	for _, de := range dirents {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+		if !isCatalogFile(de) {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, de.Name()))
@@ -58,6 +58,24 @@ func Read(dir string) (map[string]json.RawMessage, error) {
 		local[id] = json.RawMessage(b)
 	}
 	return local, nil
+}
+
+func Count(dir string) int {
+	dirents, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, de := range dirents {
+		if isCatalogFile(de) {
+			n++
+		}
+	}
+	return n
+}
+
+func isCatalogFile(de os.DirEntry) bool {
+	return !de.IsDir() && strings.HasSuffix(de.Name(), ".json")
 }
 
 func ResolveDefault(rel string) (string, error) {
@@ -103,7 +121,7 @@ func Write(dir string, entries []Entry) ([]string, error) {
 	}
 	var removed []string
 	for _, de := range dirents {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".json") {
+		if !isCatalogFile(de) {
 			continue
 		}
 		if _, ok := keep[de.Name()]; ok {
