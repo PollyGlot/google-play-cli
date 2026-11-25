@@ -147,12 +147,15 @@ func TestRun_formatOverride(t *testing.T) {
 	}
 }
 
-func TestRun_unknownExtension_exit20_noNetwork(t *testing.T) {
+func TestRun_unknownExtension_exit2_noNetwork(t *testing.T) {
 	fake := newFake()
 	rc, _ := newRC(t, fake)
 	_, err := uploadcmd.Run(rc, uploadcmd.Input{Package: "com.example.app", ArtifactPath: writeArtifact(t, "build.bin")})
-	if got := exitOf(t, err); got != 20 {
-		t.Errorf("exit = %d, want 20; err=%v", got, err)
+	if got := exitOf(t, err); got != 2 {
+		t.Errorf("exit = %d, want 2; err=%v", got, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "pass --format apk|bundle") {
+		t.Errorf("err = %v, want it to name --format apk|bundle", err)
 	}
 	if networkCalls(fake) != 0 {
 		t.Errorf("unknown extension must make no network call; calls=%v", fake.Calls())
@@ -200,9 +203,10 @@ func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
 		t.Errorf("dry-run emitted a ✓; stderr=%q", stderr.String())
 	}
 	var view struct {
-		DryRun  bool   `json:"dryRun"`
-		Package string `json:"package"`
-		Format  string `json:"format"`
+		DryRun   bool      `json:"dryRun"`
+		Package  string    `json:"package"`
+		Format   string    `json:"format"`
+		Requires *[]string `json:"requires"`
 	}
 	var jsonOut bytes.Buffer
 	if err := r.Renderers().JSON(&jsonOut); err != nil {
@@ -213,6 +217,9 @@ func TestRun_dryRun_noNetwork_noConfirmation(t *testing.T) {
 	}
 	if !view.DryRun || view.Package != "com.example.app" || view.Format != "apk" {
 		t.Errorf("dry-run view = %+v, want dryRun apk for com.example.app", view)
+	}
+	if view.Requires == nil || len(*view.Requires) != 0 {
+		t.Errorf("dry-run json = %s, want \"requires\": []", jsonOut.String())
 	}
 }
 
