@@ -187,8 +187,9 @@ func TestCount_matchesWhatAnEmptyWriteWouldRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	if n != 4 || len(removed) != n {
-		t.Errorf("Count = %d, Write removed %v: the guard must count every file a pull would erase", n, removed)
+	want := []string{".json", "dangling.json", "draft.json", "premium.json"}
+	if n != len(want) || strings.Join(removed, ",") != strings.Join(want, ",") {
+		t.Errorf("Count = %d, Write removed %v, want %v: the guard must count every file a pull would erase", n, removed, want)
 	}
 	if got := catalog.Count(filepath.Join(dir, "absent")); got != 0 {
 		t.Errorf("Count(missing dir) = %d, want 0", got)
