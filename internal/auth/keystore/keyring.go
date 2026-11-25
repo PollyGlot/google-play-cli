@@ -23,8 +23,6 @@ const reservedIndexUser = "__gplay_index__"
 
 const probeUser = "__gplay_probe__"
 
-var ErrKeyringNotFound = keyring.ErrNotFound
-
 type KeyringAPI interface {
 	Set(service, user, password string) error
 	Get(service, user string) (string, error)
