@@ -219,10 +219,15 @@ func renderJSON(w io.Writer, p Payload) error {
 	shape := struct {
 		DryRun bool `json:"dryRun,omitempty"`
 		*orchestrator.Result
+		Requires             *[]string         `json:"requires,omitempty"`
 		UploadedVersionCodes []int             `json:"uploadedVersionCodes,omitempty"`
 		RetainedVersionCodes []int             `json:"retainedVersionCodes,omitempty"`
 		Artifacts            []plannedArtifact `json:"artifacts,omitempty"`
 	}{DryRun: p.DryRun, Result: r, RetainedVersionCodes: r.RetainedVersionCodes}
+	if p.DryRun {
+		requires := output.NonNil(r.Requires)
+		shape.Requires = &requires
+	}
 	if p.multi() {
 		shape.UploadedVersionCodes = r.UploadedVersionCodes
 		if p.DryRun {
