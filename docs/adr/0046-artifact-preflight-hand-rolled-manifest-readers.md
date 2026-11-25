@@ -60,9 +60,8 @@ refusal is exactly that, and by construction the API was never reached. The
 sibling check these commands already ran (`not a regular file`) exits 20 too, so this keeps one code for
 "gplay refused your artifact locally" rather than splitting it in two. (An
 artifact whose extension names neither format, `cannot tell APK from AAB by
-extension: pass --format apk|bundle`, exits 20 on `releases sharing upload`
-but 2 on `releases upload`, which treats it as a usage error since the fix is
-a flag; the two are not yet aligned.) Exit 2
+extension: pass --format apk|bundle`, exits 2 on both `releases upload` and
+`releases sharing upload`: that is a usage error, since the fix is a flag.) Exit 2
 stays what an automated caller needs it to mean: you typed the command wrong.
 
 **A parser gap never becomes a false refusal.** Whenever gplay cannot answer,
