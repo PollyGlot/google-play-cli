@@ -218,3 +218,23 @@ func assertExit(t *testing.T, err error, want int) {
 		t.Errorf("exit = %d, want %d", got, want)
 	}
 }
+
+func TestRun_emptyBody_printsAck_bodyPassesThrough(t *testing.T) {
+	for body, want := range map[string]string{
+		"":   "{\n  \"ok\": true,\n  \"refunded\": \"GPA.1234\",\n  \"revoked\": false\n}\n",
+		"{}": "{}",
+	} {
+		rc := newRC(t, newFake(http.StatusOK, body))
+		res, err := refundcmd.Run(rc, refundcmd.Input{Package: "com.example.app", OrderID: "GPA.1234", Confirm: true})
+		if err != nil {
+			t.Fatalf("Run with body %q: %v", body, err)
+		}
+		var out bytes.Buffer
+		if err := res.Renderers().JSON(&out); err != nil {
+			t.Fatalf("JSON: %v", err)
+		}
+		if out.String() != want {
+			t.Errorf("body %q: json = %q, want %q", body, out.String(), want)
+		}
+	}
+}

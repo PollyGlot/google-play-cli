@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -86,11 +85,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, Product: p.Product, BasePlan: p.BasePlan, Regions: p.Regions, Oldest: p.Oldest, Requires: output.NonNil(p.Requires)})
 	}
-	if len(bytes.TrimSpace(p.Raw)) > 2 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, struct {
+	return output.WriteAckOrRaw(w, p.Raw, struct {
 		OK       bool     `json:"ok"`
 		Product  string   `json:"productId"`
 		BasePlan string   `json:"basePlanId"`

@@ -97,7 +97,7 @@ func TestRun_refusesWithoutConfirm(t *testing.T) {
 }
 
 func TestRun_confirmed_migrates(t *testing.T) {
-	fake := testkit.NewFake(testkit.Any(http.StatusOK, `{}`))
+	fake := testkit.NewFake(testkit.Any(http.StatusOK, ""))
 	rc := newRC(t, fake)
 	in := validInput()
 	in.Confirm = true
@@ -156,5 +156,27 @@ func assertExit(t *testing.T, err error, want int) {
 	}
 	if got := c.ExitCode(); got != want {
 		t.Errorf("exit = %d, want %d", got, want)
+	}
+}
+
+func TestRun_emptyBody_printsAck_bodyPassesThrough(t *testing.T) {
+	for body, want := range map[string]string{
+		"":   "{\n  \"ok\": true,\n  \"productId\": \"premium\",\n  \"basePlanId\": \"monthly\",\n  \"regions\": [\n    \"US\",\n    \"FR\"\n  ]\n}\n",
+		"{}": "{}",
+	} {
+		rc := newRC(t, testkit.NewFake(testkit.Any(http.StatusOK, body)))
+		in := validInput()
+		in.Confirm = true
+		res, err := migratecmd.Run(rc, in)
+		if err != nil {
+			t.Fatalf("Run with body %q: %v", body, err)
+		}
+		var out bytes.Buffer
+		if err := res.Renderers().JSON(&out); err != nil {
+			t.Fatalf("JSON: %v", err)
+		}
+		if out.String() != want {
+			t.Errorf("body %q: json = %q, want %q", body, out.String(), want)
+		}
 	}
 }

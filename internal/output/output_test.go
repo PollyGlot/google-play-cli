@@ -264,3 +264,33 @@ func TestRender_humanViewIsSanitizedAcrossWrites(t *testing.T) {
 		t.Errorf("rendered %q, want %q", got, want)
 	}
 }
+
+func TestWriteAckOrRaw(t *testing.T) {
+	ack := struct {
+		OK bool `json:"ok"`
+	}{OK: true}
+	cases := []struct {
+		name, raw, want string
+	}{
+		{"nil", "", "{\n  \"ok\": true\n}\n"},
+		{"whitespace only", " \n\t", "{\n  \"ok\": true\n}\n"},
+		{"bare object", "{}", "{}"},
+		{"spaced object", "{ }", "{ }"},
+		{"body", `{"kind":"x"}`, `{"kind":"x"}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var raw []byte
+			if c.raw != "" {
+				raw = []byte(c.raw)
+			}
+			var out bytes.Buffer
+			if err := output.WriteAckOrRaw(&out, raw, ack); err != nil {
+				t.Fatalf("WriteAckOrRaw: %v", err)
+			}
+			if out.String() != c.want {
+				t.Errorf("got %q, want %q", out.String(), c.want)
+			}
+		})
+	}
+}

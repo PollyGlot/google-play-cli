@@ -118,6 +118,14 @@ func WriteJSON(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
+func WriteAckOrRaw(w io.Writer, raw json.RawMessage, ack any) error {
+	if len(bytes.TrimSpace(raw)) > 0 {
+		_, err := w.Write(raw)
+		return err
+	}
+	return WriteJSON(w, ack)
+}
+
 func NonNil[T any](s []T) []T {
 	if s == nil {
 		return []T{}
