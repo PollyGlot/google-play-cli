@@ -307,7 +307,7 @@ func TestRun_storePackageEnvCascade(t *testing.T) {
 }
 
 func TestRun_jsonPassthrough(t *testing.T) {
-	fake := newFake(0, `{"reviewId":"rev-1","unmodelled":{"x":1}}`)
+	fake := newFake(0, `{"updateId":"v1"}`)
 	got, err := submitcmd.Run(newRC(t, fake, ""), submitcmd.Input{
 		StorePackage: "s", Package: "com.example.app", File: writeBody(t, fullBody), Confirm: true,
 	})
@@ -318,7 +318,7 @@ func TestRun_jsonPassthrough(t *testing.T) {
 	if err := got.Renderers().JSON(&buf); err != nil {
 		t.Fatalf("render JSON: %v", err)
 	}
-	if buf.String() != `{"reviewId":"rev-1","unmodelled":{"x":1}}` {
+	if buf.String() != `{"updateId":"v1"}` {
 		t.Errorf("JSON = %s, want the verbatim API body", buf.String())
 	}
 }
@@ -416,6 +416,16 @@ func TestNewCommand_helpDocumentsTheVerb(t *testing.T) {
 		if !strings.Contains(long, phrase) {
 			t.Errorf("Long does not mention %q: %s", phrase, cmd.Long)
 		}
+	}
+}
+
+func TestNewCommand_helpDocumentsTheUpdateID(t *testing.T) {
+	long := submitcmd.NewCommand(kernel.Boot{}).Long
+	if !strings.Contains(long, "updateId") {
+		t.Errorf("Long must name the updateId the response carries: %s", long)
+	}
+	if strings.Contains(long, "carries no fields") {
+		t.Errorf("Long must not claim an empty response: %s", long)
 	}
 }
 
