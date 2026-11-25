@@ -355,15 +355,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 				_, err = subscriptions.SetOfferState(rc.Ctx, httpClient, pkg, s.ProductID, s.BasePlanID, s.OfferID, s.To == subscriptions.StateActive, lt)
 			}
 			if err != nil {
-				return nil, subscriptionscmd.Classify(pkg, err)
+				return nil, subscriptionscmd.ClassifyAt(pkg, subscriptionscmd.Target(s.ProductID, s.BasePlanID, s.OfferID), err)
 			}
 		}
 	}
 	var refused []*deleteRefusedError
-	record := func(err error, refusal deleteRefusedError) error {
+	record := func(err error, c reconcile.Change, refusal deleteRefusedError) error {
 		var apiErr *api.Error
 		if !errors.As(err, &apiErr) || (apiErr.StatusCode != http.StatusBadRequest && apiErr.StatusCode != http.StatusForbidden) {
-			return subscriptionscmd.Classify(pkg, err)
+			return subscriptionscmd.ClassifyAt(pkg, subscriptionscmd.Target(c.ProductID, c.ParentID, c.OfferID), err)
 		}
 		refusal.pkg, refusal.cause = pkg, err
 		rc.Warnf("%v", &refusal)
@@ -372,21 +372,21 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	for _, c := range plan.OfferDeletes {
 		if err := subscriptions.DeleteOffer(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID, c.OfferID); err != nil {
-			if err := record(err, deleteRefusedError{kind: "offer", target: c.Key(), documented: "offers.delete documents DRAFT as the only deletable state", hint: keepOfferInactiveHint, code: exit.CodeOfferNotDraft}); err != nil {
+			if err := record(err, c, deleteRefusedError{kind: "offer", target: c.Key(), documented: "offers.delete documents DRAFT as the only deletable state", hint: keepOfferInactiveHint, code: exit.CodeOfferNotDraft}); err != nil {
 				return nil, err
 			}
 		}
 	}
 	for _, c := range plan.BasePlanDeletes {
 		if err := subscriptions.DeleteBasePlan(rc.Ctx, httpClient, pkg, c.ProductID, c.ParentID); err != nil {
-			if err := record(err, deleteRefusedError{kind: "base plan", target: c.Key(), documented: "basePlans.delete documents DRAFT as the only deletable state, though BasePlan.state also lists INACTIVE", hint: keepInactiveHint, code: exit.CodeBasePlanNotDraft}); err != nil {
+			if err := record(err, c, deleteRefusedError{kind: "base plan", target: c.Key(), documented: "basePlans.delete documents DRAFT as the only deletable state, though BasePlan.state also lists INACTIVE", hint: keepInactiveHint, code: exit.CodeBasePlanNotDraft}); err != nil {
 				return nil, err
 			}
 		}
 	}
 	for _, c := range plan.Deletes {
 		if err := subscriptions.Delete(rc.Ctx, httpClient, pkg, c.ProductID); err != nil {
-			return nil, subscriptionscmd.Classify(pkg, err)
+			return nil, subscriptionscmd.ClassifyAt(pkg, subscriptionscmd.Target(c.ProductID, "", ""), err)
 		}
 	}
 	if len(refused) > 0 {
