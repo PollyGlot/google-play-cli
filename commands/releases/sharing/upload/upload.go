@@ -56,7 +56,7 @@ func classify(path, formatOverride string) (artifact, error) {
 		case ".aab":
 			kind = "bundle"
 		default:
-			return artifact{}, &classifyError{path: path, msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
+			return artifact{}, &exit.UsageError{Msg: "cannot tell APK from AAB by extension: pass --format apk|bundle"}
 		}
 	default:
 		return artifact{}, &exit.UsageError{Msg: "--format must be apk or bundle"}
@@ -111,15 +111,16 @@ func (p Payload) renderTable(w io.Writer) error {
 }
 
 type dryRunView struct {
-	DryRun  bool   `json:"dryRun"`
-	Package string `json:"package"`
-	Format  string `json:"format"`
-	Bytes   int64  `json:"bytes"`
+	DryRun   bool     `json:"dryRun"`
+	Package  string   `json:"package"`
+	Format   string   `json:"format"`
+	Bytes    int64    `json:"bytes"`
+	Requires []string `json:"requires"`
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
-		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Format: p.Kind, Bytes: p.Bytes})
+		return output.WriteJSON(w, dryRunView{DryRun: true, Package: p.Package, Format: p.Kind, Bytes: p.Bytes, Requires: []string{}})
 	}
 	_, err := w.Write(p.Raw)
 	return err

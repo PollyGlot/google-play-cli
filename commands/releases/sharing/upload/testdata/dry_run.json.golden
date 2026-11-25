@@ -2,5 +2,6 @@
   "dryRun": true,
   "package": "com.example.app",
   "format": "bundle",
-  "bytes": 5242880
+  "bytes": 5242880,
+  "requires": []
 }
