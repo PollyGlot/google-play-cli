@@ -240,6 +240,16 @@ func TestRun_403_hintsAtMonetizationAccess(t *testing.T) {
 	}
 }
 
+func TestRun_404_blamesThePackage(t *testing.T) {
+	rt := &subsRT{status: 404, body: `{"error":{"code":404,"message":"Package not found"}}`}
+	rc := newRC(t, rt)
+	_, err := pullcmd.Run(rc, pullcmd.Input{Package: "com.example.app", Dir: t.TempDir()})
+	assertExit(t, err, 30)
+	if want := `package "com.example.app" not found`; !strings.Contains(err.Error(), want) {
+		t.Errorf("error %q should say %s", err.Error(), want)
+	}
+}
+
 func assertExit(t *testing.T, err error, want int) {
 	t.Helper()
 	if err == nil {
