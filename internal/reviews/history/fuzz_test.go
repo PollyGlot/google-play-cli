@@ -15,6 +15,7 @@ func FuzzHistoryParse(f *testing.F) {
 	f.Add([]byte{0xFE, 0xFF, 0, '"', 0, 'x'}, " leading space", `\.`)
 	f.Add([]byte{0xFF, 0xFE, 0x3D, 0xD8}, "\uFEFFbom", "# not a comment")
 	f.Add([]byte("plain utf-8, not utf-16\n"), ",", "\"")
+	f.Add([]byte{0xFF, 0xFE, 'a', 0, ',', 0, 'b'}, "odd", "byte count")
 
 	f.Fuzz(func(t *testing.T, raw []byte, title, text string) {
 		if rows, err := Parse(raw); err != nil && rows != nil {

@@ -55,11 +55,13 @@ func (g *Global) Save(_ context.Context, fsys FS, path string) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if root, rootErr := pathguard.Root(dir); rootErr == nil {
-		if tmp, err = pathguard.ContainWrite(root, tmp); err != nil {
-			return err
-		}
+	root, err := pathguard.Root(dir)
+	if err != nil {
+		return err
+	}
+	tmp, err := pathguard.ContainWrite(root, path+".tmp")
+	if err != nil {
+		return err
 	}
 	if err := fsys.WriteFile(tmp, data, 0o600); err != nil {
 		return err

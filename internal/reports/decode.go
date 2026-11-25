@@ -60,6 +60,18 @@ func Decode(raw []byte) (Table, error) {
 	return t, err
 }
 
+func DecodeText(raw []byte) (string, error) {
+	text, _, err := utf8Text(bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	b, err := io.ReadAll(text)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func decodeStream(src io.Reader, b *budget, pkg string) (t Table, read int, err error) {
 	text, nonSpace, err := utf8Text(&budgetReader{r: src, b: b})
 	if err != nil {
