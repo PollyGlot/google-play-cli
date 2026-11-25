@@ -266,7 +266,7 @@ content-length=0 replayable=true
 ## List / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=20
 content-length=0 replayable=true
-=> error (exit 50): monetization.subscriptions.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): monetization.subscriptions.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## ListAllOffers / ok
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=20
@@ -281,7 +281,7 @@ content-length=0 replayable=true
 ## ListAllOffers / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=20
 content-length=0 replayable=true
-=> error (exit 50): monetization.subscriptions.basePlans.offers.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): monetization.subscriptions.basePlans.offers.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## List / two pages
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=20
@@ -300,7 +300,7 @@ content-length=0 replayable=true
 ## List / anonymous item
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions?pageSize=20
 content-length=0 replayable=true
-=> error (exit 50): monetization.subscriptions.list on com.example.app: response contains a subscription without a productId: refusing a catalog entry that cannot be addressed
+=> error (exit 30): monetization.subscriptions.list on com.example.app: response contains a subscription without a productId: refusing a catalog entry that cannot be addressed (HTTP 200)
 
 ## ListAllOffers / two pages
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=20
@@ -319,5 +319,5 @@ content-length=0 replayable=true
 ## ListAllOffers / anonymous item
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/subscriptions/-/basePlans/-/offers?pageSize=20
 content-length=0 replayable=true
-=> error (exit 50): monetization.subscriptions.basePlans.offers.list on com.example.app: response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed
+=> error (exit 30): monetization.subscriptions.basePlans.offers.list on com.example.app: response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed (HTTP 200)
 

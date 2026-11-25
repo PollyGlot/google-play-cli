@@ -85,7 +85,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 
 	var parsed CustomApp
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Resource: developerAccount(account), StatusCode: status, Message: "decode response: " + err.Error(), Cause: err}
+		return CustomApp{}, nil, api.DecodeFailure(api.Error{Operation: op, Resource: developerAccount(account), StatusCode: status, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return parsed, raw, nil
 }

@@ -110,7 +110,7 @@ func listUsersRaw(ctx context.Context, hc *http.Client, developerID string) ([]U
 			for _, rawUser := range pg.Users {
 				var usr User
 				if err := json.Unmarshal(rawUser, &usr); err != nil {
-					return nil, "", &api.Error{Operation: opUsersList, Resource: account(developerID), Message: "decode user: " + err.Error(), Cause: err}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opUsersList, Resource: account(developerID), Message: "decode user: " + err.Error(), Cause: err})
 				}
 				page = append(page, member{user: usr, raw: rawUser})
 			}

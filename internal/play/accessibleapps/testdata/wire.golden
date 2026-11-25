@@ -11,7 +11,7 @@ content-length=0 replayable=true
 ## Search / malformed
 GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search
 content-length=0 replayable=true
-=> error (exit 50): playdeveloperreporting.apps.search on : decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): playdeveloperreporting.apps.search on : decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## Search paged / ok
 GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search?pageSize=50&pageToken=tok%2F%2B%3D
@@ -26,5 +26,5 @@ content-length=0 replayable=true
 ## Search paged / malformed
 GET https://playdeveloperreporting.googleapis.com/v1beta1/apps:search?pageSize=50&pageToken=tok%2F%2B%3D
 content-length=0 replayable=true
-=> error (exit 50): playdeveloperreporting.apps.search on : decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): playdeveloperreporting.apps.search on : decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 

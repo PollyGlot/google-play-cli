@@ -58,6 +58,28 @@ func (e *Error) ExitCode() int {
 	return StatusToExitCode(e.StatusCode)
 }
 
+func DecodeFailure(e Error) *Error {
+	if e.StatusCode == 0 {
+		e.StatusCode = http.StatusOK
+	}
+	return &e
+}
+
+type notSentError struct {
+	err   error
+	local bool
+}
+
+func (e *notSentError) Error() string { return e.err.Error() }
+func (e *notSentError) Unwrap() error { return e.err }
+
+func (e *notSentError) ExitCode() int {
+	if e.local {
+		return 20
+	}
+	return 1
+}
+
 func NeverSent(cause error) bool {
 	var coder interface{ ExitCode() int }
 	if errors.As(cause, &coder) {

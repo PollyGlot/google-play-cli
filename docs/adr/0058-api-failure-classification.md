@@ -6,6 +6,9 @@ accepted (2026-11-20)
 
 amended (2026-11-20): implementation decisions moved from code comments
 
+amended (2026-11-26): a 2xx body that does not decode is exit 30, and a
+request that never left is exit 20 or 1 (#844)
+
 ## Context
 
 Every upstream failure reaches the user as an exit code and, under
@@ -72,14 +75,18 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   the retry-safe bucket. The error is classified as a body-read failure (the
   Cloud Storage client gives it status 0), never from the 2xx already
   received.
-- **A 2xx body that reads whole but does not decode is not yet classified one
-  way.** Modules that decode by hand (edits, tracks, listings, images,
-  testers, App Signing, voided purchases) tag the error with status 200, so it
-  exits 30: the API answered something gplay cannot read, which a re-run does
-  not fix. `api.DoJSON` and the modules built on it (vitals, team, one-time
-  products, subscriptions, Cloud Storage, the app store uploads) leave the
-  status unset, so the same failure exits 50. Moving a module from one to the
-  other changes a public exit code; #844 tracks settling on one rule.
+- **A 2xx body that reads whole but does not decode is exit 30**, not
+  retryable. The API answered something gplay cannot read, and a re-run gets
+  the same body. The same holds for a body that decodes but lacks a field
+  gplay needs (an Edit ID, a product's identity). Every decoder builds the
+  error with `api.DecodeFailure`, which keeps the 2xx status received, or 200
+  when the caller no longer has it; no module stamps a status of its own.
+- **A request that fails before it is sent is exit 20 or 1.** A request body
+  that cannot be opened is a local file problem, exit 20
+  ([ADR-0056](./0056-media-upload-protocol.md)). A request that cannot be
+  built (a URL template missing a parameter, a body that does not encode) is
+  exit 1: nothing was sent, and a retry builds the same request. Neither is
+  the network's retry-safe 50.
 - **`auth doctor` watches the transport itself** to tell "never answered"
   from a key that could not be used. The jwt flow flattens the transport error
   with `%v` before returning it, so the error chain alone cannot draw that
@@ -107,8 +114,9 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
 
 - **Only two outcomes prove a failed write was not applied**: a 4xx (429
   included: the request was refused before the write path), or a request that
-  never left the machine. `api.NeverSent` draws the second line: a refused
-  token exchange, a DNS failure or a dial failure. Any other transport failure
+  never left the machine. `api.NeverSent` draws the second line: a request
+  that failed to build or whose body could not be opened, a refused token
+  exchange, a DNS failure or a dial failure. Any other transport failure
   may have reached Google's write path, and a 5xx or a broken 2xx body may
   have been applied.
 - **The same line serves every caller that must answer the question**: the

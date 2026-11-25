@@ -80,7 +80,7 @@ func ListVoided(ctx context.Context, hc *http.Client, pkg string, opts VoidedLis
 				return nil, "", nil
 			}
 			if err := json.Unmarshal(raw, &page); err != nil {
-				return nil, "", &api.Error{Operation: opListVoided, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+				return nil, "", api.DecodeFailure(api.Error{Operation: opListVoided, Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 			}
 			return page.VoidedPurchases, page.TokenPagination.NextPageToken, nil
 		})
@@ -92,7 +92,7 @@ func ListVoided(ctx context.Context, hc *http.Client, pkg string, opts VoidedLis
 	for _, it := range items {
 		var vp VoidedPurchase
 		if err := json.Unmarshal(it, &vp); err != nil {
-			return VoidedList{}, false, &api.Error{Operation: opListVoided, Package: pkg, StatusCode: http.StatusOK, Message: "decode voided purchase: " + err.Error(), Cause: err}
+			return VoidedList{}, false, api.DecodeFailure(api.Error{Operation: opListVoided, Package: pkg, Message: "decode voided purchase: " + err.Error(), Cause: err})
 		}
 		out.Purchases = append(out.Purchases, vp)
 	}

@@ -55,13 +55,13 @@ func GetDetails(ctx context.Context, hc *http.Client, pkg string) (*AppDetails, 
 		}
 		var parsed AppDetails
 		if err := json.Unmarshal(body, &parsed); err != nil {
-			return &api.Error{
+			return api.DecodeFailure(api.Error{
 				Operation:  opDetailsGet,
 				Package:    pkg,
 				StatusCode: status,
 				Message:    "decode response: " + err.Error(),
 				Cause:      err,
-			}
+			})
 		}
 		out, raw = &parsed, body
 		return nil
@@ -133,13 +133,12 @@ func Patch(ctx context.Context, hc *http.Client, pkg, editID string, patch AppDe
 	}
 	var parsed AppDetails
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opDetailsPatch,
-			Package:    pkg,
-			StatusCode: http.StatusOK,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+		return nil, raw, api.DecodeFailure(api.Error{
+			Operation: opDetailsPatch,
+			Package:   pkg,
+			Message:   "decode response: " + err.Error(),
+			Cause:     err,
+		})
 	}
 	return &parsed, raw, nil
 }
@@ -154,21 +153,21 @@ func fetchDetails(ctx context.Context, hc *http.Client, pkg, editID string) (jso
 		ContactEmail    string `json:"contactEmail"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, "", "", &api.Error{
+		return nil, "", "", api.DecodeFailure(api.Error{
 			Operation:  opDetailsGet,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
-		}
+		})
 	}
 	if parsed.DefaultLanguage == "" {
-		return nil, "", "", &api.Error{
+		return nil, "", "", api.DecodeFailure(api.Error{
 			Operation:  opDetailsGet,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "missing defaultLanguage in response body",
-		}
+		})
 	}
 	return raw, parsed.DefaultLanguage, parsed.ContactEmail, nil
 }
@@ -184,13 +183,13 @@ func fetchListing(ctx context.Context, hc *http.Client, pkg, editID, language st
 		Title string `json:"title"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, "", &api.Error{
+		return nil, "", api.DecodeFailure(api.Error{
 			Operation:  opListingsGet,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
-		}
+		})
 	}
 	return raw, parsed.Title, nil
 }
@@ -228,21 +227,21 @@ func GetDefaultLanguage(ctx context.Context, hc *http.Client, pkg, editID string
 		DefaultLanguage string `json:"defaultLanguage"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", &api.Error{
+		return "", api.DecodeFailure(api.Error{
 			Operation:  op,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
-		}
+		})
 	}
 	if parsed.DefaultLanguage == "" {
-		return "", &api.Error{
+		return "", api.DecodeFailure(api.Error{
 			Operation:  op,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "missing defaultLanguage in response body",
-		}
+		})
 	}
 	return parsed.DefaultLanguage, nil
 }

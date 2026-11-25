@@ -11,7 +11,7 @@ content-length=0 replayable=true
 ## ListAchievements / malformed
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
 content-length=0 replayable=true
-=> error (exit 50): achievementConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): achievementConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## ListAchievements paged / ok
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements?maxResults=25&pageToken=tok%2F%2B%3D
@@ -26,7 +26,7 @@ content-length=0 replayable=true
 ## ListAchievements paged / malformed
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements?maxResults=25&pageToken=tok%2F%2B%3D
 content-length=0 replayable=true
-=> error (exit 50): achievementConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): achievementConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## GetAchievement / ok
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach%201
@@ -41,7 +41,7 @@ content-length=0 replayable=true
 ## GetAchievement / malformed
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach%201
 content-length=0 replayable=true
-=> error (exit 50): achievementConfigurations.get on ach 1: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): achievementConfigurations.get on ach 1: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## CreateAchievement / ok
 POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/achievements
@@ -62,7 +62,7 @@ POST https://gamesconfiguration.googleapis.com/games/v1configuration/application
 Content-Type: application/json
 content-length=30 replayable=true
 {"achievementType":"STANDARD"}
-=> error (exit 50): achievementConfigurations.insert on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): achievementConfigurations.insert on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## UpdateAchievement / ok
 PUT https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
@@ -83,7 +83,7 @@ PUT https://gamesconfiguration.googleapis.com/games/v1configuration/achievements
 Content-Type: application/json
 content-length=30 replayable=true
 {"achievementType":"STANDARD"}
-=> error (exit 50): achievementConfigurations.update on ach1: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): achievementConfigurations.update on ach1: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## DeleteAchievement / ok
 DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/achievements/ach1
@@ -113,7 +113,7 @@ content-length=0 replayable=true
 ## ListLeaderboards / malformed
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
 content-length=0 replayable=true
-=> error (exit 50): leaderboardConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): leaderboardConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## ListLeaderboards paged / ok
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards?maxResults=25&pageToken=tok%2F%2B%3D
@@ -128,7 +128,7 @@ content-length=0 replayable=true
 ## ListLeaderboards paged / malformed
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards?maxResults=25&pageToken=tok%2F%2B%3D
 content-length=0 replayable=true
-=> error (exit 50): leaderboardConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): leaderboardConfigurations.list on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## GetLeaderboard / ok
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
@@ -143,7 +143,7 @@ content-length=0 replayable=true
 ## GetLeaderboard / malformed
 GET https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
 content-length=0 replayable=true
-=> error (exit 50): leaderboardConfigurations.get on lb1: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): leaderboardConfigurations.get on lb1: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## CreateLeaderboard / ok
 POST https://gamesconfiguration.googleapis.com/games/v1configuration/applications/123456789012/leaderboards
@@ -164,7 +164,7 @@ POST https://gamesconfiguration.googleapis.com/games/v1configuration/application
 Content-Type: application/json
 content-length=30 replayable=true
 {"achievementType":"STANDARD"}
-=> error (exit 50): leaderboardConfigurations.insert on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): leaderboardConfigurations.insert on 123456789012: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## UpdateLeaderboard / ok
 PUT https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1
@@ -185,7 +185,7 @@ PUT https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards
 Content-Type: application/json
 content-length=30 replayable=true
 {"achievementType":"STANDARD"}
-=> error (exit 50): leaderboardConfigurations.update on lb1: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): leaderboardConfigurations.update on lb1: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## DeleteLeaderboard / ok
 DELETE https://gamesconfiguration.googleapis.com/games/v1configuration/leaderboards/lb1

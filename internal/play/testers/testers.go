@@ -63,7 +63,7 @@ func trackParams(pkg, editID, track string) map[string]string {
 
 func decode(op, pkg string, raw json.RawMessage, out any) error {
 	if err := json.Unmarshal(raw, out); err != nil {
-		return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+		return api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return nil
 }
