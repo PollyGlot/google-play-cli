@@ -3,17 +3,24 @@ package history
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf16"
+
+	"github.com/PollyGlot/google-play-cli/internal/reports"
 )
 
 func utf16LE(s string) []byte {
+	return append([]byte{0xFF, 0xFE}, utf16Units(binary.LittleEndian, s)...)
+}
+
+func utf16Units(order binary.ByteOrder, s string) []byte {
 	var buf bytes.Buffer
-	buf.Write([]byte{0xFF, 0xFE})
 	for _, u := range utf16.Encode([]rune(s)) {
 		var b [2]byte
-		binary.LittleEndian.PutUint16(b[:], u)
+		order.PutUint16(b[:], u)
 		buf.Write(b[:])
 	}
 	return buf.Bytes()
@@ -84,6 +91,61 @@ func TestParse_emptyBytes(t *testing.T) {
 	rows, err := Parse(nil)
 	if err != nil || rows != nil {
 		t.Fatalf("Parse(nil) = %v, %v; want nil, nil", rows, err)
+	}
+}
+
+func TestParse_oddByteCount_refused(t *testing.T) {
+	raw := append(utf16LE(sampleCSV), 'x')
+	rows, err := Parse(raw)
+	var refused *reports.RefusedError
+	if !errors.As(err, &refused) {
+		t.Fatalf("Parse of a truncated UTF-16 export: err = %v, want *reports.RefusedError", err)
+	}
+	if refused.ExitCode() != 20 {
+		t.Errorf("ExitCode() = %d, want 20", refused.ExitCode())
+	}
+	if rows != nil {
+		t.Errorf("rows = %+v, want nil", rows)
+	}
+}
+
+func TestParse_doubledBOM_sameRows(t *testing.T) {
+	want, err := Parse(utf16LE(sampleCSV))
+	if err != nil {
+		t.Fatalf("Parse single BOM: %v", err)
+	}
+	got, err := Parse(utf16LE("\uFEFF" + sampleCSV))
+	if err != nil {
+		t.Fatalf("Parse doubled BOM: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("doubled BOM rows = %+v, want %+v", got, want)
+	}
+}
+
+func TestParse_encodings_sameRow(t *testing.T) {
+	want, err := Parse(utf16LE(sampleCSV))
+	if err != nil {
+		t.Fatalf("Parse UTF-16 LE: %v", err)
+	}
+	if len(want) != 1 || want[0].ReviewText != "Très bonne app, 日本語 too 🎉" {
+		t.Fatalf("UTF-16 LE baseline = %+v", want)
+	}
+	cases := map[string][]byte{
+		"BOM-less UTF-16 BE": utf16Units(binary.BigEndian, sampleCSV),
+		"UTF-8 with BOM":     append([]byte("\uFEFF"), sampleCSV...),
+		"UTF-8 without BOM":  []byte(sampleCSV),
+	}
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, err := Parse(raw)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("rows = %+v, want %+v", got, want)
+			}
+		})
 	}
 }
 
