@@ -58,10 +58,11 @@ func Init(_ context.Context, fsys FS, repoRoot, homeDir, pkg string) error {
 }
 
 func containWrite(repoRoot, path string) (string, error) {
-	if root, rootErr := pathguard.Root(repoRoot); rootErr == nil {
-		return pathguard.ContainWrite(root, path)
+	root, err := pathguard.Root(repoRoot)
+	if err != nil {
+		return "", err
 	}
-	return path, nil
+	return pathguard.ContainWrite(root, path)
 }
 
 func validatePackage(pkg string) error {

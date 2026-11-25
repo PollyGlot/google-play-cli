@@ -87,8 +87,8 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, subscriptionscmd.Classify(pkg, err)
 	}
 	if len(items) == 0 {
-		if existing, readErr := catalog.Read(dir); readErr == nil && len(existing) > 0 {
-			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s): refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, len(existing))
+		if n := catalog.Count(dir); n > 0 {
+			return nil, exit.Usagef("live subscription catalog of %q is empty while %q holds %d catalog file(s): refusing to erase the local catalog; verify --package, or delete the files yourself if the empty live catalog is intended", pkg, dir, n)
 		}
 	}
 	offers, err := subscriptions.ListAllOffers(rc.Ctx, httpClient, pkg)
