@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 
 	"github.com/PollyGlot/google-play-cli/commands/auth/doctor"
@@ -86,7 +87,7 @@ func (f *fakeKeyring) Get(service, user string) (string, error) {
 	}
 	v, ok := f.store[f.key(service, user)]
 	if !ok {
-		return "", keystore.ErrKeyringNotFound
+		return "", keyring.ErrNotFound
 	}
 	return v, nil
 }
@@ -98,7 +99,7 @@ func (f *fakeKeyring) Delete(service, user string) error {
 		return errors.New("keystore unavailable")
 	}
 	if _, ok := f.store[f.key(service, user)]; !ok {
-		return keystore.ErrKeyringNotFound
+		return keyring.ErrNotFound
 	}
 	delete(f.store, f.key(service, user))
 	return nil

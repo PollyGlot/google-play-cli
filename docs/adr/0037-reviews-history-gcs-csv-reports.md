@@ -83,13 +83,13 @@ The decisions:
 ## Implementation notes
 
 - **The UTF-16 decode is hand-rolled**, not `golang.org/x/text`: the reports
-  are UTF-16LE with a BOM and the decode is a dozen lines, so a dependency
-  would not earn its place (the spirit of
-  [ADR-0007](0007-raw-http-not-google-go-sdk.md)). A BOM picks the byte order;
-  without one the decode assumes little-endian, the encoding Google's reports
-  use. A trailing odd byte is dropped. (The `gplay reports` decoder refuses
-  such a file instead, [ADR-0050](0050-bulk-reports-header-driven-reporting-bucket.md)
-  §5.)
+  are UTF-16LE with a BOM and the decode is short, so a dependency would not
+  earn its place (the spirit of
+  [ADR-0007](0007-raw-http-not-google-go-sdk.md)). It is the one `gplay
+  reports` uses (`reports.DecodeText`): a BOM picks the byte order, a
+  BOM-less file is sniffed for UTF-16 LE, BE or UTF-8, and a UTF-16 file
+  with an odd byte count is refused (exit 20) as cut mid character,
+  [ADR-0050](0050-bulk-reports-header-driven-reporting-bucket.md) §5.
 - **Every `--output json` field is a string**: most columns are optional, and
   gplay transcodes the reviewer's data without reshaping it.
 - **Rows may be shorter than the header** (trailing empty columns), and are

@@ -63,5 +63,5 @@ neither `"dryRun": true` nor the ADR-0017 `requires` array, and showed
 - Play's handling of the replaced releases (whether a halted rollout's users
   keep their build, for instance) is not observed offline; gplay reports what
   it sends, not what Play does with it.
-- `upload --dry-run` carries `dryRun` but not yet `requires`; it is outside
-  this decision.
+- `upload --dry-run` carries `requires` too since #836, filled by the same
+  rule as its live guard.
