@@ -87,8 +87,8 @@ The decisions:
   earn its place (the spirit of
   [ADR-0007](0007-raw-http-not-google-go-sdk.md)). It is the one `gplay
   reports` uses (`reports.DecodeText`): a BOM picks the byte order, a
-  BOM-less file is sniffed for UTF-16 LE, BE or UTF-8, and a file with an odd
-  byte count is refused (exit 20) as cut mid character,
+  BOM-less file is sniffed for UTF-16 LE, BE or UTF-8, and a UTF-16 file
+  with an odd byte count is refused (exit 20) as cut mid character,
   [ADR-0050](0050-bulk-reports-header-driven-reporting-bucket.md) §5.
 - **Every `--output json` field is a string**: most columns are optional, and
   gplay transcodes the reviewer's data without reshaping it.
