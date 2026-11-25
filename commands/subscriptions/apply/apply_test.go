@@ -971,6 +971,17 @@ func TestRun_productDelete_notFound_namesProduct(t *testing.T) {
 	assertNamesTarget(t, err, `product "gone"`)
 }
 
+func TestRun_offerStateChange_notFound_namesOffer(t *testing.T) {
+	dir := offersCatalog(t, `{"productId":"premium","basePlanId":"monthly","offerId":"intro","state":"INACTIVE","phases":[{"duration":"P1W"}]}`)
+	rt := &subsRT{offersBody: liveOfferIn("ACTIVE"), refuse: map[string]scriptedRefusal{
+		"POST /offers/intro:deactivate": {404, `{"error":{"code":404,"message":"Offer not found","errors":[{"reason":"notFound"}]}}`},
+	}}
+	rc, _ := newRC(t, rt)
+	_, err := applycmd.Run(rc, applycmd.Input{Package: "com.example.app", Dir: dir})
+	assertExit(t, err, 30)
+	assertNamesTarget(t, err, `product "premium" base plan "monthly" offer "intro"`)
+}
+
 func TestRun_listNotFound_blamesThePackage(t *testing.T) {
 	rt := &subsRT{refuse: map[string]scriptedRefusal{
 		"GET /applications/com.example.app/subscriptions": {404, `{"error":{"code":404,"message":"Package not found","errors":[{"reason":"notFound"}]}}`},
