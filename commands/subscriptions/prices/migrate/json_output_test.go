@@ -2,7 +2,6 @@ package migrate_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/subscriptions/prices/migrate"
@@ -34,7 +33,6 @@ func TestRenderJSON_emptyBody_golden(t *testing.T) {
 		BasePlan: "monthly-autorenew",
 		Regions:  []string{"FR", "US"},
 		Oldest:   "2026-01-01T00:00:00Z",
-		Raw:      json.RawMessage(`{}`),
 	}
 	outputtest.GoldenJSON(t, "empty_body.json.golden", p)
 }

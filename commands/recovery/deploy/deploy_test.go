@@ -122,3 +122,23 @@ func TestRun_confirmed_postsDeploy_andPassesThrough(t *testing.T) {
 		t.Errorf("json = %s, want verbatim empty {}", out.String())
 	}
 }
+
+func TestRun_emptyBody_printsAck_bodyPassesThrough(t *testing.T) {
+	for body, want := range map[string]string{
+		"":   "{\n  \"ok\": true,\n  \"action\": \"deploy\",\n  \"recoveryId\": \"555\",\n  \"package\": \"com.example.app\"\n}\n",
+		"{}": "{}",
+	} {
+		rc := newRC(t, testkit.NewFake(testkit.Any(http.StatusOK, body)))
+		res, err := deploycmd.Run(rc, deploycmd.Input{Package: "com.example.app", ID: "555", Confirm: true})
+		if err != nil {
+			t.Fatalf("Run with body %q: %v", body, err)
+		}
+		var out bytes.Buffer
+		if err := res.Renderers().JSON(&out); err != nil {
+			t.Fatalf("JSON: %v", err)
+		}
+		if out.String() != want {
+			t.Errorf("body %q: json = %q, want %q", body, out.String(), want)
+		}
+	}
+}

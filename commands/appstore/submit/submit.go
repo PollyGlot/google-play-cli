@@ -145,11 +145,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Requires:            []string{"confirm"},
 		})
 	}
-	if len(bytes.TrimSpace(p.Raw)) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, submittedView{
+	return output.WriteAckOrRaw(w, p.Raw, submittedView{
 		OK:                  true,
 		AppStorePackageName: p.StorePackage,
 		PackageName:         p.Package,

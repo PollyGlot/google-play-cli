@@ -1,7 +1,6 @@
 package set
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -137,11 +136,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Warnings: p.Warnings,
 		})
 	}
-	if len(bytes.TrimSpace(p.Raw)) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, struct {
+	return output.WriteAckOrRaw(w, p.Raw, struct {
 		OK      bool   `json:"ok"`
 		Package string `json:"package"`
 		Bytes   int    `json:"bytes"`

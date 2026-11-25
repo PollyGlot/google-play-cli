@@ -1,7 +1,6 @@
 package remove
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -122,11 +121,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, Email: p.Email, Requires: teamcmd.NonNil(p.Requires)})
 	}
-	if len(bytes.TrimSpace(p.Raw)) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, struct {
+	return output.WriteAckOrRaw(w, p.Raw, struct {
 		OK      bool   `json:"ok"`
 		Removed string `json:"removed"`
 	}{OK: true, Removed: p.Email})

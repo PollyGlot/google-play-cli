@@ -1,7 +1,6 @@
 package refund
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -100,11 +99,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, OrderID: p.OrderID, Revoke: p.Revoke, Requires: output.NonNil(p.Requires)})
 	}
-	if len(bytes.TrimSpace(p.Raw)) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, struct {
+	return output.WriteAckOrRaw(w, p.Raw, struct {
 		OK       bool   `json:"ok"`
 		Refunded string `json:"refunded"`
 		Revoked  bool   `json:"revoked"`

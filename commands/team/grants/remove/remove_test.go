@@ -102,3 +102,23 @@ func TestNewCommand_flags(t *testing.T) {
 		}
 	}
 }
+
+func TestRemove_emptyBody_printsAck_bodyPassesThrough(t *testing.T) {
+	for body, want := range map[string]string{
+		"":   "{\n  \"ok\": true,\n  \"removed\": \"bob@example.com\",\n  \"package\": \"com.example.foo\"\n}\n",
+		"{}": "{}",
+	} {
+		rc := teamtest.NewRC(t, teamtest.New(teamtest.Fail("DELETE", "/grants/com.example.foo", 200, body)))
+		r, err := removecmd.Run(rc, removecmd.Input{Email: "bob@example.com", Package: "com.example.foo", Confirm: true})
+		if err != nil {
+			t.Fatalf("Run with body %q: %v", body, err)
+		}
+		var out strings.Builder
+		if err := r.Renderers().JSON(&out); err != nil {
+			t.Fatalf("JSON: %v", err)
+		}
+		if out.String() != want {
+			t.Errorf("body %q: json = %q, want %q", body, out.String(), want)
+		}
+	}
+}

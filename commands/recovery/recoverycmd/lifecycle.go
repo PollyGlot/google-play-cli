@@ -68,6 +68,10 @@ func (p LifecyclePayload) renderJSON(w io.Writer) error {
 			Requires:   []string{"confirm"},
 		})
 	}
-	_, err := w.Write(p.Raw)
-	return err
+	return output.WriteAckOrRaw(w, p.Raw, struct {
+		OK         bool   `json:"ok"`
+		Action     string `json:"action"`
+		RecoveryID string `json:"recoveryId"`
+		Package    string `json:"package"`
+	}{OK: true, Action: p.Verb, RecoveryID: p.RecoveryID, Package: p.Package})
 }

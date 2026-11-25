@@ -1,7 +1,6 @@
 package set
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -124,11 +123,7 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Requires:            []string{},
 		})
 	}
-	if len(bytes.TrimSpace(p.Raw)) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, updatedView{OK: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, PublishState: p.State})
+	return output.WriteAckOrRaw(w, p.Raw, updatedView{OK: true, AppStorePackageName: p.StorePackage, PackageName: p.Package, PublishState: p.State})
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
