@@ -90,7 +90,7 @@ container:
 
 ```sh
 docker run --rm -e GPLAY_SERVICE_ACCOUNT \
-  ghcr.io/pollyglot/gplay:v2.5.1 tracks list --package com.example.myapp # x-release-please-version
+  ghcr.io/pollyglot/gplay:v2.6.0 tracks list --package com.example.myapp # x-release-please-version
 ```
 
 Mount the files a command reads (an AAB, a metadata directory) and work from

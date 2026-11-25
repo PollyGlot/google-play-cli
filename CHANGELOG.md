@@ -5,6 +5,26 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0](https://github.com/PollyGlot/google-play-cli/compare/v2.5.1...v2.6.0) (2026-11-25)
+
+
+### Features
+
+* **releases:** carry the requires array in upload --dry-run JSON ([#907](https://github.com/PollyGlot/google-play-cli/issues/907)) ([464cbd3](https://github.com/PollyGlot/google-play-cli/commit/464cbd351e4613bf6461b786094eec0967bafe10))
+
+
+### Bug Fixes
+
+* **apps:** report a failed batch save as a failure for every accepted package ([#912](https://github.com/PollyGlot/google-play-cli/issues/912)) ([d93c7f8](https://github.com/PollyGlot/google-play-cli/commit/d93c7f88f8ff2c0974e828d302b0cbb5bf6e58f9))
+* **appstore:** say that submit returns the updateId of the submitted version ([#913](https://github.com/PollyGlot/google-play-cli/issues/913)) ([ed9e992](https://github.com/PollyGlot/google-play-cli/commit/ed9e9921d14972c9a816820fd0be7da19b3e67a4))
+* **config:** fail closed when the write root does not resolve ([#909](https://github.com/PollyGlot/google-play-cli/issues/909)) ([0fece0b](https://github.com/PollyGlot/google-play-cli/commit/0fece0b6d79085a7592f0c8a2d713d9359ad26b2))
+* **monetization:** keep the empty-catalog pull guard when a local file is malformed ([#911](https://github.com/PollyGlot/google-play-cli/issues/911)) ([c3f912f](https://github.com/PollyGlot/google-play-cli/commit/c3f912f31a147acee3bbfacd8c3aaf1be70be794))
+* **output:** print an acknowledgement on every empty write response ([#914](https://github.com/PollyGlot/google-play-cli/issues/914)) ([3f2ee55](https://github.com/PollyGlot/google-play-cli/commit/3f2ee55386b5c9e3522291ee655331923bfa5672))
+* **releases:** exit 2 on an ambiguous sharing artifact, like releases upload ([#908](https://github.com/PollyGlot/google-play-cli/issues/908)) ([9573e3d](https://github.com/PollyGlot/google-play-cli/commit/9573e3d95ea0f160ea058c18b6ebbdd933734525))
+* **releases:** refuse a dropped release-note locale in promote --plan as the live run does ([#905](https://github.com/PollyGlot/google-play-cli/issues/905)) ([f4e13e0](https://github.com/PollyGlot/google-play-cli/commit/f4e13e0f5635555d3fd7c3262cc04f3ca99f238f))
+* **reviews:** refuse a truncated reviews history export like gplay reports does ([#906](https://github.com/PollyGlot/google-play-cli/issues/906)) ([d44d348](https://github.com/PollyGlot/google-play-cli/commit/d44d3485396ded5de21034b30854c8aae629921f))
+* **subscriptions:** name the product, base plan or offer on an addressed 404 ([#910](https://github.com/PollyGlot/google-play-cli/issues/910)) ([0e56e14](https://github.com/PollyGlot/google-play-cli/commit/0e56e14a834ef5d53bee93f64f9511f3e6964660))
+
 ## [2.5.1](https://github.com/PollyGlot/google-play-cli/compare/v2.5.0...v2.5.1) (2026-11-23)
 
 
