@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
 	"github.com/PollyGlot/google-play-cli/internal/auth/resolver"
@@ -115,7 +116,7 @@ func (k *countingKeyring) Get(service, user string) (string, error) {
 	k.gets++
 	v, ok := k.store[k.mapKey(service, user)]
 	if !ok {
-		return "", keystore.ErrKeyringNotFound
+		return "", keyring.ErrNotFound
 	}
 	return v, nil
 }

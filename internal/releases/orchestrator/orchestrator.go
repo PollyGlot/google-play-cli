@@ -389,6 +389,7 @@ func dryRunResult(opts Opts) (*Result, error) {
 		ReleaseName:          dryRunReleaseName(opts),
 		Locales:              previewLocales,
 		RetainedVersionCodes: opts.RetainVersionCodes,
+		Requires:             safetyFlags(requiresConfirm(opts.Track, opts.State)),
 	}, nil
 }
 

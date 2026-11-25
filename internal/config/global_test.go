@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"path/filepath"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/config"
@@ -11,9 +12,9 @@ import (
 )
 
 func TestGlobal_addAndSaveLoad_roundTrips(t *testing.T) {
-	fsys := configtest.NewMemFS("/", "/home/u")
+	fsys := config.OSFS{}
 	ctx := context.Background()
-	path := "/cfg/config.json"
+	path := filepath.Join(t.TempDir(), "cfg", "config.json")
 
 	g, err := config.LoadGlobalOrEmpty(ctx, fsys, path)
 	if err != nil {
@@ -129,8 +130,8 @@ func TestGlobal_removeAccount_unknownReturnsErr(t *testing.T) {
 }
 
 func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
-	fsys := configtest.NewMemFS("/", "/home/u")
-	path := "/cfg/config.json"
+	fsys := config.OSFS{}
+	path := filepath.Join(t.TempDir(), "config.json")
 
 	if err := fsys.WriteFile(path, []byte(`{"accounts":[{"name":"prior","active":true}]}`), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -154,8 +155,8 @@ func TestGlobal_Save_isAtomicViaRename(t *testing.T) {
 }
 
 func TestGlobal_legacyConfigWithoutPackagesField_loadsCleanly(t *testing.T) {
-	fsys := configtest.NewMemFS("/", "/home/u")
-	path := "/cfg/config.json"
+	fsys := config.OSFS{}
+	path := filepath.Join(t.TempDir(), "config.json")
 	legacy := []byte(`{"accounts":[{"name":"playci","active":true}]}`)
 	if err := fsys.WriteFile(path, legacy, 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
