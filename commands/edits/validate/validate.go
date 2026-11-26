@@ -25,11 +25,8 @@ type Payload struct {
 func (p Payload) Renderers() output.Renderers {
 	r := p.Payload.Renderers()
 	r.JSON = func(w io.Writer) error {
-		if len(p.Raw) > 0 {
-			_, err := w.Write(p.Raw)
-			return err
-		}
-		return output.WriteJSON(w, p.Payload)
+		_, err := w.Write(p.Raw)
+		return err
 	}
 	return r
 }
