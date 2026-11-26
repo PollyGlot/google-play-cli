@@ -303,6 +303,14 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 	})
 	if err != nil {
 		status, msg := failure(err)
+		var ae *api.Error
+		if status == 0 && errors.As(err, &ae) && ae.ExitCode() != exitNetwork {
+			return "", CheckResult{
+				Passed:   false,
+				ExitCode: ae.ExitCode(),
+				Hint:     "edits.insert for " + packageName + " was never sent (" + msg + ")",
+			}, true
+		}
 		if status == 0 {
 			return "", CheckResult{
 				Passed:   false,

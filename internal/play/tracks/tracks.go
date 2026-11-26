@@ -119,7 +119,7 @@ func List(ctx context.Context, hc *http.Client, pkg, editID string) ([]Track, js
 func Update(ctx context.Context, hc *http.Client, pkg, editID, track string, release Release) (*Track, json.RawMessage, error) {
 	payload, err := json.Marshal(Track{Track: track, Releases: []Release{release}})
 	if err != nil {
-		return nil, nil, &api.Error{Operation: opTracksUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err}
+		return nil, nil, api.BuildFailure(api.Error{Operation: opTracksUpdate, Package: pkg, Message: "marshal payload: " + err.Error(), Cause: err})
 	}
 	return UpdateRaw(ctx, hc, pkg, editID, track, payload)
 }

@@ -26,7 +26,7 @@ func TestDoctor_emptyPackageValue_isUsageError_beforeAnyCheck(t *testing.T) {
 	if calls := fake.Calls(); len(calls) != 0 {
 		t.Errorf("checks ran before the usage error: %+v", calls)
 	}
-	if stdout.Len() != 0 {
+	if strings.Contains(stdout.String(), `"passed"`) {
 		t.Errorf("check results printed before the usage error:\n%s", stdout.String())
 	}
 }

@@ -49,7 +49,7 @@ func Describe(rc *kernel.RunContext, set vitals.MetricSet, flag string) (output.
 	if err != nil {
 		return nil, err
 	}
-	fresh, err := vitals.ParseFreshness(raw)
+	fresh, err := vitals.ParseFreshness(pkg, raw)
 	if err != nil {
 		return nil, err
 	}

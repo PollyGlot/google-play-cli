@@ -9,6 +9,9 @@ amended (2026-11-20): implementation decisions moved from code comments
 amended (2026-11-26): a 2xx body that does not decode is exit 30, and a
 request that never left is exit 20 or 1 (#844)
 
+amended (2026-11-26): every decoder and every module-built request follow
+those two rules (#917)
+
 ## Context
 
 Every upstream failure reaches the user as an exit code and, under
@@ -78,17 +81,19 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
 - **A 2xx body that reads whole but does not decode is exit 30**, not
   retryable. The API answered something gplay cannot read, and a re-run gets
   the same body. The same holds for a body that decodes but lacks a field
-  gplay needs (an Edit ID, a product's identity). The decoders that read a
-  response through `api.Do` or `DoJSON` build the error with
-  `api.DecodeFailure`, which keeps the 2xx status received, or 200 when the
-  caller no longer has it; no module stamps a status of its own. Three
-  commands that decode a second time still exit 1 on such a body (#917).
+  gplay needs (an Edit ID, a product's identity). Every decoder builds the
+  error with `api.DecodeFailure`, which keeps the 2xx status received, or 200
+  when the caller no longer has it; no module stamps a status of its own.
+  Code that re-decodes an item of a listing or a track already read
+  (monetization, rollout) still exits 1 on such an item (#920).
 - **A request that fails before it is sent is exit 20 or 1.** A request body
   that cannot be opened is a local file problem, exit 20
   ([ADR-0056](./0056-media-upload-protocol.md)). A request that cannot be
   built (a URL template missing a parameter, a body that does not encode) is
   exit 1: nothing was sent, and a retry builds the same request. Neither is
-  the network's retry-safe 50.
+  the network's retry-safe 50. A module that builds a body or a URL itself
+  reports the failure with `api.BuildFailure`, the same kind the executor
+  builds.
 - **`auth doctor` watches the transport itself** to tell "never answered"
   from a key that could not be used. The jwt flow flattens the transport error
   with `%v` before returning it, so the error chain alone cannot draw that

@@ -61,7 +61,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 		"deobfuscationFileType": fileType,
 	})
 	if err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err})
 	}
 	u += "?uploadType=resumable"
 

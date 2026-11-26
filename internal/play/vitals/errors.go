@@ -3,13 +3,13 @@ package vitals
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 func ErrorCountSet() MetricSet {
@@ -89,7 +89,7 @@ type ErrorIssue struct {
 	IssueURI     string
 }
 
-func ParseErrorIssues(body []byte) ([]ErrorIssue, error) {
+func ParseErrorIssues(pkg string, body []byte) ([]ErrorIssue, error) {
 	var resp struct {
 		ErrorIssues []struct {
 			Type                string `json:"type"`
@@ -102,7 +102,7 @@ func ParseErrorIssues(body []byte) ([]ErrorIssue, error) {
 		} `json:"errorIssues"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode error issues: %w", err)
+		return nil, api.DecodeFailure(api.Error{Operation: opSearchIssues, Package: pkg, Message: "decode error issues: " + err.Error(), Cause: err})
 	}
 	out := make([]ErrorIssue, 0, len(resp.ErrorIssues))
 	for _, i := range resp.ErrorIssues {
@@ -128,7 +128,7 @@ type ErrorReport struct {
 	Report     string
 }
 
-func ParseErrorReports(body []byte) ([]ErrorReport, error) {
+func ParseErrorReports(pkg string, body []byte) ([]ErrorReport, error) {
 	var resp struct {
 		ErrorReports []struct {
 			Type       string `json:"type"`
@@ -146,7 +146,7 @@ func ParseErrorReports(body []byte) ([]ErrorReport, error) {
 		} `json:"errorReports"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode error reports: %w", err)
+		return nil, api.DecodeFailure(api.Error{Operation: opSearchReports, Package: pkg, Message: "decode error reports: " + err.Error(), Cause: err})
 	}
 	out := make([]ErrorReport, 0, len(resp.ErrorReports))
 	for _, r := range resp.ErrorReports {

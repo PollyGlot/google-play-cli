@@ -65,6 +65,15 @@ func DecodeFailure(e Error) *Error {
 	return &e
 }
 
+func BuildFailure(e Error) *Error {
+	cause := e.Cause
+	if cause == nil {
+		cause = errors.New(e.Message)
+	}
+	e.Cause = &notSentError{err: cause}
+	return &e
+}
+
 type notSentError struct {
 	err   error
 	local bool

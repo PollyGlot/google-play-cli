@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/redact"
@@ -51,6 +53,11 @@ func (e *failedError) ExitCode() int {
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
+	for i, p := range in.Packages {
+		if strings.TrimSpace(p) == "" {
+			return nil, exit.Usagef("--package value %d of %d is empty: pass a package name, e.g. --package com.example.app", i+1, len(in.Packages))
+		}
+	}
 	base := doctorBaseHTTP(rc)
 	wrapped, obs := transport.WithScopeObserver(base.Transport)
 	hc := *base

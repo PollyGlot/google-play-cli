@@ -79,7 +79,7 @@ func FetchObjectLimit(ctx context.Context, hc *http.Client, bucket, object strin
 func doGet(ctx context.Context, hc *http.Client, op, bucket, u string, maxRead int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return nil, &api.Error{Operation: op, Resource: bucketResource(bucket), Message: err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: op, Resource: bucketResource(bucket), Message: err.Error(), Cause: err})
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

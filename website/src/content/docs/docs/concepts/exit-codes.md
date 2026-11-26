@@ -19,7 +19,7 @@ agent whether retrying can help, without parsing error messages.
 | `10` | Authentication failure (SA invalid, token refused, scope missing, no developer-id) | No |
 | `11` | Authorization (403: SA not invited on the app/account) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
-| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
+| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...), or a 2xx body gplay cannot decode | No |
 | `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
 | `50` | Network (timeout, DNS, refused) | **Yes** |
 | `60` | State conflict (open edit, rate-limited, ambiguous target, ...) | Sometimes |

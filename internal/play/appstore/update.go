@@ -59,17 +59,17 @@ type UpdateHostedAppRequest struct {
 func UpdateHostedApp(ctx context.Context, hc *http.Client, storePackage, pkg string, body json.RawMessage) (json.RawMessage, error) {
 	fields := map[string]json.RawMessage{}
 	if err := json.Unmarshal(body, &fields); err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err})
 	}
 	target, err := json.Marshal(pkg)
 	if err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err})
 	}
 	fields["packageName"] = target
 
 	out, err := json.Marshal(fields)
 	if err != nil {
-		return nil, &api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: opUpdateHostedApp, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err})
 	}
 
 	return api.Do(ctx, hc, api.Call{

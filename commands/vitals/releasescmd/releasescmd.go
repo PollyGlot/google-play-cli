@@ -49,7 +49,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := vitals.ParseReleases(raw)
+	rows, err := vitals.ParseReleases(pkg, raw)
 	if err != nil {
 		return nil, err
 	}

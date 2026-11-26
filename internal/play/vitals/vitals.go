@@ -68,12 +68,12 @@ func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body
 	req := map[string]json.RawMessage{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			return nil, &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+			return nil, api.BuildFailure(api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err})
 		}
 	}
 	m, err := apiregistry.Resolve(set.QueryMethodID())
 	if err != nil {
-		return nil, &api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: opQuery, Package: pkg, Message: err.Error(), Cause: err})
 	}
 	rows, _, err := api.Paginate(api.Pager{Op: opQuery, Target: pkg, What: "vitals :query"},
 		func(token string, _ int) ([]json.RawMessage, string, error) {
@@ -85,7 +85,7 @@ func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body
 			}
 			pageBody, err := json.Marshal(req)
 			if err != nil {
-				return nil, "", &api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err}
+				return nil, "", api.BuildFailure(api.Error{Operation: opQuery, Package: pkg, Message: "encode request: " + err.Error(), Cause: err})
 			}
 			raw, err := api.Do(ctx, hc, api.Call{Method: m, Op: opQuery, Target: pkg, Params: map[string]string{"appsId": pkg}, Body: pageBody})
 			if err != nil {
@@ -108,7 +108,7 @@ const opDescribe = "playdeveloperreporting.vitals.get"
 func Describe(ctx context.Context, hc *http.Client, set MetricSet, pkg string) (json.RawMessage, error) {
 	m, err := apiregistry.Resolve(set.GetMethodID())
 	if err != nil {
-		return nil, &api.Error{Operation: opDescribe, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: opDescribe, Package: pkg, Message: err.Error(), Cause: err})
 	}
 	return api.Do(ctx, hc, api.Call{Method: m, Op: opDescribe, Target: pkg, Params: map[string]string{"appsId": pkg}})
 }
@@ -120,7 +120,7 @@ type Freshness struct {
 	LatestEnd     time.Time
 }
 
-func ParseFreshness(body []byte) ([]Freshness, error) {
+func ParseFreshness(pkg string, body []byte) ([]Freshness, error) {
 	var resp struct {
 		FreshnessInfo struct {
 			Freshnesses []struct {
@@ -135,7 +135,7 @@ func ParseFreshness(body []byte) ([]Freshness, error) {
 		} `json:"freshnessInfo"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode vitals freshness: %w", err)
+		return nil, api.DecodeFailure(api.Error{Operation: opDescribe, Package: pkg, Message: "decode vitals freshness: " + err.Error(), Cause: err})
 	}
 	out := make([]Freshness, 0, len(resp.FreshnessInfo.Freshnesses))
 	for _, f := range resp.FreshnessInfo.Freshnesses {
@@ -324,7 +324,7 @@ type apiMetricValue struct {
 	} `json:"decimalValue"`
 }
 
-func ParseTimeline(body []byte) (Timeline, error) {
+func ParseTimeline(pkg string, body []byte) (Timeline, error) {
 	var resp struct {
 		Rows []struct {
 			StartTime         apiDateTime         `json:"startTime"`
@@ -334,7 +334,7 @@ func ParseTimeline(body []byte) (Timeline, error) {
 		} `json:"rows"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return Timeline{}, fmt.Errorf("decode vitals timeline: %w", err)
+		return Timeline{}, api.DecodeFailure(api.Error{Operation: opQuery, Package: pkg, Message: "decode vitals timeline: " + err.Error(), Cause: err})
 	}
 	tl := Timeline{Rows: make([]Row, 0, len(resp.Rows))}
 	for _, r := range resp.Rows {
