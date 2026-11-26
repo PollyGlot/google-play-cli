@@ -23,6 +23,10 @@ import (
 const pkg = "com.example.app"
 
 func newValidateFake(validateStatus int) *testkit.Fake {
+	return newValidateFakeBody(validateStatus, `{"id":"edit-9","expiryTimeSeconds":"1700000000"}`)
+}
+
+func newValidateFakeBody(validateStatus int, okBody string) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		if c.Method != http.MethodPost || !strings.HasSuffix(c.Path, "/edits/edit-9:validate") {
 			return 0, "", false
@@ -30,7 +34,7 @@ func newValidateFake(validateStatus int) *testkit.Fake {
 		if validateStatus != 0 {
 			return validateStatus, `{"error":{"code":400,"message":"The release notes exceed 500 characters"}}`, true
 		}
-		return 200, `{"id":"edit-9","expiryTimeSeconds":"1700000000"}`, true
+		return 200, okBody, true
 	})
 }
 
@@ -125,6 +129,28 @@ func TestRun_invalid_400_exit30_keepsPin(t *testing.T) {
 		t.Error("a failed validate must leave the pin in place for a fix-and-retry")
 	}
 	validateCalls(t, fake)
+}
+
+func TestRun_empty2xxBody_exit30_noOutput(t *testing.T) {
+	fake := newValidateFakeBody(0, "")
+	rc, gplayDir := newRC(t, fake)
+	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-9"); err != nil {
+		t.Fatalf("seed pin: %v", err)
+	}
+
+	r, err := validatecmd.Run(rc, validatecmd.Input{Package: pkg})
+	if err == nil {
+		t.Fatalf("Run on an empty 2xx body succeeded; json = %q", render(t, r, output.FormatJSON))
+	}
+	if code := exitOf(t, err); code != 30 {
+		t.Fatalf("exit = %d, want 30 (undecodable 2xx body); err = %v", code, err)
+	}
+	if !strings.Contains(err.Error(), "edits.validate") {
+		t.Errorf("err = %q, want the operation named", err)
+	}
+	if n := validateCalls(t, fake); n != 1 {
+		t.Errorf("validateCalls = %d, want 1", n)
+	}
 }
 
 func TestRun_noOpenEdit_exit60_noNetwork(t *testing.T) {
