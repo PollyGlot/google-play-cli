@@ -95,7 +95,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, subscriptionscmd.Classify(pkg, err)
 	}
-	embedded, err := subscriptionscmd.EmbedOffers(items, offers)
+	embedded, err := subscriptionscmd.EmbedOffers(pkg, items, offers)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	rawSubs := make([]json.RawMessage, 0, len(items))
 	written := make([]string, 0, len(items))
 	for _, it := range items {
-		entries = append(entries, catalog.Entry{ProductID: it.ProductID, Raw: embedded[it.ProductID]})
+		entries = append(entries, catalog.Entry{ProductID: it.ProductID, Raw: embedded[it.ProductID], From: subscriptions.ListSource(pkg)})
 		rawSubs = append(rawSubs, it.Raw)
 		written = append(written, it.ProductID+".json")
 	}

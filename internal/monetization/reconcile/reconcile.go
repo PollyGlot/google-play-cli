@@ -2,9 +2,12 @@ package reconcile
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
+
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 type Field struct {
@@ -163,18 +166,18 @@ func (p Plan) HasDeletes() bool {
 	return len(p.Deletes)+len(p.BasePlanDeletes)+len(p.OfferDeletes) > 0
 }
 
-func BasePlanDeletes(local, live map[string]json.RawMessage) ([]Change, error) {
+func BasePlanDeletes(local, live map[string]json.RawMessage, from api.Source) ([]Change, error) {
 	var out []Change
 	for id, rawLocal := range local {
 		rawLive, ok := live[id]
 		if !ok {
 			continue
 		}
-		localIDs, err := basePlanIDs(id, "declared", rawLocal)
+		localIDs, err := basePlanIDs(id, "declared", rawLocal, declaredFailure)
 		if err != nil {
 			return nil, err
 		}
-		liveIDs, err := basePlanIDs(id, "live", rawLive)
+		liveIDs, err := basePlanIDs(id, "live", rawLive, from.DecodeFailure)
 		if err != nil {
 			return nil, err
 		}
@@ -188,26 +191,33 @@ func BasePlanDeletes(local, live map[string]json.RawMessage) ([]Change, error) {
 	return out, nil
 }
 
-func basePlanIDs(id, side string, raw json.RawMessage) (map[string]struct{}, error) {
+func basePlanIDs(id, side string, raw json.RawMessage, fail func(string, error) error) (map[string]struct{}, error) {
 	var sub struct {
 		BasePlans []struct {
 			BasePlanID string `json:"basePlanId"`
 		} `json:"basePlans"`
 	}
 	if err := json.Unmarshal(raw, &sub); err != nil {
-		return nil, fmt.Errorf("decode %s subscription %q: %w", side, id, err)
+		return nil, fail(fmt.Sprintf("decode %s subscription %q", side, id), err)
 	}
 	ids := make(map[string]struct{}, len(sub.BasePlans))
 	for _, bp := range sub.BasePlans {
 		if bp.BasePlanID == "" {
-			return nil, fmt.Errorf("%s subscription %q carries a base plan without a basePlanId: refusing a plan entry that cannot be addressed", side, id)
+			return nil, fail(fmt.Sprintf("%s subscription %q carries a base plan without a basePlanId: refusing a plan entry that cannot be addressed", side, id), nil)
 		}
 		ids[bp.BasePlanID] = struct{}{}
 	}
 	return ids, nil
 }
 
-func Compute(local, live map[string]json.RawMessage, managed []Field) (Plan, error) {
+func declaredFailure(message string, cause error) error {
+	if cause == nil {
+		return errors.New(message)
+	}
+	return fmt.Errorf("%s: %w", message, cause)
+}
+
+func Compute(local, live map[string]json.RawMessage, from api.Source, managed []Field) (Plan, error) {
 	var plan Plan
 	for id, rawLocal := range local {
 		rawLive, ok := live[id]
@@ -215,7 +225,7 @@ func Compute(local, live map[string]json.RawMessage, managed []Field) (Plan, err
 			plan.Creates = append(plan.Creates, Change{ProductID: id})
 			continue
 		}
-		changed, err := changedFields(id, rawLocal, rawLive, managed)
+		changed, err := changedFields(id, rawLocal, rawLive, from, managed)
 		if err != nil {
 			return Plan{}, err
 		}
@@ -237,13 +247,13 @@ func Compute(local, live map[string]json.RawMessage, managed []Field) (Plan, err
 	return plan, nil
 }
 
-func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field) ([]string, error) {
+func changedFields(id string, rawLocal, rawLive json.RawMessage, from api.Source, managed []Field) ([]string, error) {
 	var localM, liveM map[string]any
 	if err := json.Unmarshal(rawLocal, &localM); err != nil {
 		return nil, fmt.Errorf("decode declared subscription %q: %w", id, err)
 	}
 	if err := json.Unmarshal(rawLive, &liveM); err != nil {
-		return nil, fmt.Errorf("decode live subscription %q: %w", id, err)
+		return nil, from.DecodeFailure(fmt.Sprintf("decode live item %q", id), err)
 	}
 	var changed []string
 	for _, f := range managed {
@@ -263,7 +273,7 @@ func changedFields(id string, rawLocal, rawLive json.RawMessage, managed []Field
 	return changed, nil
 }
 
-func ComputeChildren(local, live map[Key]json.RawMessage, managed []Field) (creates, patches, deletes []Change, err error) {
+func ComputeChildren(local, live map[Key]json.RawMessage, from api.Source, managed []Field) (creates, patches, deletes []Change, err error) {
 	byKey := map[string]Key{}
 	flatten := func(in map[Key]json.RawMessage) map[string]json.RawMessage {
 		out := make(map[string]json.RawMessage, len(in))
@@ -273,7 +283,7 @@ func ComputeChildren(local, live map[Key]json.RawMessage, managed []Field) (crea
 		}
 		return out
 	}
-	plan, err := Compute(flatten(local), flatten(live), managed)
+	plan, err := Compute(flatten(local), flatten(live), from, managed)
 	if err != nil {
 		return nil, nil, nil, err
 	}

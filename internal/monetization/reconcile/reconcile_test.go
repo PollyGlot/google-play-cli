@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 var managed = []reconcile.Field{
@@ -26,7 +27,7 @@ func TestCompute_partitionsActions(t *testing.T) {
 		"same":    raw(`{"productId":"same","listings":[{"languageCode":"en-US","title":"Same"}]}`),
 		"gone":    raw(`{"productId":"gone","listings":[{"languageCode":"en-US","title":"Gone"}]}`),
 	}
-	plan, err := reconcile.Compute(local, live, managed)
+	plan, err := reconcile.Compute(local, live, api.Source{}, managed)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
@@ -57,7 +58,7 @@ func TestCompute_unmanagedFieldsInvisible(t *testing.T) {
 	live := map[string]json.RawMessage{
 		"premium": raw(`{"productId":"premium","listings":[{"languageCode":"en-US","title":"Premium"}],"basePlans":[{"basePlanId":"monthly"}]}`),
 	}
-	plan, err := reconcile.Compute(local, live, managed)
+	plan, err := reconcile.Compute(local, live, api.Source{}, managed)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestCompute_unmanagedFieldsInvisible(t *testing.T) {
 func TestCompute_missingManagedFieldEqualsAbsent(t *testing.T) {
 	local := map[string]json.RawMessage{"p": raw(`{"productId":"p","listings":[]}`)}
 	live := map[string]json.RawMessage{"p": raw(`{"productId":"p","listings":[]}`)}
-	plan, err := reconcile.Compute(local, live, managed)
+	plan, err := reconcile.Compute(local, live, api.Source{}, managed)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
 	liveSame := map[string]json.RawMessage{
 		"p": raw(`{"productId":"p","basePlans":[{"basePlanId":"monthly","state":"ACTIVE","regionalConfigs":[{"regionCode":"US","price":{"units":"4"}}]}]}`),
 	}
-	plan, err := reconcile.Compute(local, liveSame, fields)
+	plan, err := reconcile.Compute(local, liveSame, api.Source{}, fields)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestCompute_normalizerExcludesOutputOnly(t *testing.T) {
 	livePriceDrift := map[string]json.RawMessage{
 		"p": raw(`{"productId":"p","basePlans":[{"basePlanId":"monthly","state":"ACTIVE","regionalConfigs":[{"regionCode":"US","price":{"units":"5"}}]}]}`),
 	}
-	plan, err = reconcile.Compute(local, livePriceDrift, fields)
+	plan, err = reconcile.Compute(local, livePriceDrift, api.Source{}, fields)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
@@ -111,7 +112,7 @@ func TestCompute_deterministicOrder(t *testing.T) {
 		"b": raw(`{"productId":"b"}`),
 		"a": raw(`{"productId":"a"}`),
 	}
-	plan, err := reconcile.Compute(local, map[string]json.RawMessage{}, managed)
+	plan, err := reconcile.Compute(local, map[string]json.RawMessage{}, api.Source{}, managed)
 	if err != nil {
 		t.Fatalf("Compute: %v", err)
 	}
@@ -129,7 +130,7 @@ func TestBasePlanDeletes_removedPlansOnly(t *testing.T) {
 		"premium": raw(`{"productId":"premium","basePlans":[{"basePlanId":"yearly","state":"DRAFT"},{"basePlanId":"monthly","state":"ACTIVE"},{"basePlanId":"trial","state":"DRAFT"}]}`),
 		"gone":    raw(`{"productId":"gone","basePlans":[{"basePlanId":"monthly"}]}`),
 	}
-	got, err := reconcile.BasePlanDeletes(local, live)
+	got, err := reconcile.BasePlanDeletes(local, live, api.Source{})
 	if err != nil {
 		t.Fatalf("BasePlanDeletes: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestBasePlanDeletes_removedPlansOnly(t *testing.T) {
 func TestBasePlanDeletes_unaddressablePlan_refuses(t *testing.T) {
 	local := map[string]json.RawMessage{"premium": raw(`{"productId":"premium"}`)}
 	live := map[string]json.RawMessage{"premium": raw(`{"productId":"premium","basePlans":[{"state":"DRAFT"}]}`)}
-	if _, err := reconcile.BasePlanDeletes(local, live); err == nil {
+	if _, err := reconcile.BasePlanDeletes(local, live, api.Source{}); err == nil {
 		t.Fatal("want an error on a base plan without basePlanId")
 	}
 }
@@ -159,7 +160,7 @@ func TestComputeChildren_typedAndInDisplayOrder(t *testing.T) {
 	live := map[reconcile.Key]json.RawMessage{
 		{ProductID: "a", ParentID: "p", OfferID: "gone"}: offer,
 	}
-	creates, patches, deletes, err := reconcile.ComputeChildren(local, live, []reconcile.Field{{Name: "offerTags"}})
+	creates, patches, deletes, err := reconcile.ComputeChildren(local, live, api.Source{}, []reconcile.Field{{Name: "offerTags"}})
 	if err != nil {
 		t.Fatalf("ComputeChildren: %v", err)
 	}

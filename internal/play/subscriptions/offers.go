@@ -50,6 +50,10 @@ type offersPage struct {
 	NextPageToken      string            `json:"nextPageToken"`
 }
 
+func OffersListSource(pkg string) api.Source {
+	return api.Source{Operation: opOffersList, Package: pkg}
+}
+
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opOffersList, Target: pkg, What: "offers.list"},
 		func(token string, _ int) ([]OfferItem, string, error) {

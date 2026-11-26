@@ -71,6 +71,8 @@ type LegacyItem struct {
 	Raw json.RawMessage
 }
 
+func ListSource(pkg string) api.Source { return api.Source{Operation: opList, Package: pkg} }
+
 func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opList, Target: pkg, What: "onetimeproducts.list"},
 		func(token string, _ int) ([]Item, string, error) {
@@ -110,6 +112,10 @@ func pageQuery(token string) url.Values {
 		q.Set("pageToken", token)
 	}
 	return q
+}
+
+func OffersListSource(pkg string) api.Source {
+	return api.Source{Operation: opOffersList, Package: pkg}
 }
 
 func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferItem, error) {
@@ -363,6 +369,10 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 var ErrLegacyRetired = errors.New("legacy inappproducts API retired by Google for this app")
 
 const legacyRetiredMessage = "migrate to the new publishing api"
+
+func InAppProductsListSource(pkg string) api.Source {
+	return api.Source{Operation: opLegacyList, Package: pkg}
+}
 
 func ListInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]LegacyItem, error) {
 	items, err := listInAppProducts(ctx, hc, pkg)
