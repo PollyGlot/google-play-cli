@@ -228,3 +228,43 @@ func TestResumable_canceledDuringBackoff_skipsProbe(t *testing.T) {
 		t.Fatalf("PUT count = %d, want 1 (no probe after cancel)", len(rt.puts))
 	}
 }
+
+func TestResumable_chunkBodyReadUnderTimer_closeReleasesIt(t *testing.T) {
+	rt := &resumeRT{t: t, putSteps: []step{{status: 200, body: `{"versionCode":8}`, ctxBody: true}}}
+	body, _, err := run(t, rt, 1024)
+	if err != nil {
+		t.Fatalf("ResumableUpload: %v", err)
+	}
+	if string(body) != `{"versionCode":8}` {
+		t.Fatalf("body = %q, want it read whole while the chunk timer is held", body)
+	}
+	if len(rt.ctxs) != 1 || !errors.Is(rt.ctxs[0].Err(), context.Canceled) {
+		t.Fatalf("chunk contexts = %v, want one, canceled once its body is closed", rt.ctxs)
+	}
+}
+
+func TestResumable_parallelUploadsKeepTheirOwnTiming(t *testing.T) {
+	t.Parallel()
+	t.Run("short chunk bound", func(t *testing.T) {
+		t.Parallel()
+		rt := &resumeRT{t: t, putSteps: []step{
+			{hang: true},
+			{status: 308, rng: "bytes=0-8388607"},
+			{status: 200, body: `{"versionCode":4}`},
+		}}
+		if _, _, err := runCtx(t, context.Background(), rt, api.ResumableChunkSize+300, 50*time.Millisecond); err != nil {
+			t.Fatalf("ResumableUpload: %v", err)
+		}
+		assertBackoffCurve(t, rt.waits, 0)
+	})
+	t.Run("long chunk bound", func(t *testing.T) {
+		t.Parallel()
+		rt := &resumeRT{t: t, putSteps: repeat(8, step{status: 503}, step{status: 308})}
+		_, _, err := runCtx(t, context.Background(), rt, 4096, time.Minute)
+		var apiErr *api.Error
+		if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "upstream 5xx") {
+			t.Fatalf("err = %v, want the 5xx stall error", err)
+		}
+		assertBackoffCurve(t, rt.waits, 0, 1, 2, 3, 4, 5, 6, 7)
+	})
+}

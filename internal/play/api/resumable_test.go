@@ -42,6 +42,7 @@ type resumeRT struct {
 
 	waits []time.Duration
 	onPut func(i int)
+	ctxs  []context.Context
 }
 
 type step struct {
@@ -50,6 +51,7 @@ type step struct {
 	body    string
 	hang    bool
 	cutBody bool
+	ctxBody bool
 }
 
 func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
@@ -81,6 +83,7 @@ func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 			_ = req.Body.Close()
 		}
 		r.puts = append(r.puts, putRecord{contentRange: req.Header.Get("Content-Range"), bodyLen: len(body)})
+		r.ctxs = append(r.ctxs, req.Context())
 		if r.putIdx >= len(r.putSteps) {
 			r.t.Fatalf("unexpected PUT #%d: only %d scripted", r.putIdx+1, len(r.putSteps))
 		}
@@ -103,6 +106,9 @@ func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 		if st.cutBody {
 			resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(st.body[:len(st.body)/2]), errReader{}))
 		}
+		if st.ctxBody {
+			resp.Body = io.NopCloser(ctxReader{ctx: req.Context(), r: strings.NewReader(st.body)})
+		}
 		return resp, nil
 
 	default:
@@ -119,6 +125,18 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("simulated reset mid-body") }
 
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
 func reader(n int) io.ReaderAt { return bytes.NewReader(make([]byte, n)) }
 
 func run(t *testing.T, rt *resumeRT, size int) ([]byte, int, error) {
@@ -128,9 +146,8 @@ func run(t *testing.T, rt *resumeRT, size int) ([]byte, int, error) {
 
 func runCtx(t *testing.T, ctx context.Context, rt *resumeRT, size int, chunkTimeout time.Duration) ([]byte, int, error) {
 	t.Helper()
-	api.SetResumeTiming(t, chunkTimeout, &rt.waits)
 	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
-	return api.ResumableUpload(ctx, hc, "bundles.upload", "com.example.app", initiateEndpoint, "application/octet-stream", reader(size), int64(size))
+	return api.ResumableUploadPaced(ctx, hc, "bundles.upload", "com.example.app", initiateEndpoint, "application/octet-stream", reader(size), int64(size), chunkTimeout, &rt.waits)
 }
 
 func TestResumable_happyPath_singleChunk(t *testing.T) {
