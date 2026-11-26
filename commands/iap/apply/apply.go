@@ -122,12 +122,10 @@ func legacyEqual(from api.Source, sku string, local, live json.RawMessage) (bool
 	if err := json.Unmarshal(live, &v); err != nil {
 		return false, from.DecodeFailure(fmt.Sprintf("decode live in-app product %q", sku), err)
 	}
-	if json.Unmarshal(local, &l) != nil {
-		return false, nil
-	}
+	localDecoded := json.Unmarshal(local, &l) == nil
 	delete(l, "packageName")
 	delete(v, "packageName")
-	return reflect.DeepEqual(l, v), nil
+	return localDecoded && reflect.DeepEqual(l, v), nil
 }
 
 func planStates(pkg string, localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
