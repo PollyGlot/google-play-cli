@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	initiateURL = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/bundles?uploadType=resumable"
-	sessionURI  = "https://androidpublisher.googleapis.com/upload/session/abc123"
+	initiateEndpoint = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/bundles"
+	initiateURL      = initiateEndpoint + "?uploadType=resumable"
+	sessionURI       = "https://androidpublisher.googleapis.com/upload/session/abc123"
 )
 
 type putRecord struct {
@@ -123,7 +124,7 @@ func runCtx(t *testing.T, ctx context.Context, rt *resumeRT, size int, chunkTime
 	t.Helper()
 	api.SetResumeTiming(t, chunkTimeout, &rt.waits)
 	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
-	return api.ResumableUpload(ctx, hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", reader(size), int64(size))
+	return api.ResumableUpload(ctx, hc, "bundles.upload", "com.example.app", initiateEndpoint, "application/octet-stream", reader(size), int64(size))
 }
 
 func TestResumable_happyPath_singleChunk(t *testing.T) {
@@ -343,7 +344,7 @@ func (s *shortReader) ReadAt(p []byte, off int64) (int, error) {
 func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 	rt := &resumeRT{t: t, putSteps: []step{}}
 	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
-	_, _, err := api.ResumableUpload(context.Background(), hc, "bundles.upload", "com.example.app", initiateURL, "application/octet-stream", &shortReader{actual: 512}, 1024)
+	_, _, err := api.ResumableUpload(context.Background(), hc, "bundles.upload", "com.example.app", initiateEndpoint, "application/octet-stream", &shortReader{actual: 512}, 1024)
 	var lioErr *api.LocalIOError
 	if !errors.As(err, &lioErr) {
 		t.Fatalf("err = %v, want *api.LocalIOError", err)
