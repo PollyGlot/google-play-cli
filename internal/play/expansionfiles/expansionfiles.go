@@ -67,7 +67,6 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 	if err != nil {
 		return nil, api.BuildFailure(api.Error{Operation: opUpload, Package: pkg, Message: err.Error(), Cause: err})
 	}
-	u += "?uploadType=resumable"
 
 	body, _, err := api.ResumableUpload(ctx, hc, opUpload, pkg, u, "application/octet-stream", f, info.Size())
 	if err != nil {

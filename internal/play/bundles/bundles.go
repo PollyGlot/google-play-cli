@@ -56,13 +56,12 @@ func UploadWith(ctx context.Context, hc *http.Client, pkg, editID, aabPath strin
 	if err != nil {
 		return 0, api.BuildFailure(api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err})
 	}
-	q := url.Values{"uploadType": {"resumable"}}
+	var q url.Values
 	if o.DeviceTierConfigID != "" {
-		q.Set("deviceTierConfigId", o.DeviceTierConfigID)
+		q = url.Values{"deviceTierConfigId": {o.DeviceTierConfigID}}
 	}
-	u += "?" + q.Encode()
 
-	body, status, err := api.ResumableUpload(ctx, hc, op, pkg, u, "application/octet-stream", f, info.Size())
+	body, status, err := api.ResumableUploadWithInitiateBody(ctx, hc, op, api.PackageResource(pkg), u, "application/octet-stream", f, info.Size(), nil, "", q)
 	if err != nil {
 		return 0, err
 	}
