@@ -10,14 +10,23 @@ import (
 )
 
 func TestDoctor_emptyPackageValue_isUsageError_beforeAnyCheck(t *testing.T) {
-	for _, value := range []string{"com.example.app,,com.example.other", "", " "} {
-		t.Run(value, func(t *testing.T) {
+	for _, values := range [][]string{
+		{"com.example.app,,com.example.other"},
+		{""},
+		{" "},
+		{"com.example.app", ""},
+	} {
+		t.Run(strings.Join(values, "|"), func(t *testing.T) {
 			boot := newBoot(t)
 			seedActiveAccount(t, boot, signedSAJSON(t))
 			fake := testkit.NewFake()
 
 			var stdout, stderr bytes.Buffer
-			err := runCmd(t, boot, ctxWithRT(fake), &stdout, &stderr, "--output", "json", "--package", value)
+			args := []string{"--output", "json"}
+			for _, v := range values {
+				args = append(args, "--package", v)
+			}
+			err := runCmd(t, boot, ctxWithRT(fake), &stdout, &stderr, args...)
 			if got := exit.For(err); got != 2 {
 				t.Fatalf("exit.For(err) = %d, want 2; err=%v", got, err)
 			}

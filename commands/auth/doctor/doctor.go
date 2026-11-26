@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
@@ -53,11 +54,6 @@ func (e *failedError) ExitCode() int {
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	for i, p := range in.Packages {
-		if strings.TrimSpace(p) == "" {
-			return nil, exit.Usagef("--package value %d of %d is empty: pass a package name, e.g. --package com.example.app", i+1, len(in.Packages))
-		}
-	}
 	base := doctorBaseHTTP(rc)
 	wrapped, obs := transport.WithScopeObserver(base.Transport)
 	hc := *base
@@ -130,9 +126,6 @@ structured []CheckResult for scripting.`,
 			b.Stdout = cmd.OutOrStdout()
 			b.Stderr = cmd.ErrOrStderr()
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
-				if cmd.Flags().Changed("package") && len(packages) == 0 {
-					return nil, exit.Usagef("--package is empty: pass a package name, e.g. --package com.example.app")
-				}
 				return Run(rc, Input{Packages: packages})
 			})
 		},
@@ -140,7 +133,25 @@ structured []CheckResult for scripting.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringSliceVar(&packages, "package", nil,
 		"Android package name to round-trip an edits.insert+delete against; repeat for multiple packages")
+	f := cmd.Flags().Lookup("package")
+	f.Value = packageList{f.Value.(sliceValue)}
 	return cmd
+}
+
+type sliceValue interface {
+	pflag.Value
+	pflag.SliceValue
+}
+
+type packageList struct{ sliceValue }
+
+func (v packageList) Set(s string) error {
+	for _, p := range strings.Split(s, ",") {
+		if strings.TrimSpace(p) == "" {
+			return exit.Usagef("empty package name: pass one, e.g. --package com.example.app")
+		}
+	}
+	return v.sliceValue.Set(s)
 }
 
 func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {
