@@ -23,7 +23,9 @@ func TokenResponse(r *http.Request) (*http.Response, bool) {
 		return nil, false
 	}
 	if r.Body != nil {
-		r.Body = io.NopCloser(bytes.NewReader(ReadBody(r)))
+		body := ReadBody(r)
+		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 	return Response(http.StatusOK, tokenBody), true
 }

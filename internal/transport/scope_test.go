@@ -27,7 +27,9 @@ func TestScopeObserver_streamsBodyWithoutReadingAhead(t *testing.T) {
 	src := &countingReader{r: strings.NewReader(body)}
 
 	var aheadAfterFirstKiB, received int
+	var innerContentLength int64
 	inner := testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		innerContentLength = req.ContentLength
 		first := make([]byte, 1024)
 		if _, err := io.ReadFull(req.Body, first); err != nil {
 			t.Fatalf("read first KiB: %v", err)
@@ -61,8 +63,11 @@ func TestScopeObserver_streamsBodyWithoutReadingAhead(t *testing.T) {
 	if received != len(body) {
 		t.Errorf("inner transport received %d bytes, want all %d", received, len(body))
 	}
-	if req.ContentLength != int64(len(body)) {
-		t.Errorf("ContentLength = %d, want %d unchanged", req.ContentLength, len(body))
+	if innerContentLength != int64(len(body)) {
+		t.Errorf("inner transport saw ContentLength = %d, want %d unchanged", innerContentLength, len(body))
+	}
+	if got := len(obs.captured); got > maxObservedBody {
+		t.Errorf("observer retained %d bytes, want at most %d", got, maxObservedBody)
 	}
 	want := []string{"https://www.googleapis.com/auth/androidpublisher", "openid"}
 	if got := obs.Scopes(); !slices.Equal(got, want) {
