@@ -54,7 +54,7 @@ var codeCatalog = []CodeDoc{
 	{CodeNotFound, 30, false, "The API found no such package, track, Edit or resource (404)"},
 	{CodeBasePlanNotDraft, 30, false, "The API refused to delete a base plan that is not DRAFT; keep it in the file with state: INACTIVE instead"},
 	{CodeOfferNotDraft, 30, false, "The API refused to delete a subscription offer that is not DRAFT; keep it in the file with state: INACTIVE instead"},
-	{CodeAPIError, 30, false, "Other API 4xx rejection"},
+	{CodeAPIError, 30, false, "Other API 4xx rejection, or a 2xx body gplay cannot decode"},
 	{CodeUpstreamUnavailable, 40, true, "The API is temporarily unhealthy (5xx); retry"},
 	{CodeNetworkError, 50, true, "Network failure with no HTTP response: timeout, DNS, refused"},
 	{CodeCommitOutcomeUnknown, 50, false, "An Edit commit failed after it was sent (timeout, reset or 5xx, exit 50 or 40) and may be live; check the live state before re-running"},
