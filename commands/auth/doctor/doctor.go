@@ -146,12 +146,19 @@ type sliceValue interface {
 type packageList struct{ sliceValue }
 
 func (v packageList) Set(s string) error {
-	for _, p := range strings.Split(s, ",") {
+	empty := exit.Usagef("empty package name: pass one, e.g. --package com.example.app")
+	if strings.TrimSpace(s) == "" {
+		return empty
+	}
+	if err := v.sliceValue.Set(s); err != nil {
+		return err
+	}
+	for _, p := range v.GetSlice() {
 		if strings.TrimSpace(p) == "" {
-			return exit.Usagef("empty package name: pass one, e.g. --package com.example.app")
+			return empty
 		}
 	}
-	return v.sliceValue.Set(s)
+	return nil
 }
 
 func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {

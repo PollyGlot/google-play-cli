@@ -15,6 +15,7 @@ func TestDoctor_emptyPackageValue_isUsageError_beforeAnyCheck(t *testing.T) {
 		{""},
 		{" "},
 		{"com.example.app", ""},
+		{`""`},
 	} {
 		t.Run(strings.Join(values, "|"), func(t *testing.T) {
 			boot := newBoot(t)
