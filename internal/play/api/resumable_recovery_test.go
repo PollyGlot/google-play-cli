@@ -243,6 +243,14 @@ func TestResumable_chunkBodyReadUnderTimer_closeReleasesIt(t *testing.T) {
 	}
 }
 
+func assertChunkBound(t *testing.T, chunk context.Context, start time.Time, bound time.Duration) {
+	t.Helper()
+	deadline, ok := chunk.Deadline()
+	if got := deadline.Sub(start); !ok || got < bound || got > bound+5*time.Second {
+		t.Errorf("chunk deadline %v after start (set %t), want the %v bound of this upload", got, ok, bound)
+	}
+}
+
 func TestResumable_parallelUploadsKeepTheirOwnTiming(t *testing.T) {
 	t.Parallel()
 	t.Run("short chunk bound", func(t *testing.T) {
@@ -252,19 +260,23 @@ func TestResumable_parallelUploadsKeepTheirOwnTiming(t *testing.T) {
 			{status: 308, rng: "bytes=0-8388607"},
 			{status: 200, body: `{"versionCode":4}`},
 		}}
+		start := time.Now()
 		if _, _, err := runCtx(t, context.Background(), rt, api.ResumableChunkSize+300, 50*time.Millisecond); err != nil {
 			t.Fatalf("ResumableUpload: %v", err)
 		}
+		assertChunkBound(t, rt.ctxs[0], start, 50*time.Millisecond)
 		assertBackoffCurve(t, rt.waits, 0)
 	})
 	t.Run("long chunk bound", func(t *testing.T) {
 		t.Parallel()
 		rt := &resumeRT{t: t, putSteps: repeat(8, step{status: 503}, step{status: 308})}
+		start := time.Now()
 		_, _, err := runCtx(t, context.Background(), rt, 4096, time.Minute)
 		var apiErr *api.Error
 		if !errors.As(err, &apiErr) || !strings.Contains(apiErr.Message, "upstream 5xx") {
 			t.Fatalf("err = %v, want the 5xx stall error", err)
 		}
+		assertChunkBound(t, rt.ctxs[0], start, time.Minute)
 		assertBackoffCurve(t, rt.waits, 0, 1, 2, 3, 4, 5, 6, 7)
 	})
 }
