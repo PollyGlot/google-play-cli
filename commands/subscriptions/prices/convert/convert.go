@@ -13,6 +13,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/subscriptions"
 )
 
@@ -112,7 +113,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	}
 	var view convertedView
 	if err := json.Unmarshal(raw, &view); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+		return nil, api.DecodeFailure(api.Error{Operation: "monetization.convertRegionPrices", Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	rows := make([]regionPrice, 0, len(view.ConvertedRegionPrices))
 	for region, rp := range view.ConvertedRegionPrices {

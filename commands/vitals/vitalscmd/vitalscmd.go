@@ -138,7 +138,7 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		return nil, err
 	}
 
-	tl, err := vitals.ParseTimeline(raw)
+	tl, err := vitals.ParseTimeline(pkg, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ func LatestEnd(rc *kernel.RunContext, hc *http.Client, set vitals.MetricSet, pkg
 	if err != nil {
 		return time.Time{}, err
 	}
-	fresh, err := vitals.ParseFreshness(raw)
+	fresh, err := vitals.ParseFreshness(pkg, raw)
 	if err != nil {
 		return time.Time{}, err
 	}

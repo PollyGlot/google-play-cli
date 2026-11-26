@@ -346,7 +346,7 @@ func SetOfferState(ctx context.Context, hc *http.Client, pkg, productID, purchas
 	case StateCancelled:
 		m, op = mOffersCancel, opOffersCancel
 	default:
-		return nil, &api.Error{Operation: opOffersActivate, Package: pkg, Message: "unsupported offer state target " + strconv.Quote(target)}
+		return nil, api.BuildFailure(api.Error{Operation: opOffersActivate, Package: pkg, Message: "unsupported offer state target " + strconv.Quote(target)})
 	}
 	identity := map[string]string{"packageName": pkg, "productId": productID, "purchaseOptionId": purchaseOptionID, "offerId": offerID}
 	body := maps.Clone(identity)

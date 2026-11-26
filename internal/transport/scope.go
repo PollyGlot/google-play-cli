@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"bytes"
 	"encoding/base64"
 	"io"
 	"net/http"
@@ -14,7 +13,8 @@ const maxObservedBody = 64 * 1024
 
 type ScopeObserver struct {
 	mu       sync.Mutex
-	captured string
+	gen      uint64
+	captured []byte
 }
 
 type observerTransport struct {
@@ -31,26 +31,58 @@ func WithScopeObserver(inner http.RoundTripper) (http.RoundTripper, *ScopeObserv
 }
 
 func (t *observerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.Body != nil {
-		buf, err := io.ReadAll(req.Body)
-		if err == nil {
-			observed := buf
-			if len(observed) > maxObservedBody {
-				observed = observed[:maxObservedBody]
+	if req.Body == nil || req.Body == http.NoBody {
+		return t.inner.RoundTrip(req)
+	}
+	observed := req.Clone(req.Context())
+	observed.Body = t.obs.capture(req.Body)
+	if req.GetBody != nil {
+		observed.GetBody = func() (io.ReadCloser, error) {
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, err
 			}
-			t.obs.mu.Lock()
-			t.obs.captured = string(observed)
-			t.obs.mu.Unlock()
-			req.Body = io.NopCloser(bytes.NewReader(buf))
-			req.ContentLength = int64(len(buf))
+			return t.obs.capture(body), nil
 		}
 	}
-	return t.inner.RoundTrip(req)
+	return t.inner.RoundTrip(observed)
+}
+
+type capturingBody struct {
+	io.ReadCloser
+	obs *ScopeObserver
+	gen uint64
+}
+
+func (b *capturingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if n > 0 {
+		b.obs.record(b.gen, p[:n])
+	}
+	return n, err
+}
+
+func (o *ScopeObserver) capture(body io.ReadCloser) io.ReadCloser {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.gen++
+	o.captured = nil
+	return &capturingBody{ReadCloser: body, obs: o, gen: o.gen}
+}
+
+func (o *ScopeObserver) record(gen uint64, p []byte) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	room := maxObservedBody - len(o.captured)
+	if gen != o.gen || room <= 0 {
+		return
+	}
+	o.captured = append(o.captured, p[:min(len(p), room)]...)
 }
 
 func (o *ScopeObserver) Scopes() []string {
 	o.mu.Lock()
-	captured := o.captured
+	captured := string(o.captured)
 	o.mu.Unlock()
 	if captured == "" {
 		return nil

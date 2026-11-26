@@ -57,7 +57,7 @@ func CompleteVersionCodes(boot kernel.Boot) cobra.CompletionFunc {
 			if err != nil {
 				return nil, err
 			}
-			rows, err = vitals.ParseReleases(raw)
+			rows, err = vitals.ParseReleases(pkg, raw)
 			return nil, err
 		})
 		if err != nil {

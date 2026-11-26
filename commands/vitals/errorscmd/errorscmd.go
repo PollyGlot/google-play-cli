@@ -191,7 +191,7 @@ func runIssues(rc *kernel.RunContext, in issuesInput) (output.Renderable, error)
 	if err != nil {
 		return nil, err
 	}
-	issues, err := vitals.ParseErrorIssues(raw)
+	issues, err := vitals.ParseErrorIssues(pkg, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +298,7 @@ func runReports(rc *kernel.RunContext, in reportsInput) (output.Renderable, erro
 	if err != nil {
 		return nil, err
 	}
-	reports, err := vitals.ParseErrorReports(raw)
+	reports, err := vitals.ParseErrorReports(pkg, raw)
 	if err != nil {
 		return nil, err
 	}

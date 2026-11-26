@@ -16,7 +16,7 @@ func Catalog() []Doc {
 		{10, "Authentication failure (SA invalid, token refused, scope missing, no developer-id)", "no"},
 		{11, "Authorization (403: SA not invited on the app/account)", "no"},
 		{20, "Client-side validation (malformed AAB, unknown locale, ...)", "no"},
-		{30, "API 4xx other than auth/perms (not found, conflict, gone, ...)", "no"},
+		{30, "API 4xx other than auth/perms (not found, conflict, gone, ...), or a 2xx body gplay cannot decode", "no"},
 		{40, "API 5xx (upstream temporarily unhealthy)", "yes"},
 		{50, "Network (timeout, DNS, refused)", "yes"},
 		{60, "State conflict (open edit, rate-limited, ambiguous target, ...)", "sometimes"},

@@ -37,7 +37,7 @@ func TestFetchReleaseFilterOptions_GETsTheAppsCustomMethod(t *testing.T) {
 }
 
 func TestParseReleases_oneRowPerServingRelease(t *testing.T) {
-	got, err := vitals.ParseReleases([]byte(releaseOptions))
+	got, err := vitals.ParseReleases("com.example.app", []byte(releaseOptions))
 	if err != nil {
 		t.Fatalf("ParseReleases: %v", err)
 	}

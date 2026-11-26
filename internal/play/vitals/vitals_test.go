@@ -166,7 +166,7 @@ func TestParseTimeline(t *testing.T) {
 	   "dimensions":[{"dimension":"versionCode","int64Value":"123"}],
 	   "metrics":[{"metric":"crashRate","decimalValue":{"value":"0.0156"}}]}
 	]}`)
-	tl, err := vitals.ParseTimeline(body)
+	tl, err := vitals.ParseTimeline("com.example.app", body)
 	if err != nil {
 		t.Fatalf("ParseTimeline: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestParseTimeline_hourlyMidnightCarriesTime(t *testing.T) {
 	  {"startTime":{"year":2026,"month":6,"day":1,"hours":0},"aggregationPeriod":"HOURLY","metrics":[{"metric":"crashRate","decimalValue":{"value":"0.01"}}]},
 	  {"startTime":{"year":2026,"month":6,"day":1,"hours":13},"aggregationPeriod":"HOURLY","metrics":[{"metric":"crashRate","decimalValue":{"value":"0.02"}}]}
 	]}`)
-	tl, err := vitals.ParseTimeline(body)
+	tl, err := vitals.ParseTimeline("com.example.app", body)
 	if err != nil {
 		t.Fatalf("ParseTimeline: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestQuery_emptyBodyTolerated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query on empty body: %v", err)
 	}
-	tl, err := vitals.ParseTimeline(raw)
+	tl, err := vitals.ParseTimeline("com.example.app", raw)
 	if err != nil || !tl.Empty() {
 		t.Errorf("empty body should yield an empty timeline, got %d rows / err %v", len(tl.Rows), err)
 	}

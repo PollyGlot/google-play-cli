@@ -54,7 +54,7 @@ func UploadWith(ctx context.Context, hc *http.Client, pkg, editID, aabPath strin
 
 	u, err := method.UploadURL(map[string]string{"packageName": pkg, "editId": editID})
 	if err != nil {
-		return 0, &api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err}
+		return 0, api.BuildFailure(api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err})
 	}
 	q := url.Values{"uploadType": {"resumable"}}
 	if o.DeviceTierConfigID != "" {

@@ -3,7 +3,6 @@ package vitals
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
@@ -25,7 +24,7 @@ type Release struct {
 	VersionCodes []string
 }
 
-func ParseReleases(body []byte) ([]Release, error) {
+func ParseReleases(pkg string, body []byte) ([]Release, error) {
 	var resp struct {
 		Tracks []struct {
 			DisplayName     string `json:"displayName"`
@@ -37,7 +36,7 @@ func ParseReleases(body []byte) ([]Release, error) {
 		} `json:"tracks"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode release filter options: %w", err)
+		return nil, api.DecodeFailure(api.Error{Operation: opReleaseFilterOptions, Package: pkg, Message: "decode release filter options: " + err.Error(), Cause: err})
 	}
 	var out []Release
 	for _, tr := range resp.Tracks {

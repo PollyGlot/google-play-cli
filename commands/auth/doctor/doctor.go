@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/oauth2"
 
 	authdoctor "github.com/PollyGlot/google-play-cli/internal/auth/doctor"
 	"github.com/PollyGlot/google-play-cli/internal/auth/keystore"
+	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/redact"
@@ -130,7 +133,32 @@ structured []CheckResult for scripting.`,
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringSliceVar(&packages, "package", nil,
 		"Android package name to round-trip an edits.insert+delete against; repeat for multiple packages")
+	f := cmd.Flags().Lookup("package")
+	f.Value = packageList{f.Value.(sliceValue)}
 	return cmd
+}
+
+type sliceValue interface {
+	pflag.Value
+	pflag.SliceValue
+}
+
+type packageList struct{ sliceValue }
+
+func (v packageList) Set(s string) error {
+	empty := exit.Usagef("empty package name: pass one, e.g. --package com.example.app")
+	if strings.TrimSpace(s) == "" {
+		return empty
+	}
+	if err := v.sliceValue.Set(s); err != nil {
+		return err
+	}
+	for _, p := range v.GetSlice() {
+		if strings.TrimSpace(p) == "" {
+			return empty
+		}
+	}
+	return nil
 }
 
 func doctorBaseHTTP(rc *kernel.RunContext) *http.Client {

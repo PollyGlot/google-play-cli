@@ -58,7 +58,7 @@ func TestSearchErrorIssues_issuesGET(t *testing.T) {
 	if !strings.Contains(gotURL, "interval.startTime.year=2026") {
 		t.Errorf("URL missing interval params: %q", gotURL)
 	}
-	issues, err := vitals.ParseErrorIssues(raw)
+	issues, err := vitals.ParseErrorIssues("com.example.app", raw)
 	if err != nil {
 		t.Fatalf("ParseErrorIssues: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestSearchErrorReports_reportsGETAndParse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchErrorReports: %v", err)
 	}
-	reports, err := vitals.ParseErrorReports(raw)
+	reports, err := vitals.ParseErrorReports("com.example.app", raw)
 	if err != nil {
 		t.Fatalf("ParseErrorReports: %v", err)
 	}

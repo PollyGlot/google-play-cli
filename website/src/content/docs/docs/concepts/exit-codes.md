@@ -19,7 +19,7 @@ agent whether retrying can help, without parsing error messages.
 | `10` | Authentication failure (SA invalid, token refused, scope missing, no developer-id) | No |
 | `11` | Authorization (403: SA not invited on the app/account) | No |
 | `20` | Client-side validation (malformed AAB, unknown locale, ...) | No |
-| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...) | No |
+| `30` | API 4xx other than auth/perms (not found, conflict, gone, ...), or a 2xx body gplay cannot decode | No |
 | `40` | API 5xx (upstream temporarily unhealthy) | **Yes** |
 | `50` | Network (timeout, DNS, refused) | **Yes** |
 | `60` | State conflict (open edit, rate-limited, ambiguous target, ...) | Sometimes |
@@ -56,7 +56,7 @@ message (see [Output formats](/docs/concepts/output-formats/)).
 | `NOT_FOUND` | `30` | No | The API found no such package, track, Edit or resource (404) |
 | `BASE_PLAN_NOT_DRAFT` | `30` | No | The API refused to delete a base plan that is not DRAFT; keep it in the file with state: INACTIVE instead |
 | `OFFER_NOT_DRAFT` | `30` | No | The API refused to delete a subscription offer that is not DRAFT; keep it in the file with state: INACTIVE instead |
-| `API_ERROR` | `30` | No | Other API 4xx rejection |
+| `API_ERROR` | `30` | No | Other API 4xx rejection, or a 2xx body gplay cannot decode |
 | `UPSTREAM_UNAVAILABLE` | `40` | **Yes** | The API is temporarily unhealthy (5xx); retry |
 | `NETWORK_ERROR` | `50` | **Yes** | Network failure with no HTTP response: timeout, DNS, refused |
 | `COMMIT_OUTCOME_UNKNOWN` | `50` | No | An Edit commit failed after it was sent (timeout, reset or 5xx, exit 50 or 40) and may be live; check the live state before re-running |
