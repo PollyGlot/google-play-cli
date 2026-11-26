@@ -84,11 +84,8 @@ func renderTable(w io.Writer, p Payload) error {
 }
 
 func renderJSON(w io.Writer, p Payload) error {
-	if len(p.Raw) > 0 {
-		_, err := w.Write(p.Raw)
-		return err
-	}
-	return output.WriteJSON(w, p)
+	_, err := w.Write(p.Raw)
+	return err
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {

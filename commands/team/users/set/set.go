@@ -107,9 +107,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Warnings:    p.Warnings,
 		})
 	}
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw users.patch payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

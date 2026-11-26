@@ -38,21 +38,14 @@ func (p Payload) renderTable(w io.Writer) error {
 	if p.Batch {
 		return renderBatchTable(w, p.Orders)
 	}
-	return renderSingleTable(w, p.single())
+	return renderSingleTable(w, p.Orders[0])
 }
 
 func (p Payload) renderMarkdown(w io.Writer) error {
 	if p.Batch {
 		return renderBatchMarkdown(w, p.Orders)
 	}
-	return renderSingleMarkdown(w, p.single())
-}
-
-func (p Payload) single() orders.Order {
-	if len(p.Orders) == 0 {
-		return orders.Order{}
-	}
-	return p.Orders[0]
+	return renderSingleMarkdown(w, p.Orders[0])
 }
 
 func headerRows(o orders.Order) [][2]string {
@@ -94,9 +87,6 @@ func renderBatchTable(w io.Writer, os []orders.Order) error {
 }
 
 func renderJSON(w io.Writer, p Payload) error {
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw orders payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

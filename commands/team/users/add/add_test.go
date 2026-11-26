@@ -204,3 +204,16 @@ func TestAdd_blankSelector_exit2(t *testing.T) {
 		})
 	}
 }
+
+func TestAdd_empty2xxBody_exit30(t *testing.T) {
+	rt := teamtest.New(teamtest.Fail("POST", "/users", 200, ""))
+	rc := teamtest.NewRC(t, rt)
+
+	_, err := addcmd.Run(rc, addcmd.Input{Email: "bob@example.com", Permissions: []string{"reply-reviews"}, PermsSet: true})
+	if got := exitCodeOf(t, err); got != 30 {
+		t.Errorf("exit = %d, want 30 (undecodable 2xx body); err=%v", got, err)
+	}
+	if !rt.Wrote() {
+		t.Errorf("the exit must come from the users.create answer; calls=%v", rt.Calls())
+	}
+}

@@ -160,29 +160,29 @@ type grantWriteBody struct {
 }
 
 func CreateUser(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
-	return send(ctx, hc, mUsersCreate, opUsersCreate, developerID, accountParams(developerID), nil,
-		userWriteBody{Email: email, DeveloperAccountPermissions: nonNil(perms)})
+	return api.DoJSON(ctx, hc, call(mUsersCreate, opUsersCreate, developerID, accountParams(developerID), nil,
+		userWriteBody{Email: email, DeveloperAccountPermissions: nonNil(perms)}), &User{})
 }
 
 func SetUserPermissions(ctx context.Context, hc *http.Client, developerID, email string, perms []string) (json.RawMessage, error) {
-	return send(ctx, hc, mUsersPatch, opUsersPatch, developerID, memberParams(developerID, email),
+	return api.DoJSON(ctx, hc, call(mUsersPatch, opUsersPatch, developerID, memberParams(developerID, email),
 		url.Values{"updateMask": {"developerAccountPermissions"}},
-		userWriteBody{DeveloperAccountPermissions: nonNil(perms)})
+		userWriteBody{DeveloperAccountPermissions: nonNil(perms)}), &User{})
 }
 
 func DeleteUser(ctx context.Context, hc *http.Client, developerID, email string) (json.RawMessage, error) {
-	return send(ctx, hc, mUsersDelete, opUsersDelete, developerID, memberParams(developerID, email), nil, nil)
+	return api.Do(ctx, hc, call(mUsersDelete, opUsersDelete, developerID, memberParams(developerID, email), nil, nil))
 }
 
 func CreateGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
-	return send(ctx, hc, mGrantsCreate, opGrantsCreate, developerID, memberParams(developerID, email), nil,
-		grantWriteBody{PackageName: pkg, AppLevelPermissions: nonNil(perms)})
+	return api.DoJSON(ctx, hc, call(mGrantsCreate, opGrantsCreate, developerID, memberParams(developerID, email), nil,
+		grantWriteBody{PackageName: pkg, AppLevelPermissions: nonNil(perms)}), &Grant{})
 }
 
 func PatchGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string, perms []string) (json.RawMessage, error) {
-	return send(ctx, hc, mGrantsPatch, opGrantsPatch, developerID, grantParams(developerID, email, pkg),
+	return api.DoJSON(ctx, hc, call(mGrantsPatch, opGrantsPatch, developerID, grantParams(developerID, email, pkg),
 		url.Values{"updateMask": {"appLevelPermissions"}},
-		grantWriteBody{AppLevelPermissions: nonNil(perms)})
+		grantWriteBody{AppLevelPermissions: nonNil(perms)}), &Grant{})
 }
 
 func nonNil(s []string) []string {
@@ -193,15 +193,15 @@ func nonNil(s []string) []string {
 }
 
 func DeleteGrant(ctx context.Context, hc *http.Client, developerID, email, pkg string) (json.RawMessage, error) {
-	return send(ctx, hc, mGrantsDelete, opGrantsDelete, developerID, grantParams(developerID, email, pkg), nil, nil)
+	return api.Do(ctx, hc, call(mGrantsDelete, opGrantsDelete, developerID, grantParams(developerID, email, pkg), nil, nil))
 }
 
-func send(ctx context.Context, hc *http.Client, m apiregistry.Method, op, developerID string, params map[string]string, q url.Values, body any) (json.RawMessage, error) {
+func call(m apiregistry.Method, op, developerID string, params map[string]string, q url.Values, body any) api.Call {
 	c := api.Call{Method: m, Op: op, Resource: account(developerID), Params: params, Query: q}
 	if body != nil {
 		c.Body = body
 	}
-	return api.Do(ctx, hc, c)
+	return c
 }
 
 func account(developerID string) api.Resource {

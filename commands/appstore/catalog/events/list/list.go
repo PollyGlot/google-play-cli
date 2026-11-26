@@ -2,7 +2,6 @@ package list
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -35,9 +34,6 @@ type Payload struct {
 }
 
 func (p Payload) renderJSON(w io.Writer) error {
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw update events payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

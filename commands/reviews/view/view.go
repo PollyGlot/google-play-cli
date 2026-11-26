@@ -79,9 +79,6 @@ func renderTable(w io.Writer, r reviews.Review) error {
 }
 
 func renderJSON(w io.Writer, p Payload) error {
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw reviews.get payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

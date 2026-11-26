@@ -8,17 +8,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/play/details"
 )
 
-func TestRenderJSON_view_emptyRawResponse_fallsBackToPayloadShape(t *testing.T) {
-	p := detailscmd.Payload{
-		Package:         "com.example.app",
-		DefaultLanguage: "en-US",
-		ContactEmail:    "dev@example.com",
-		ContactPhone:    "+1 555 0100",
-		ContactWebsite:  "https://example.com/support?lang=en&ref=<play>",
-	}
-	outputtest.GoldenJSON(t, "view_fallback.json.golden", p)
-}
-
 func TestRenderJSON_set_dryRun_golden(t *testing.T) {
 	email := "dev@example.com"
 	website := "https://example.com/support?lang=en&ref=<play>"
