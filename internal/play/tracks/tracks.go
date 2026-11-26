@@ -84,6 +84,8 @@ func QualifiedName(name, formFactor string) (string, error) {
 	return prefix + alias, nil
 }
 
+func GetSource(pkg string) api.Source { return api.Source{Operation: opTracksGet, Package: pkg} }
+
 func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Track, json.RawMessage, error) {
 	raw, err := api.Do(ctx, hc, api.Call{
 		Method: methodGet, Op: opTracksGet, Target: pkg,

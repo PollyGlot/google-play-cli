@@ -123,7 +123,7 @@ func planStates(local map[string]json.RawMessage, liveBPState map[string]string,
 	return nil
 }
 
-func liveBasePlanStates(liveItems []subscriptions.Item) (map[string]string, error) {
+func liveBasePlanStates(pkg string, liveItems []subscriptions.Item) (map[string]string, error) {
 	states := map[string]string{}
 	for _, it := range liveItems {
 		var sub struct {
@@ -133,7 +133,7 @@ func liveBasePlanStates(liveItems []subscriptions.Item) (map[string]string, erro
 			} `json:"basePlans"`
 		}
 		if err := json.Unmarshal(it.Raw, &sub); err != nil {
-			return nil, fmt.Errorf("decode live subscription %q: %w", it.ProductID, err)
+			return nil, subscriptions.ListSource(pkg).DecodeFailure(fmt.Sprintf("decode live subscription %q", it.ProductID), err)
 		}
 		for _, bp := range sub.BasePlans {
 			states[it.ProductID+"/"+bp.BasePlanID] = bp.State
@@ -142,14 +142,14 @@ func liveBasePlanStates(liveItems []subscriptions.Item) (map[string]string, erro
 	return states, nil
 }
 
-func liveOfferStates(liveOffers []subscriptions.OfferItem) (map[subscriptionscmd.OfferKey]string, error) {
+func liveOfferStates(pkg string, liveOffers []subscriptions.OfferItem) (map[subscriptionscmd.OfferKey]string, error) {
 	states := map[subscriptionscmd.OfferKey]string{}
 	for _, o := range liveOffers {
 		var frag struct {
 			State string `json:"state"`
 		}
 		if err := json.Unmarshal(o.Raw, &frag); err != nil {
-			return nil, fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.BasePlanID, o.OfferID, err)
+			return nil, subscriptions.OffersListSource(pkg).DecodeFailure(fmt.Sprintf("decode live offer %s/%s/%s", o.ProductID, o.BasePlanID, o.OfferID), err)
 		}
 		states[subscriptionscmd.OfferKey{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID}] = frag.State
 	}
@@ -252,7 +252,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, subscriptionscmd.Classify(pkg, err)
 	}
 
-	plan, err := reconcile.Compute(local, live, managedFields)
+	plan, err := reconcile.Compute(local, live, subscriptions.ListSource(pkg), managedFields)
 	if err != nil {
 		return nil, err
 	}
@@ -272,15 +272,15 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		liveKeyed[reconcile.Key{ProductID: o.ProductID, ParentID: o.BasePlanID, OfferID: o.OfferID}] = o.Raw
 	}
-	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, offerManagedFields)
+	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, subscriptions.OffersListSource(pkg), offerManagedFields)
 	if err != nil {
 		return nil, err
 	}
 
-	if plan.BasePlanDeletes, err = reconcile.BasePlanDeletes(local, live); err != nil {
+	if plan.BasePlanDeletes, err = reconcile.BasePlanDeletes(local, live, subscriptions.ListSource(pkg)); err != nil {
 		return nil, err
 	}
-	liveBPState, err := liveBasePlanStates(items)
+	liveBPState, err := liveBasePlanStates(pkg, items)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
-	liveOfferState, err := liveOfferStates(liveOffers)
+	liveOfferState, err := liveOfferStates(pkg, liveOffers)
 	if err != nil {
 		return nil, err
 	}

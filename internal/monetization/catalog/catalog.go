@@ -12,11 +12,13 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/pathguard"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 type Entry struct {
 	ProductID string
 	Raw       json.RawMessage
+	From      api.Source
 }
 
 type FileError struct {
@@ -101,7 +103,7 @@ func Write(dir string, entries []Entry) ([]string, error) {
 		}
 		var m map[string]any
 		if err := json.Unmarshal(e.Raw, &m); err != nil {
-			return nil, fmt.Errorf("decode live subscription %q: %w", e.ProductID, err)
+			return nil, e.From.DecodeFailure(fmt.Sprintf("decode live product %q", e.ProductID), err)
 		}
 		delete(m, "packageName")
 		delete(m, "archived")

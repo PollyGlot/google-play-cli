@@ -53,6 +53,8 @@ type listPage struct {
 	NextPageToken string            `json:"nextPageToken"`
 }
 
+func ListSource(pkg string) api.Source { return api.Source{Operation: opList, Package: pkg} }
+
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 	items, _, err := api.Paginate(api.Pager{Op: opList, Target: pkg, What: "monetization.subscriptions.list"},
 		func(token string, _ int) ([]Item, string, error) {

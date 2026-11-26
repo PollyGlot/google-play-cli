@@ -8,7 +8,7 @@ import (
 )
 
 func TestRun_malformedLiveItemIn2xx_exit30(t *testing.T) {
-	cases := map[string]iapRT{
+	cases := map[string]struct{ v2Body, offersBody string }{
 		"one-time product field out of range": {
 			v2Body: `{"oneTimeProducts":[{"productId":"coins100","x":1e400}]}`,
 		},

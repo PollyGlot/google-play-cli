@@ -122,7 +122,7 @@ func legacyEqual(local, live json.RawMessage) bool {
 	return reflect.DeepEqual(l, v)
 }
 
-func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
+func planStates(pkg string, localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
 	deletedProducts := map[string]bool{}
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
@@ -137,7 +137,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 	for productID, raw := range liveV2 {
 		var frag optionsFrag
 		if err := json.Unmarshal(raw, &frag); err != nil {
-			return fmt.Errorf("decode live one-time product %q: %w", productID, err)
+			return iap.ListSource(pkg).DecodeFailure(fmt.Sprintf("decode live one-time product %q", productID), err)
 		}
 		for _, po := range frag.PurchaseOptions {
 			liveOptionState[productID+"/"+po.PurchaseOptionID] = po.State
@@ -177,7 +177,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 			State string `json:"state"`
 		}
 		if err := json.Unmarshal(o.Raw, &frag); err != nil {
-			return fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.PurchaseOptionID, o.OfferID, err)
+			return iap.OffersListSource(pkg).DecodeFailure(fmt.Sprintf("decode live offer %s/%s/%s", o.ProductID, o.PurchaseOptionID, o.OfferID), err)
 		}
 		liveOfferState[iapcmd.OfferKey{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID}] = frag.State
 	}
@@ -311,7 +311,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, iapcmd.Classify(pkg, err)
 	}
 
-	plan, err := reconcile.Compute(localV2, liveV2, managedFields)
+	plan, err := reconcile.Compute(localV2, liveV2, iap.ListSource(pkg), managedFields)
 	if err != nil {
 		return nil, err
 	}
@@ -330,11 +330,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		liveKeyed[reconcile.Key{ProductID: o.ProductID, ParentID: o.PurchaseOptionID, OfferID: o.OfferID}] = o.Raw
 	}
-	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, offerManagedFields)
+	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, iap.OffersListSource(pkg), offerManagedFields)
 	if err != nil {
 		return nil, err
 	}
-	if err := planStates(localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
+	if err := planStates(pkg, localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
 		return nil, err
 	}
 	cancels := 0

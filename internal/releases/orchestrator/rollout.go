@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 )
@@ -135,7 +136,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 		target := cur.Releases[idx]
 
 		drop := superseded(cur.Releases, idx, edit)
-		body, err := patchTrackRelease(rawTrack, idx, edit, drop)
+		body, err := patchTrackRelease(tracks.GetSource(opts.Package), rawTrack, idx, edit, drop)
 		if err != nil {
 			return err
 		}
@@ -245,14 +246,14 @@ func superseded(releases []tracks.Release, idx int, edit releaseEdit) []int {
 	return drop
 }
 
-func patchTrackRelease(rawTrack json.RawMessage, idx int, edit releaseEdit, drop []int) ([]byte, error) {
+func patchTrackRelease(from api.Source, rawTrack json.RawMessage, idx int, edit releaseEdit, drop []int) ([]byte, error) {
 	var track map[string]json.RawMessage
 	if err := json.Unmarshal(rawTrack, &track); err != nil {
-		return nil, fmt.Errorf("decode track for update: %w", err)
+		return nil, from.DecodeFailure("decode track for update", err)
 	}
 	var releases []json.RawMessage
 	if err := json.Unmarshal(track["releases"], &releases); err != nil {
-		return nil, fmt.Errorf("decode releases for update: %w", err)
+		return nil, from.DecodeFailure("decode releases for update", err)
 	}
 	if idx < 0 || idx >= len(releases) {
 		return nil, fmt.Errorf("target release index %d out of range (%d releases)", idx, len(releases))
@@ -260,7 +261,7 @@ func patchTrackRelease(rawTrack json.RawMessage, idx int, edit releaseEdit, drop
 
 	var target map[string]json.RawMessage
 	if err := json.Unmarshal(releases[idx], &target); err != nil {
-		return nil, fmt.Errorf("decode target release for update: %w", err)
+		return nil, from.DecodeFailure("decode target release for update", err)
 	}
 	if err := edit.apply(target); err != nil {
 		return nil, err

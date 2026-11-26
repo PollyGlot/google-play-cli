@@ -81,12 +81,12 @@ func (k OfferKey) String() string {
 	return k.ProductID + "/" + k.PurchaseOptionID + "/" + k.OfferID
 }
 
-func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawMessage, error) {
+func EmbedOffers(pkg string, items []iap.Item, offers []iap.OfferItem) (map[string]json.RawMessage, error) {
 	byProduct := map[string]map[string][]any{}
 	for _, o := range offers {
 		var m map[string]any
 		if err := json.Unmarshal(o.Raw, &m); err != nil {
-			return nil, fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.PurchaseOptionID, o.OfferID, err)
+			return nil, iap.OffersListSource(pkg).DecodeFailure(fmt.Sprintf("decode live offer %s/%s/%s", o.ProductID, o.PurchaseOptionID, o.OfferID), err)
 		}
 		delete(m, "packageName")
 		if byProduct[o.ProductID] == nil {
@@ -98,7 +98,7 @@ func EmbedOffers(items []iap.Item, offers []iap.OfferItem) (map[string]json.RawM
 	for _, it := range items {
 		var product map[string]any
 		if err := json.Unmarshal(it.Raw, &product); err != nil {
-			return nil, fmt.Errorf("decode live one-time product %q: %w", it.ProductID, err)
+			return nil, iap.ListSource(pkg).DecodeFailure(fmt.Sprintf("decode live one-time product %q", it.ProductID), err)
 		}
 		perOption := byProduct[it.ProductID]
 		if len(perOption) > 0 {
