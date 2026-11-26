@@ -213,6 +213,26 @@ func TestRetry_uploadBodyRecreatedPerAttempt(t *testing.T) {
 	}
 }
 
+func TestRetry_bodyWithoutGetBodySentOnce(t *testing.T) {
+	inner := &scriptRT{t: t, steps: []step{{status: 500}, {status: 200}}}
+	rt, delays := newRetry(t, testkit.RoundTripFunc(inner.serve), 3)
+	req := newReq(t, http.MethodPut, apiURL, "payload-bytes")
+	req.GetBody = nil
+	resp, err := rt.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	if resp.StatusCode != 500 {
+		t.Errorf("final status = %d, want the first 500 returned", resp.StatusCode)
+	}
+	if inner.calls != 1 || len(*delays) != 0 {
+		t.Errorf("attempts = %d, sleeps = %d, want a single attempt: a body without GetBody cannot be replayed", inner.calls, len(*delays))
+	}
+	if len(inner.bodies) != 1 || inner.bodies[0] != "payload-bytes" {
+		t.Errorf("bodies = %q, want the full payload sent once", inner.bodies)
+	}
+}
+
 func TestRetry_backoffGrowsExponentially(t *testing.T) {
 	inner := &scriptRT{t: t, steps: []step{{status: 500}, {status: 500}, {status: 200}}}
 	rt, delays := newRetry(t, testkit.RoundTripFunc(inner.serve), 2)
