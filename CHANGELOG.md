@@ -5,6 +5,17 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1](https://github.com/PollyGlot/google-play-cli/compare/v2.6.0...v2.6.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **api:** an undecodable 2xx body exits 30, a request never sent exits 20 or 1 ([#918](https://github.com/PollyGlot/google-play-cli/issues/918)) ([a2a28be](https://github.com/PollyGlot/google-play-cli/commit/a2a28be55432e7cc311a12c197de1cf209dfc572))
+* **api:** re-decoded listing items and tracks exit 30 on a malformed 2xx ([#927](https://github.com/PollyGlot/google-play-cli/issues/927)) ([d01d3a8](https://github.com/PollyGlot/google-play-cli/commit/d01d3a8423338a26e9a3134ce2990646f4bd024e))
+* **api:** second-pass decoders exit 30, module-built requests never sent exit 1 ([#923](https://github.com/PollyGlot/google-play-cli/issues/923)) ([3636b85](https://github.com/PollyGlot/google-play-cli/commit/3636b8568346d9a71699654fef17d41ded43e6b7))
+* **output:** an empty 2xx body fails at decode instead of falling back in the JSON renderers ([#921](https://github.com/PollyGlot/google-play-cli/issues/921)) ([9d7f6da](https://github.com/PollyGlot/google-play-cli/commit/9d7f6da08d43566f7fadee601929d4a44efd3016))
+* **transport:** stream the scope capture and send an unreplayable body once ([#922](https://github.com/PollyGlot/google-play-cli/issues/922)) ([04e0bef](https://github.com/PollyGlot/google-play-cli/commit/04e0bef70a78bae09660ffadc19287af1aaf226c))
+
 ## [2.6.0](https://github.com/PollyGlot/google-play-cli/compare/v2.5.1...v2.6.0) (2026-11-25)
 
 
