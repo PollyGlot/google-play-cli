@@ -26,7 +26,8 @@ func TestScopeObserver_streamsBodyWithoutReadingAhead(t *testing.T) {
 	body := prefix + strings.Repeat("x", 256*1024)
 	src := &countingReader{r: strings.NewReader(body)}
 
-	var aheadAfterFirstKiB, received int
+	var aheadAfterFirstKiB int
+	var received string
 	var innerContentLength int64
 	inner := testkit.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		innerContentLength = req.ContentLength
@@ -39,7 +40,7 @@ func TestScopeObserver_streamsBodyWithoutReadingAhead(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read rest: %v", err)
 		}
-		received = len(first) + len(rest)
+		received = string(first) + string(rest)
 		_ = req.Body.Close()
 		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
 	})
@@ -60,8 +61,8 @@ func TestScopeObserver_streamsBodyWithoutReadingAhead(t *testing.T) {
 	if aheadAfterFirstKiB > 1024 {
 		t.Errorf("source delivered %d bytes once the inner transport had read 1 KiB, want at most 1024: the observer must not buffer ahead", aheadAfterFirstKiB)
 	}
-	if received != len(body) {
-		t.Errorf("inner transport received %d bytes, want all %d", received, len(body))
+	if received != body {
+		t.Errorf("inner transport received %d bytes differing from the %d sent, want the body unchanged", len(received), len(body))
 	}
 	if innerContentLength != int64(len(body)) {
 		t.Errorf("inner transport saw ContentLength = %d, want %d unchanged", innerContentLength, len(body))
