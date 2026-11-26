@@ -41,16 +41,6 @@ func Run(ctx context.Context, sa *serviceaccount.ServiceAccount, httpClient *htt
 			out = append(out, NewSkippedResult(c))
 			continue
 		}
-		if c.Run == nil {
-			out = append(out, CheckResult{
-				Name:     c.Name,
-				Passed:   false,
-				ExitCode: c.ExitCode,
-				Hint:     "check is misconfigured: missing Run function",
-			})
-			failed = true
-			continue
-		}
 		r := c.Run(ctx, sa, httpClient)
 		if r.Name == "" {
 			r.Name = c.Name
