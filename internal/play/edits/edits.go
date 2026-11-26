@@ -322,26 +322,24 @@ type AppEdit struct {
 }
 
 func ValidateExplicit(ctx context.Context, hc *http.Client, pkg, editID string) (json.RawMessage, error) {
-	return callEdit(ctx, hc, "edits.validate", methodValidate, pkg, editID)
+	var parsed AppEdit
+	return callEdit(ctx, hc, "edits.validate", methodValidate, pkg, editID, &parsed)
 }
 
 func GetExplicit(ctx context.Context, hc *http.Client, pkg, editID string) (AppEdit, json.RawMessage, error) {
-	raw, err := callEdit(ctx, hc, "edits.get", methodGet, pkg, editID)
+	var parsed AppEdit
+	raw, err := callEdit(ctx, hc, "edits.get", methodGet, pkg, editID, &parsed)
 	if err != nil {
 		return AppEdit{}, nil, err
-	}
-	var parsed AppEdit
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return AppEdit{}, nil, api.DecodeFailure(api.Error{Operation: "edits.get", Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return parsed, raw, nil
 }
 
-func callEdit(ctx context.Context, hc *http.Client, op string, m apiregistry.Method, pkg, editID string) (json.RawMessage, error) {
-	return api.Do(ctx, hc, api.Call{
+func callEdit(ctx context.Context, hc *http.Client, op string, m apiregistry.Method, pkg, editID string, out *AppEdit) (json.RawMessage, error) {
+	return api.DoJSON(ctx, hc, api.Call{
 		Method: m, Op: op, Target: pkg,
 		Params: map[string]string{"packageName": pkg, "editId": editID},
-	})
+	}, out)
 }
 
 func isEditAlreadyExists(err error) bool {
