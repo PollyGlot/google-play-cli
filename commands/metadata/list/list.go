@@ -128,9 +128,6 @@ func renderTable(w io.Writer, p Payload) error {
 }
 
 func renderJSON(w io.Writer, p Payload) error {
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw listings.list payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

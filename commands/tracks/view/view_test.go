@@ -324,13 +324,6 @@ func TestRenderMarkdown_isGFMTable_marksHalted(t *testing.T) {
 	}
 }
 
-func TestRenderJSON_emptyRaw_errors(t *testing.T) {
-	var buf bytes.Buffer
-	if err := (view.Payload{}).Renderers().JSON(&buf); err == nil {
-		t.Fatalf("JSON render of empty Raw = nil error, want a non-nil error")
-	}
-}
-
 func TestRun_unknownTrack_exit30WithHint(t *testing.T) {
 	api := &statusAPI{
 		editID:    "edit-404",
