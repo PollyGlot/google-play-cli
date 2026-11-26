@@ -65,6 +65,18 @@ func DecodeFailure(e Error) *Error {
 	return &e
 }
 
+type Source struct {
+	Operation string
+	Package   string
+}
+
+func (s Source) DecodeFailure(message string, cause error) error {
+	if cause != nil {
+		message += ": " + cause.Error()
+	}
+	return DecodeFailure(Error{Operation: s.Operation, Package: s.Package, Message: message, Cause: cause})
+}
+
 func BuildFailure(e Error) *Error {
 	cause := e.Cause
 	if cause == nil {

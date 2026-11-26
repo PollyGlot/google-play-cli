@@ -19,6 +19,7 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/monetization/planview"
 	"github.com/PollyGlot/google-play-cli/internal/monetization/reconcile"
 	"github.com/PollyGlot/google-play-cli/internal/output"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 	"github.com/PollyGlot/google-play-cli/internal/play/iap"
 	"github.com/PollyGlot/google-play-cli/internal/play/latency"
 )
@@ -74,7 +75,7 @@ func stateKindLabel(kind string) string {
 	return "purchase option"
 }
 
-func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []iap.LegacyItem, liveV2 map[string]json.RawMessage, migrate, dryRun bool) (migrating []string, err error) {
+func guardLegacy(pkg string, localLegacy, localV2 map[string]json.RawMessage, liveLegacy []iap.LegacyItem, liveV2 map[string]json.RawMessage, migrate, dryRun bool) (migrating []string, err error) {
 	liveBySKU := map[string]json.RawMessage{}
 	for _, lg := range liveLegacy {
 		liveBySKU[lg.SKU] = lg.Raw
@@ -84,7 +85,11 @@ func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []i
 		if !ok {
 			return nil, exit.Usagef("catalog declares legacy product %q that is not live: gplay never creates legacy inappproducts; declare it as a v2 product instead (v2 schema, no sku field)", sku)
 		}
-		if !legacyEqual(raw, liveRaw) {
+		equal, err := legacyEqual(iap.InAppProductsListSource(pkg), sku, raw, liveRaw)
+		if err != nil {
+			return nil, err
+		}
+		if !equal {
 			return nil, exit.Usagef("catalog edits legacy product %q: gplay never writes the legacy surface in place; to change it, rewrite the file in the v2 schema (productId instead of sku) and apply with --migrate (one-way)", sku)
 		}
 	}
@@ -112,17 +117,18 @@ func guardLegacy(localLegacy, localV2 map[string]json.RawMessage, liveLegacy []i
 	return migrating, nil
 }
 
-func legacyEqual(local, live json.RawMessage) bool {
+func legacyEqual(from api.Source, sku string, local, live json.RawMessage) (bool, error) {
 	var l, v map[string]any
-	if json.Unmarshal(local, &l) != nil || json.Unmarshal(live, &v) != nil {
-		return false
+	if err := json.Unmarshal(live, &v); err != nil {
+		return false, from.DecodeFailure(fmt.Sprintf("decode live in-app product %q", sku), err)
 	}
+	localDecoded := json.Unmarshal(local, &l) == nil
 	delete(l, "packageName")
 	delete(v, "packageName")
-	return reflect.DeepEqual(l, v)
+	return localDecoded && reflect.DeepEqual(l, v), nil
 }
 
-func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
+func planStates(pkg string, localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMessage, liveOffers []iap.OfferItem, localOffers map[iapcmd.OfferKey]json.RawMessage, plan *reconcile.Plan) error {
 	deletedProducts := map[string]bool{}
 	for _, c := range plan.Deletes {
 		deletedProducts[c.ProductID] = true
@@ -137,7 +143,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 	for productID, raw := range liveV2 {
 		var frag optionsFrag
 		if err := json.Unmarshal(raw, &frag); err != nil {
-			return fmt.Errorf("decode live one-time product %q: %w", productID, err)
+			return iap.ListSource(pkg).DecodeFailure(fmt.Sprintf("decode live one-time product %q", productID), err)
 		}
 		for _, po := range frag.PurchaseOptions {
 			liveOptionState[productID+"/"+po.PurchaseOptionID] = po.State
@@ -177,7 +183,7 @@ func planStates(localV2 map[string]json.RawMessage, liveV2 map[string]json.RawMe
 			State string `json:"state"`
 		}
 		if err := json.Unmarshal(o.Raw, &frag); err != nil {
-			return fmt.Errorf("decode live offer %s/%s/%s: %w", o.ProductID, o.PurchaseOptionID, o.OfferID, err)
+			return iap.OffersListSource(pkg).DecodeFailure(fmt.Sprintf("decode live offer %s/%s/%s", o.ProductID, o.PurchaseOptionID, o.OfferID), err)
 		}
 		liveOfferState[iapcmd.OfferKey{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID}] = frag.State
 	}
@@ -297,7 +303,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, exit.Usagef("catalog directory %q holds no .json catalog files while %q has %d live one-time product(s): applying it would delete them all; run gplay iap pull first, or pass the right --dir", dir, pkg, len(liveV2)+len(liveLegacy))
 	}
 
-	migrating, err := guardLegacy(localLegacy, localV2, liveLegacy, liveV2, in.Migrate, in.DryRun)
+	migrating, err := guardLegacy(pkg, localLegacy, localV2, liveLegacy, liveV2, in.Migrate, in.DryRun)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +317,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, iapcmd.Classify(pkg, err)
 	}
 
-	plan, err := reconcile.Compute(localV2, liveV2, managedFields)
+	plan, err := reconcile.Compute(localV2, liveV2, iap.ListSource(pkg), managedFields)
 	if err != nil {
 		return nil, err
 	}
@@ -330,11 +336,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		}
 		liveKeyed[reconcile.Key{ProductID: o.ProductID, ParentID: o.PurchaseOptionID, OfferID: o.OfferID}] = o.Raw
 	}
-	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, offerManagedFields)
+	plan.OfferCreates, plan.OfferPatches, plan.OfferDeletes, err = reconcile.ComputeChildren(localKeyed, liveKeyed, iap.OffersListSource(pkg), offerManagedFields)
 	if err != nil {
 		return nil, err
 	}
-	if err := planStates(localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
+	if err := planStates(pkg, localV2, liveV2, liveOffers, localOffers, &plan); err != nil {
 		return nil, err
 	}
 	cancels := 0

@@ -111,7 +111,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, iapcmd.Classify(pkg, err)
 	}
-	embedded, err := iapcmd.EmbedOffers(items, offers)
+	embedded, err := iapcmd.EmbedOffers(pkg, items, offers)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	rawV2 := make([]json.RawMessage, 0, len(items))
 	for _, it := range items {
 		v2IDs[it.ProductID] = true
-		entries = append(entries, catalog.Entry{ProductID: it.ProductID, Raw: embedded[it.ProductID]})
+		entries = append(entries, catalog.Entry{ProductID: it.ProductID, Raw: embedded[it.ProductID], From: iap.ListSource(pkg)})
 		written = append(written, it.ProductID+".json")
 		rawV2 = append(rawV2, it.Raw)
 	}
@@ -134,7 +134,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			shadowed = append(shadowed, lg.SKU)
 			continue
 		}
-		entries = append(entries, catalog.Entry{ProductID: lg.SKU, Raw: lg.Raw})
+		entries = append(entries, catalog.Entry{ProductID: lg.SKU, Raw: lg.Raw, From: iap.InAppProductsListSource(pkg)})
 		written = append(written, lg.SKU+".json")
 	}
 	removed, err := catalog.Write(dir, entries)

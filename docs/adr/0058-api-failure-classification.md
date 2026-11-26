@@ -12,6 +12,9 @@ request that never left is exit 20 or 1 (#844)
 amended (2026-11-26): every decoder and every module-built request follow
 those two rules (#917)
 
+amended (2026-11-26): re-decoded listing items and tracks follow them too
+(#920)
+
 ## Context
 
 Every upstream failure reaches the user as an exit code and, under
@@ -85,7 +88,8 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
   error with `api.DecodeFailure`, which keeps the 2xx status received, or 200
   when the caller no longer has it; no module stamps a status of its own.
   Code that re-decodes an item of a listing or a track already read
-  (monetization, rollout) still exits 1 on such an item (#920).
+  (monetization, rollout) is such a decoder: it names the read the item
+  came from with an `api.Source`.
 - **A request that fails before it is sent is exit 20 or 1.** A request body
   that cannot be opened is a local file problem, exit 20
   ([ADR-0056](./0056-media-upload-protocol.md)). A request that cannot be
