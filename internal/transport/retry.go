@@ -40,7 +40,7 @@ func WithRetry(inner http.RoundTripper, opts RetryOptions) http.RoundTripper {
 		timeout:    opts.Timeout,
 		baseDelay:  opts.BaseDelay,
 		maxDelay:   opts.MaxDelay,
-		jitter:     fullJitter,
+		jitter:     equalJitter,
 		sleep:      ctxSleep,
 	}
 	if rt.baseDelay <= 0 {
@@ -124,6 +124,9 @@ func isNonRetryable(req *http.Request) bool {
 	if req.Context().Value(noRetryKey{}) != nil {
 		return true
 	}
+	if req.Body != nil && req.Body != http.NoBody && req.GetBody == nil {
+		return true
+	}
 	return strings.HasSuffix(req.URL.Path, ":commit")
 }
 
@@ -171,7 +174,7 @@ func exponential(attempt int, base, maxDelay time.Duration) time.Duration {
 }
 
 func Backoff(attempt int) time.Duration {
-	return fullJitter(exponential(attempt, defaultRetryBaseDelay, defaultRetryMaxDelay))
+	return equalJitter(exponential(attempt, defaultRetryBaseDelay, defaultRetryMaxDelay))
 }
 
 func Sleep(ctx context.Context, d time.Duration) bool { return ctxSleep(ctx, d) }
@@ -196,7 +199,7 @@ func parseRetryAfter(v string, maxDelay time.Duration) (time.Duration, bool) {
 	return 0, false
 }
 
-func fullJitter(d time.Duration) time.Duration {
+func equalJitter(d time.Duration) time.Duration {
 	if d <= 0 {
 		return 0
 	}

@@ -69,3 +69,22 @@ func TestScopeObserver_streamsBodyWithoutReadingAhead(t *testing.T) {
 		t.Errorf("Scopes() = %q, want %q", got, want)
 	}
 }
+
+func TestScopeObserver_seesTheBodyReplayedByAnInnerRetry(t *testing.T) {
+	inner := &scriptRT{t: t, steps: []step{{status: 429}, {status: 200}}}
+	rt, _ := newRetry(t, testkit.RoundTripFunc(inner.serve), 1)
+	wrapped, obs := WithScopeObserver(rt)
+	req := newReq(t, http.MethodPost, "https://oauth2.googleapis.com/token", "scope=a+b&grant_type=jwt")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := wrapped.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	_ = resp.Body.Close()
+	if inner.calls != 2 {
+		t.Fatalf("attempts = %d, want 2", inner.calls)
+	}
+	if got, want := obs.Scopes(), []string{"a", "b"}; !slices.Equal(got, want) {
+		t.Errorf("Scopes() = %q, want %q from the replayed body", got, want)
+	}
+}

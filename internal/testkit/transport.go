@@ -1,6 +1,7 @@
 package testkit
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,9 @@ func IsTokenRequest(r *http.Request) bool {
 func TokenResponse(r *http.Request) (*http.Response, bool) {
 	if !IsTokenRequest(r) {
 		return nil, false
+	}
+	if r.Body != nil {
+		r.Body = io.NopCloser(bytes.NewReader(ReadBody(r)))
 	}
 	return Response(http.StatusOK, tokenBody), true
 }
