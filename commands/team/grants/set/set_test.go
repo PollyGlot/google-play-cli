@@ -231,4 +231,7 @@ func TestGrantsSet_empty2xxBody_exit30(t *testing.T) {
 	if got := exitCodeOf(t, err); got != 30 {
 		t.Errorf("exit = %d, want 30 (undecodable 2xx body); err=%v", got, err)
 	}
+	if _, ok := findCall(rt.Calls(), "POST"); !ok {
+		t.Errorf("the exit must come from the grants.create answer; calls=%v", rt.Calls())
+	}
 }

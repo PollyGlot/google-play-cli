@@ -131,7 +131,7 @@ func TestRun_invalid_400_exit30_keepsPin(t *testing.T) {
 	validateCalls(t, fake)
 }
 
-func TestRun_empty2xxBody_exit30_noOutput(t *testing.T) {
+func TestRun_empty2xxBody_exit30(t *testing.T) {
 	fake := newValidateFakeBody(0, "")
 	rc, gplayDir := newRC(t, fake)
 	if err := editpin.Write(config.OSFS{}, gplayDir, pkg, "edit-9"); err != nil {

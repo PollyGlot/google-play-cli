@@ -213,4 +213,7 @@ func TestAdd_empty2xxBody_exit30(t *testing.T) {
 	if got := exitCodeOf(t, err); got != 30 {
 		t.Errorf("exit = %d, want 30 (undecodable 2xx body); err=%v", got, err)
 	}
+	if !rt.Wrote() {
+		t.Errorf("the exit must come from the users.create answer; calls=%v", rt.Calls())
+	}
 }
