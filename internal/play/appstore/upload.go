@@ -56,6 +56,7 @@ func UploadPolicyDeclarationFile(ctx context.Context, hc *http.Client, storePack
 	if err != nil {
 		return "", nil, api.BuildFailure(api.Error{Operation: opUploadPolicy, Package: pkg, Message: "marshal request: " + err.Error(), Cause: err})
 	}
+
 	raw, err := uploadMedia(ctx, hc, mUploadPolicy, opUploadPolicy, storePackage, pkg, path, "", initiate)
 	if err != nil {
 		return "", nil, err
@@ -92,12 +93,10 @@ func uploadMedia(ctx context.Context, hc *http.Client, m apiregistry.Method, op,
 	if err != nil {
 		return nil, api.BuildFailure(api.Error{Operation: op, Package: pkg, Message: err.Error(), Cause: err})
 	}
-	u += "?uploadType=resumable"
-
 	if initiate != nil {
 		raw, _, err := api.ResumableUploadWithInitiateBody(
 			ctx, hc, op, api.PackageResource(pkg), u, contentType, f, info.Size(),
-			initiate, jsonUTF8,
+			initiate, jsonUTF8, nil,
 		)
 		return raw, err
 	}

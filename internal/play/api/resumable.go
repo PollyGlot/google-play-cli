@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -44,7 +45,7 @@ func ResumableUpload(
 	r io.ReaderAt,
 	size int64,
 ) (body []byte, status int, err error) {
-	return ResumableUploadWithInitiateBody(ctx, hc, op, PackageResource(pkg), initiateURL, contentType, r, size, nil, "")
+	return ResumableUploadWithInitiateBody(ctx, hc, op, PackageResource(pkg), initiateURL, contentType, r, size, nil, "", nil)
 }
 
 func ResumableUploadWithInitiateBody(
@@ -55,8 +56,14 @@ func ResumableUploadWithInitiateBody(
 	size int64,
 	initiateBody []byte,
 	initiateContentType string,
+	query url.Values,
 ) (body []byte, status int, err error) {
-	sessionURI, err := resumableInitiate(ctx, hc, op, target, initiateURL, contentType, size, initiateBody, initiateContentType)
+	q := url.Values{}
+	for k, v := range query {
+		q[k] = v
+	}
+	q.Set("uploadType", "resumable")
+	sessionURI, err := resumableInitiate(ctx, hc, op, target, initiateURL+"?"+q.Encode(), contentType, size, initiateBody, initiateContentType)
 	if err != nil {
 		return nil, 0, err
 	}

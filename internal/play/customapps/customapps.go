@@ -73,11 +73,10 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 	if err != nil {
 		return CustomApp{}, nil, api.BuildFailure(api.Error{Operation: op, Resource: developerAccount(account), Message: err.Error(), Cause: err})
 	}
-	u += "?uploadType=resumable"
 
 	raw, status, err := api.ResumableUploadWithInitiateBody(
 		ctx, hc, op, developerAccount(account), u, "application/octet-stream", f, info.Size(),
-		metaJSON, "application/json; charset=UTF-8",
+		metaJSON, "application/json; charset=UTF-8", nil,
 	)
 	if err != nil {
 		return CustomApp{}, nil, err
