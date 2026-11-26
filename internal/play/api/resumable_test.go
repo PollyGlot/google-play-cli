@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,7 @@ type putRecord struct {
 type resumeRT struct {
 	t *testing.T
 
+	initURL    string
 	initStatus int
 	initBody   string
 	initNoLoc  bool
@@ -53,8 +55,12 @@ type step struct {
 func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 	switch req.Method {
 	case http.MethodPost:
-		if req.URL.String() != initiateURL {
-			r.t.Fatalf("initiate POST to %s, want %s", req.URL, initiateURL)
+		want := initiateURL
+		if r.initURL != "" {
+			want = r.initURL
+		}
+		if req.URL.String() != want {
+			r.t.Fatalf("initiate POST to %s, want %s", req.URL, want)
 		}
 		if got := req.Header.Get("X-Upload-Content-Length"); got == "" {
 			r.t.Errorf("initiate missing X-Upload-Content-Length header")
@@ -354,6 +360,18 @@ func TestResumable_shortRead_isLocalIOError(t *testing.T) {
 	}
 	if len(rt.puts) != 0 {
 		t.Errorf("PUTs issued = %d, want 0 (nothing uploaded on short read)", len(rt.puts))
+	}
+}
+
+func TestResumable_callerQueryRidesWithUploadType(t *testing.T) {
+	rt := &resumeRT{t: t, initURL: initiateEndpoint + "?deviceTierConfigId=7&uploadType=resumable", putSteps: []step{{status: 200, body: `{}`}}}
+	hc := &http.Client{Transport: testkit.RoundTripFunc(rt.serve)}
+	query := url.Values{"deviceTierConfigId": {"7"}}
+	if _, _, err := api.ResumableUploadWithInitiateBody(context.Background(), hc, "bundles.upload", api.PackageResource("com.example.app"), initiateEndpoint, "application/octet-stream", reader(16), 16, nil, "", query); err != nil {
+		t.Fatalf("ResumableUploadWithInitiateBody: %v", err)
+	}
+	if query.Has("uploadType") {
+		t.Errorf("caller query mutated: %v", query)
 	}
 }
 
