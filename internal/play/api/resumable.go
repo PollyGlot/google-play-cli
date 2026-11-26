@@ -25,6 +25,10 @@ type resumePacing struct {
 	sleep        func(ctx context.Context, d time.Duration) bool
 }
 
+func defaultResumePacing() resumePacing {
+	return resumePacing{chunkTimeout: 5 * time.Minute, backoff: transport.Backoff, sleep: transport.Sleep}
+}
+
 type LocalIOError struct {
 	Op    string
 	Cause error
@@ -58,8 +62,7 @@ func ResumableUploadWithInitiateBody(
 	initiateContentType string,
 	query url.Values,
 ) (body []byte, status int, err error) {
-	pace := resumePacing{chunkTimeout: 5 * time.Minute, backoff: transport.Backoff, sleep: transport.Sleep}
-	return resumableUpload(ctx, hc, op, target, initiateURL, contentType, r, size, initiateBody, initiateContentType, query, pace)
+	return resumableUpload(ctx, hc, op, target, initiateURL, contentType, r, size, initiateBody, initiateContentType, query, defaultResumePacing())
 }
 
 func resumableUpload(

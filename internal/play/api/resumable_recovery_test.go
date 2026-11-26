@@ -238,6 +238,9 @@ func TestResumable_chunkBodyReadUnderTimer_closeReleasesIt(t *testing.T) {
 	if string(body) != `{"versionCode":8}` {
 		t.Fatalf("body = %q, want it read whole while the chunk timer is held", body)
 	}
+	if len(rt.ctxAtClose) == 0 || rt.ctxAtClose[0] != nil {
+		t.Fatalf("chunk context at body close = %v, want still live until the body is closed", rt.ctxAtClose)
+	}
 	if len(rt.ctxs) != 1 || !errors.Is(rt.ctxs[0].Err(), context.Canceled) {
 		t.Fatalf("chunk contexts = %v, want one, canceled once its body is closed", rt.ctxs)
 	}

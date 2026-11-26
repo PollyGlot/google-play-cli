@@ -43,6 +43,8 @@ type resumeRT struct {
 	waits []time.Duration
 	onPut func(i int)
 	ctxs  []context.Context
+
+	ctxAtClose []error
 }
 
 type step struct {
@@ -107,7 +109,7 @@ func (r *resumeRT) serve(req *http.Request) (*http.Response, error) {
 			resp.Body = io.NopCloser(io.MultiReader(strings.NewReader(st.body[:len(st.body)/2]), errReader{}))
 		}
 		if st.ctxBody {
-			resp.Body = io.NopCloser(ctxReader{ctx: req.Context(), r: strings.NewReader(st.body)})
+			resp.Body = ctxBody{ctx: req.Context(), r: strings.NewReader(st.body), atClose: &r.ctxAtClose}
 		}
 		return resp, nil
 
@@ -125,16 +127,22 @@ type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("simulated reset mid-body") }
 
-type ctxReader struct {
-	ctx context.Context
-	r   io.Reader
+type ctxBody struct {
+	ctx     context.Context
+	r       io.Reader
+	atClose *[]error
 }
 
-func (c ctxReader) Read(p []byte) (int, error) {
+func (c ctxBody) Read(p []byte) (int, error) {
 	if err := c.ctx.Err(); err != nil {
 		return 0, err
 	}
 	return c.r.Read(p)
+}
+
+func (c ctxBody) Close() error {
+	*c.atClose = append(*c.atClose, c.ctx.Err())
+	return nil
 }
 
 func reader(n int) io.ReaderAt { return bytes.NewReader(make([]byte, n)) }
