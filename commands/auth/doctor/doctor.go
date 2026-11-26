@@ -130,6 +130,9 @@ structured []CheckResult for scripting.`,
 			b.Stdout = cmd.OutOrStdout()
 			b.Stderr = cmd.ErrOrStderr()
 			return kernel.Run(b, kernel.FromCobra(cmd, outputFlag), func(rc *kernel.RunContext) (output.Renderable, error) {
+				if cmd.Flags().Changed("package") && len(packages) == 0 {
+					return nil, exit.Usagef("--package is empty: pass a package name, e.g. --package com.example.app")
+				}
 				return Run(rc, Input{Packages: packages})
 			})
 		},
