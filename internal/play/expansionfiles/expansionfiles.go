@@ -65,7 +65,7 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 
 	u, err := methodUpload.UploadURL(fileParams(pkg, editID, versionCode, fileType))
 	if err != nil {
-		return nil, &api.Error{Operation: opUpload, Package: pkg, Message: err.Error(), Cause: err}
+		return nil, api.BuildFailure(api.Error{Operation: opUpload, Package: pkg, Message: err.Error(), Cause: err})
 	}
 	u += "?uploadType=resumable"
 

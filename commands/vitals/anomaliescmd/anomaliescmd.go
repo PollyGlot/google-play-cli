@@ -65,7 +65,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	if err != nil {
 		return nil, err
 	}
-	anoms, err := vitals.ParseAnomalies(raw)
+	anoms, err := vitals.ParseAnomalies(pkg, raw)
 	if err != nil {
 		return nil, err
 	}

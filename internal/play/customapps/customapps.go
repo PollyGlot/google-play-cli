@@ -53,7 +53,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 		Organizations: opts.Organizations,
 	})
 	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Resource: developerAccount(account), Message: "marshal metadata: " + err.Error(), Cause: err}
+		return CustomApp{}, nil, api.BuildFailure(api.Error{Operation: op, Resource: developerAccount(account), Message: "marshal metadata: " + err.Error(), Cause: err})
 	}
 
 	f, err := os.Open(artifactPath)
@@ -71,7 +71,7 @@ func Create(ctx context.Context, hc *http.Client, account, artifactPath string, 
 
 	u, err := method.UploadURL(map[string]string{"account": account})
 	if err != nil {
-		return CustomApp{}, nil, &api.Error{Operation: op, Resource: developerAccount(account), Message: err.Error(), Cause: err}
+		return CustomApp{}, nil, api.BuildFailure(api.Error{Operation: op, Resource: developerAccount(account), Message: err.Error(), Cause: err})
 	}
 	u += "?uploadType=resumable"
 

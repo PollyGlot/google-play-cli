@@ -70,7 +70,7 @@
       "code": "API_ERROR",
       "exitCode": 30,
       "retryable": false,
-      "meaning": "Other API 4xx rejection"
+      "meaning": "Other API 4xx rejection, or a 2xx body gplay cannot decode"
     },
     {
       "code": "UPSTREAM_UNAVAILABLE",

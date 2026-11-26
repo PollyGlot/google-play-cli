@@ -14,7 +14,7 @@ frozen exit 4 meaning="Denied by environment policy (GPLAY_READONLY): a mutating
 frozen exit 10 meaning="Authentication failure (SA invalid, token refused, scope missing, no developer-id)" retry-safe="no"
 frozen exit 11 meaning="Authorization (403: SA not invited on the app/account)" retry-safe="no"
 frozen exit 20 meaning="Client-side validation (malformed AAB, unknown locale, ...)" retry-safe="no"
-frozen exit 30 meaning="API 4xx other than auth/perms (not found, conflict, gone, ...)" retry-safe="no"
+frozen exit 30 meaning="API 4xx other than auth/perms (not found, conflict, gone, ...), or a 2xx body gplay cannot decode" retry-safe="no"
 frozen exit 40 meaning="API 5xx (upstream temporarily unhealthy)" retry-safe="yes"
 frozen exit 50 meaning="Network (timeout, DNS, refused)" retry-safe="yes"
 frozen exit 60 meaning="State conflict (open edit, rate-limited, ambiguous target, ...)" retry-safe="sometimes"

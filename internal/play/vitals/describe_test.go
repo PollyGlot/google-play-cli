@@ -57,7 +57,7 @@ func TestDescribe_getsDescriptorAndParsesFreshness(t *testing.T) {
 		t.Errorf("raw body altered: %s", raw)
 	}
 
-	fresh, err := vitals.ParseFreshness(raw)
+	fresh, err := vitals.ParseFreshness("com.example.app", raw)
 	if err != nil {
 		t.Fatalf("ParseFreshness: %v", err)
 	}

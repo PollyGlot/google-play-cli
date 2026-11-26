@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/PollyGlot/google-play-cli/internal/apiregistry"
+	"github.com/PollyGlot/google-play-cli/internal/play/api"
 )
 
 const (
@@ -45,7 +46,7 @@ type Anomaly struct {
 	Period     string
 }
 
-func ParseAnomalies(body []byte) ([]Anomaly, error) {
+func ParseAnomalies(pkg string, body []byte) ([]Anomaly, error) {
 	var resp struct {
 		Anomalies []struct {
 			MetricSet    string              `json:"metricSet"`
@@ -58,7 +59,7 @@ func ParseAnomalies(body []byte) ([]Anomaly, error) {
 		} `json:"anomalies"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("decode anomalies: %w", err)
+		return nil, api.DecodeFailure(api.Error{Operation: opListAnomalies, Package: pkg, Message: "decode anomalies: " + err.Error(), Cause: err})
 	}
 	out := make([]Anomaly, 0, len(resp.Anomalies))
 	for _, a := range resp.Anomalies {

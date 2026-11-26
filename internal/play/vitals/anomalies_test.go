@@ -53,7 +53,7 @@ func TestListAnomalies_getAndParse(t *testing.T) {
 		t.Errorf("URL missing filter/pageSize: %q", gotURL)
 	}
 
-	anoms, err := vitals.ParseAnomalies(raw)
+	anoms, err := vitals.ParseAnomalies("com.example.app", raw)
 	if err != nil {
 		t.Fatalf("ParseAnomalies: %v", err)
 	}
