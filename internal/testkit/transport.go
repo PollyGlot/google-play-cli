@@ -48,6 +48,7 @@ type Call struct {
 	URL           string
 	ContentLength int64
 	Replayable    bool
+	Replayed      []byte
 
 	Reply http.Header
 }
@@ -107,6 +108,10 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		body = b
 	}
+	replayed, err := replay(req)
+	if err != nil {
+		return nil, err
+	}
 	c := Call{
 		Method: req.Method,
 		Host:   req.URL.Host,
@@ -118,6 +123,7 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 		URL:           req.URL.String(),
 		ContentLength: req.ContentLength,
 		Replayable:    req.Body == nil || req.Body == http.NoBody || req.GetBody != nil,
+		Replayed:      replayed,
 		Reply:         http.Header{},
 	}
 	f.mu.Lock()
@@ -147,6 +153,22 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 	}
 	return nil, fmt.Errorf("testkit: no responder for %s %s", req.Method, req.URL.Redacted())
+}
+
+func replay(req *http.Request) ([]byte, error) {
+	if req.GetBody == nil {
+		return nil, nil
+	}
+	rc, err := req.GetBody()
+	if err != nil {
+		return nil, fmt.Errorf("testkit: replay request body: %w", err)
+	}
+	defer func() { _ = rc.Close() }()
+	b, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("testkit: read replayed request body: %w", err)
+	}
+	return b, nil
 }
 
 func (f *Fake) Calls() []Call {

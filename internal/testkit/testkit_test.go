@@ -170,6 +170,24 @@ func TestFake_respondersInOrderAndWrote(t *testing.T) {
 	}
 }
 
+func TestFake_recordsTheReplayedBody(t *testing.T) {
+	fake := testkit.NewFake(testkit.Any(200, `{}`))
+	replayable, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.test/a", strings.NewReader(`{"x":1}`))
+	oneShot, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.test/b", io.NopCloser(strings.NewReader(`{"y":2}`)))
+	for _, req := range []*http.Request{replayable, oneShot} {
+		if _, err := fake.RoundTrip(req); err != nil {
+			t.Fatalf("RoundTrip %s: %v", req.URL, err)
+		}
+	}
+	calls := fake.Calls()
+	if string(calls[0].Replayed) != `{"x":1}` || !calls[0].Replayable {
+		t.Errorf("replayable call: Replayed = %q, Replayable = %t, want the body again", calls[0].Replayed, calls[0].Replayable)
+	}
+	if calls[1].Replayed != nil || calls[1].Replayable {
+		t.Errorf("one-shot call: Replayed = %q, Replayable = %t, want nil and false", calls[1].Replayed, calls[1].Replayable)
+	}
+}
+
 func TestGolden_matchesCommittedFile(t *testing.T) {
 	testkit.Golden(t, "example.golden", []byte("line one\nline two\n"))
 }

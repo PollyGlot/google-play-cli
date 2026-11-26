@@ -120,8 +120,8 @@ func TestDo_mediaStream(t *testing.T) {
 	if err := os.WriteFile(path, payload, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	rt := &execRT{resp: answer(200, `{"image":{"id":"i1"}}`)}
-	_, err := api.Do(context.Background(), hc(rt), api.Call{
+	fake := testkit.NewFake(testkit.Any(200, `{"image":{"id":"i1"}}`))
+	_, err := api.Do(context.Background(), &http.Client{Transport: fake}, api.Call{
 		Method:      mImagesUp,
 		Params:      map[string]string{"packageName": pkg, "editId": "e1", "language": "en-US", "imageType": "phoneScreenshots"},
 		Media:       true,
@@ -132,20 +132,15 @@ func TestDo_mediaStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
-	req := rt.reqs[0]
-	if want := "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/phoneScreenshots?uploadType=media"; req.URL.String() != want {
-		t.Errorf("url = %s, want %s", req.URL, want)
+	c := fake.Calls()[0]
+	if want := "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/e1/listings/en-US/phoneScreenshots?uploadType=media"; c.URL != want {
+		t.Errorf("url = %s, want %s", c.URL, want)
 	}
-	if rt.bodies[0] != string(payload) || req.ContentLength != int64(len(payload)) || req.Header.Get("Content-Type") != "image/png" {
-		t.Errorf("body=%q len=%d ct=%q", rt.bodies[0], req.ContentLength, req.Header.Get("Content-Type"))
+	if !bytes.Equal(c.Body, payload) || c.ContentLength != int64(len(payload)) || c.Header.Get("Content-Type") != "image/png" {
+		t.Errorf("body=%q len=%d ct=%q", c.Body, c.ContentLength, c.Header.Get("Content-Type"))
 	}
-	replay, err := req.GetBody()
-	if err != nil {
-		t.Fatalf("GetBody: %v", err)
-	}
-	defer func() { _ = replay.Close() }()
-	if b, _ := io.ReadAll(replay); !bytes.Equal(b, payload) {
-		t.Errorf("replayed body = %q, want the payload again", b)
+	if !bytes.Equal(c.Replayed, payload) {
+		t.Errorf("replayed body = %q, want the payload again", c.Replayed)
 	}
 }
 
