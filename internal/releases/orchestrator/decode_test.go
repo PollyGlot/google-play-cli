@@ -12,9 +12,10 @@ import (
 
 func TestRollout_malformedTrackIn2xx_exit30(t *testing.T) {
 	cases := map[string]string{
-		"releases under another key": `{"track":"production","Releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
-		"releases under two keys":    `{"track":"production","releases":[],"Releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
-		"null release":               `{"track":"production","releases":[null]}`,
+		"releases under another key":              `{"track":"production","Releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
+		"releases under two keys":                 `{"track":"production","releases":[],"Releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
+		"releases under two keys, index in range": `{"track":"production","releases":[{"name":"141","status":"completed","versionCodes":["141"]}],"Releases":[{"name":"142","status":"inProgress","versionCodes":["142"],"userFraction":0.01}]}`,
+		"null release":                            `{"track":"production","releases":[null]}`,
 	}
 	for name, track := range cases {
 		t.Run(name, func(t *testing.T) {

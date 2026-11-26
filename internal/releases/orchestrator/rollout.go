@@ -251,6 +251,11 @@ func patchTrackRelease(from api.Source, rawTrack json.RawMessage, idx int, edit 
 	if err := json.Unmarshal(rawTrack, &track); err != nil {
 		return nil, from.DecodeFailure("decode track for update", err)
 	}
+	for key := range track {
+		if key != "releases" && strings.EqualFold(key, "releases") {
+			return nil, from.DecodeFailure(fmt.Sprintf("track carries its releases under %q: refusing a release list read two ways", key), nil)
+		}
+	}
 	var releases []json.RawMessage
 	if err := json.Unmarshal(track["releases"], &releases); err != nil {
 		return nil, from.DecodeFailure("decode releases for update", err)
