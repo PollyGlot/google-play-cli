@@ -33,13 +33,12 @@ func Get(ctx context.Context, hc *http.Client, pkg, editID, track string) (*Trac
 	}
 	var parsed TrackCountryAvailability
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, raw, &api.Error{
-			Operation:  opCountryAvailabilityGet,
-			Package:    pkg,
-			StatusCode: http.StatusOK,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+		return nil, raw, api.DecodeFailure(api.Error{
+			Operation: opCountryAvailabilityGet,
+			Package:   pkg,
+			Message:   "decode response: " + err.Error(),
+			Cause:     err,
+		})
 	}
 	return &parsed, raw, nil
 }

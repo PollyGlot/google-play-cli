@@ -173,7 +173,7 @@ func Get(ctx context.Context, hc *http.Client, pkg, reviewID string) (Review, er
 }
 
 func decodeError(op, pkg, what string, err error) error {
-	return &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: what + err.Error(), Cause: err}
+	return api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: what + err.Error(), Cause: err})
 }
 
 func List(ctx context.Context, hc *http.Client, pkg string) ([]Review, error) {

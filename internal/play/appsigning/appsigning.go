@@ -151,7 +151,7 @@ func post(ctx context.Context, hc *http.Client, m apiregistry.Method, op, name s
 		return nil, err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &api.Error{Operation: op, Resource: signingTarget(name), StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, api.DecodeFailure(api.Error{Operation: op, Resource: signingTarget(name), Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return raw, nil
 }

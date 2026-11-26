@@ -74,10 +74,10 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 					OfferID    string `json:"offerId"`
 				}
 				if err := json.Unmarshal(rawOffer, &o); err != nil {
-					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err})
 				}
 				if o.ProductID == "" || o.BasePlanID == "" || o.OfferID == "" {
-					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed"}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/basePlanId/offerId): refusing a catalog entry that cannot be addressed"})
 				}
 				page = append(page, OfferItem{ProductID: o.ProductID, BasePlanID: o.BasePlanID, OfferID: o.OfferID, Raw: rawOffer})
 			}

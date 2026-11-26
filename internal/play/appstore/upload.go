@@ -123,16 +123,16 @@ func sniffContentType(f *os.File, size int64) (string, error) {
 func trackingID(op, pkg string, raw json.RawMessage, field string) (string, json.RawMessage, error) {
 	var parsed map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return "", nil, &api.Error{Operation: op, Package: pkg, Message: "decode response: " + err.Error(), Cause: err}
+		return "", nil, api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	var id string
 	if v, ok := parsed[field]; ok {
 		if err := json.Unmarshal(v, &id); err != nil {
-			return "", nil, &api.Error{Operation: op, Package: pkg, Message: "decode response: " + field + ": " + err.Error(), Cause: err}
+			return "", nil, api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "decode response: " + field + ": " + err.Error(), Cause: err})
 		}
 	}
 	if id == "" {
-		return "", nil, &api.Error{Operation: op, Package: pkg, Message: "upload succeeded but the response carried no " + field + ": the id is required by `gplay appstore submit`"}
+		return "", nil, api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "upload succeeded but the response carried no " + field + ": the id is required by `gplay appstore submit`"})
 	}
 	return id, raw, nil
 }

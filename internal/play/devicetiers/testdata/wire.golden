@@ -17,7 +17,7 @@ POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/co
 Content-Type: application/json
 content-length=34 replayable=true
 {"deviceGroups":[{"name":"high"}]}
-=> error (exit 50): deviceTierConfigs.create on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): deviceTierConfigs.create on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## Create allow unknown / ok
 POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?allowUnknownDevices=true
@@ -38,7 +38,7 @@ POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/co
 Content-Type: application/json
 content-length=34 replayable=true
 {"deviceGroups":[{"name":"high"}]}
-=> error (exit 50): deviceTierConfigs.create on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): deviceTierConfigs.create on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## Get / ok
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs/123
@@ -53,7 +53,7 @@ content-length=0 replayable=true
 ## Get / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs/123
 content-length=0 replayable=true
-=> error (exit 50): deviceTierConfigs.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): deviceTierConfigs.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## List / ok
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
@@ -68,7 +68,7 @@ content-length=0 replayable=true
 ## List / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs
 content-length=0 replayable=true
-=> error (exit 50): deviceTierConfigs.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): deviceTierConfigs.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## List paged / ok
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?pageSize=10&pageToken=tok%2F%2B%3D
@@ -83,5 +83,5 @@ content-length=0 replayable=true
 ## List paged / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/deviceTierConfigs?pageSize=10&pageToken=tok%2F%2B%3D
 content-length=0 replayable=true
-=> error (exit 50): deviceTierConfigs.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): deviceTierConfigs.list on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 

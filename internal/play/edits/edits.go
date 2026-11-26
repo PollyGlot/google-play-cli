@@ -332,7 +332,7 @@ func GetExplicit(ctx context.Context, hc *http.Client, pkg, editID string) (AppE
 	}
 	var parsed AppEdit
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return AppEdit{}, nil, &api.Error{Operation: "edits.get", Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+		return AppEdit{}, nil, api.DecodeFailure(api.Error{Operation: "edits.get", Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return parsed, raw, nil
 }
@@ -374,21 +374,19 @@ func insertEdit(ctx context.Context, hc *http.Client, pkg string) (string, error
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return "", &api.Error{
-			Operation:  "edits.insert",
-			Package:    pkg,
-			StatusCode: http.StatusOK,
-			Message:    "decode response: " + err.Error(),
-			Cause:      err,
-		}
+		return "", api.DecodeFailure(api.Error{
+			Operation: "edits.insert",
+			Package:   pkg,
+			Message:   "decode response: " + err.Error(),
+			Cause:     err,
+		})
 	}
 	if parsed.ID == "" {
-		return "", &api.Error{
-			Operation:  "edits.insert",
-			Package:    pkg,
-			StatusCode: http.StatusOK,
-			Message:    "empty Edit ID in response body",
-		}
+		return "", api.DecodeFailure(api.Error{
+			Operation: "edits.insert",
+			Package:   pkg,
+			Message:   "empty Edit ID in response body",
+		})
 	}
 	return parsed.ID, nil
 }

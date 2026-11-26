@@ -11,7 +11,7 @@ content-length=0 replayable=true
 ## Get / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1
 content-length=0 replayable=true
-=> error (exit 50): orders.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): orders.get on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## BatchGet / ok
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders:batchGet?orderIds=GPA.1&orderIds=GPA.2
@@ -26,7 +26,7 @@ content-length=0 replayable=true
 ## BatchGet / malformed
 GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders:batchGet?orderIds=GPA.1&orderIds=GPA.2
 content-length=0 replayable=true
-=> error (exit 50): orders.batchget on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): orders.batchget on com.example.app: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## Refund / ok
 POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/com.example.app/orders/GPA.1:refund

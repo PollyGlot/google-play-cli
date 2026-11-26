@@ -75,13 +75,13 @@ func Upload(ctx context.Context, hc *http.Client, pkg, editID string, versionCod
 		} `json:"deobfuscationFile"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, &api.Error{
+		return nil, api.DecodeFailure(api.Error{
 			Operation:  op,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
-		}
+		})
 	}
 	return &Result{SymbolType: parsed.DeobfuscationFile.SymbolType, Raw: body}, nil
 }

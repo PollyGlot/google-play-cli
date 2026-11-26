@@ -57,7 +57,7 @@ func paginateGET(ctx context.Context, hc *http.Client, m apiregistry.Method, op,
 			}
 			page, next, derr := decodePage(raw, itemsKey)
 			if derr != nil {
-				return nil, "", &api.Error{Operation: op, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
+				return nil, "", api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr})
 			}
 			return page, next, nil
 		})

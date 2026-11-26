@@ -71,13 +71,13 @@ func UploadWith(ctx context.Context, hc *http.Client, pkg, editID, aabPath strin
 		VersionCode int `json:"versionCode"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return 0, &api.Error{
+		return 0, api.DecodeFailure(api.Error{
 			Operation:  op,
 			Package:    pkg,
 			StatusCode: status,
 			Message:    "decode response: " + err.Error(),
 			Cause:      err,
-		}
+		})
 	}
 	return parsed.VersionCode, nil
 }

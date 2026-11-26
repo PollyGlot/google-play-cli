@@ -91,10 +91,10 @@ func ListOneTimeProducts(ctx context.Context, hc *http.Client, pkg string) ([]It
 					ProductID string `json:"productId"`
 				}
 				if err := json.Unmarshal(rawP, &p); err != nil {
-					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "decode one-time product: " + err.Error(), Cause: err}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opList, Package: pkg, Message: "decode one-time product: " + err.Error(), Cause: err})
 				}
 				if p.ProductID == "" {
-					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "response contains a one-time product without a productId: refusing a catalog entry that cannot be addressed"}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opList, Package: pkg, Message: "response contains a one-time product without a productId: refusing a catalog entry that cannot be addressed"})
 				}
 				page = append(page, Item{ProductID: p.ProductID, Raw: rawP})
 			}
@@ -134,10 +134,10 @@ func ListAllOffers(ctx context.Context, hc *http.Client, pkg string) ([]OfferIte
 					OfferID          string `json:"offerId"`
 				}
 				if err := json.Unmarshal(rawO, &o); err != nil {
-					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opOffersList, Package: pkg, Message: "decode offer: " + err.Error(), Cause: err})
 				}
 				if o.ProductID == "" || o.PurchaseOptionID == "" || o.OfferID == "" {
-					return nil, "", &api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/purchaseOptionId/offerId): refusing a catalog entry that cannot be addressed"}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opOffersList, Package: pkg, Message: "response contains an offer without its full identity (productId/purchaseOptionId/offerId): refusing a catalog entry that cannot be addressed"})
 				}
 				page = append(page, OfferItem{ProductID: o.ProductID, PurchaseOptionID: o.PurchaseOptionID, OfferID: o.OfferID, Raw: rawO})
 			}
@@ -399,10 +399,10 @@ func listInAppProducts(ctx context.Context, hc *http.Client, pkg string) ([]Lega
 					SKU string `json:"sku"`
 				}
 				if err := json.Unmarshal(rawP, &p); err != nil {
-					return nil, "", &api.Error{Operation: opLegacyList, Package: pkg, Message: "decode in-app product: " + err.Error(), Cause: err}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opLegacyList, Package: pkg, Message: "decode in-app product: " + err.Error(), Cause: err})
 				}
 				if p.SKU == "" {
-					return nil, "", &api.Error{Operation: opLegacyList, Package: pkg, Message: "response contains an in-app product without a sku: refusing a catalog entry that cannot be addressed"}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opLegacyList, Package: pkg, Message: "response contains an in-app product without a sku: refusing a catalog entry that cannot be addressed"})
 				}
 				page = append(page, LegacyItem{SKU: p.SKU, Raw: rawP})
 			}

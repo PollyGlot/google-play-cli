@@ -26,8 +26,6 @@ var (
 const (
 	exitAuth    = 10
 	exitAuthz   = 11
-	exitAPI4xx  = 30
-	exitAPI5xx  = 40
 	exitNetwork = 50
 )
 
@@ -320,7 +318,7 @@ func insertEdit(ctx context.Context, httpClient *http.Client, sa *serviceaccount
 	if err := json.Unmarshal(raw, &parsed); err != nil || parsed.ID == "" {
 		return "", CheckResult{
 			Passed:   false,
-			ExitCode: exitAPI5xx,
+			ExitCode: api.DecodeFailure(api.Error{Operation: "edits.insert", Package: packageName}).ExitCode(),
 			Hint:     "edits.insert for " + packageName + " returned a malformed body: no Edit ID to discard",
 		}, true
 	}
@@ -335,21 +333,8 @@ func failure(err error) (int, string) {
 	return 0, err.Error()
 }
 
-func statusToExitCode(status int) int {
-	switch {
-	case status == http.StatusUnauthorized:
-		return exitAuth
-	case status == http.StatusForbidden:
-		return exitAuthz
-	case status >= 500:
-		return exitAPI5xx
-	default:
-		return exitAPI4xx
-	}
-}
-
 func insertFailureResult(status int, msg string, sa *serviceaccount.ServiceAccount, packageName string) CheckResult {
-	exit := statusToExitCode(status)
+	exit := api.StatusToExitCode(status)
 	switch {
 	case status == http.StatusForbidden:
 		return CheckResult{
@@ -395,7 +380,7 @@ func deleteEdit(ctx context.Context, httpClient *http.Client, packageName, editI
 			Hint:     "edits.insert on " + packageName + " succeeded but cleanup failed: safe to retry (" + msg + ")",
 		}, true
 	}
-	exit := statusToExitCode(status)
+	exit := api.StatusToExitCode(status)
 	if status >= 500 {
 		return CheckResult{
 			Passed:   false,

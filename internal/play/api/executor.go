@@ -33,27 +33,32 @@ type Stream struct {
 }
 
 func Do(ctx context.Context, hc *http.Client, c Call) (json.RawMessage, error) {
+	raw, _, err := do(ctx, hc, c)
+	return raw, err
+}
+
+func do(ctx context.Context, hc *http.Client, c Call) (json.RawMessage, int, error) {
 	op := c.op()
 	resp, err := send(ctx, hc, c, op)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, MaxAPISuccessBodyRead+1))
 	if err != nil {
-		return nil, &Error{
+		return nil, 0, &Error{
 			Operation: op, Package: c.Target, Resource: c.Resource, StatusCode: resp.StatusCode,
 			Message: "read response body: " + err.Error(),
 			Cause:   &bodyReadError{err: err},
 		}
 	}
 	if len(raw) > MaxAPISuccessBodyRead {
-		return nil, &Error{
+		return nil, 0, &Error{
 			Operation: op, Package: c.Target, Resource: c.Resource, StatusCode: resp.StatusCode,
 			Message: fmt.Sprintf("response body exceeds the %d-byte limit (%d MiB): refusing to truncate it", MaxAPISuccessBodyRead, MaxAPISuccessBodyRead>>20),
 		}
 	}
-	return json.RawMessage(raw), nil
+	return json.RawMessage(raw), resp.StatusCode, nil
 }
 
 func Download(ctx context.Context, hc *http.Client, c Call, w io.Writer) (int64, error) {
@@ -111,12 +116,12 @@ func (t *readTracker) Read(p []byte) (int, error) {
 }
 
 func DoJSON(ctx context.Context, hc *http.Client, c Call, out any) (json.RawMessage, error) {
-	raw, err := Do(ctx, hc, c)
+	raw, status, err := do(ctx, hc, c)
 	if err != nil {
 		return nil, err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &Error{Operation: c.op(), Package: c.Target, Resource: c.Resource, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, DecodeFailure(Error{Operation: c.op(), Package: c.Target, Resource: c.Resource, StatusCode: status, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return raw, nil
 }
@@ -132,8 +137,8 @@ func (c Call) op() string {
 }
 
 func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
-	fail := func(msg string, err error) error {
-		return &Error{Operation: op, Package: c.Target, Resource: c.Resource, Message: msg, Cause: err}
+	fail := func(msg string, err error, local bool) error {
+		return &Error{Operation: op, Package: c.Target, Resource: c.Resource, Message: msg, Cause: &notSentError{err: err, local: local}}
 	}
 	verb, u, q := http.MethodGet, c.URL, url.Values(nil)
 	if u == "" {
@@ -143,7 +148,7 @@ func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
 		}
 		var err error
 		if u, err = build(c.Params); err != nil {
-			return nil, fail(err.Error(), err)
+			return nil, fail(err.Error(), err, false)
 		}
 		verb, q = c.Method.Verb, c.Query
 		if c.Media {
@@ -168,13 +173,13 @@ func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
 	case *Stream:
 		rc, err := b.Open()
 		if err != nil {
-			return nil, fail("open request body: "+err.Error(), err)
+			return nil, fail("open request body: "+err.Error(), err, true)
 		}
 		body, getBody, size = rc, b.Open, b.Size
 	default:
 		payload, err := encodeBody(b)
 		if err != nil {
-			return nil, fail("encode request: "+err.Error(), err)
+			return nil, fail("encode request: "+err.Error(), err, false)
 		}
 		body = bytes.NewReader(payload)
 	}
@@ -183,7 +188,7 @@ func (c Call) request(ctx context.Context, op string) (*http.Request, error) {
 		if rc, ok := body.(io.Closer); ok {
 			_ = rc.Close()
 		}
-		return nil, fail(err.Error(), err)
+		return nil, fail(err.Error(), err, false)
 	}
 	if getBody != nil {
 		req.GetBody, req.ContentLength = getBody, size

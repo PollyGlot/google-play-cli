@@ -57,12 +57,12 @@ func listPage(ctx context.Context, hc *http.Client, bucket, prefix, pageToken st
 		NextPageToken string   `json:"nextPageToken"`
 	}
 	if err := json.Unmarshal(raw, &page); err != nil {
-		return nil, "", &api.Error{
+		return nil, "", api.DecodeFailure(api.Error{
 			Operation: opObjectsList,
 			Resource:  bucketResource(bucket),
 			Message:   "decode response: " + err.Error(),
 			Cause:     err,
-		}
+		})
 	}
 	return page.Items, page.NextPageToken, nil
 }

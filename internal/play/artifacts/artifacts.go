@@ -64,7 +64,7 @@ func get(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg, ed
 		return nil, err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return nil, &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+		return nil, api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return raw, nil
 }

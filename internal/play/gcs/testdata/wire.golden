@@ -11,7 +11,7 @@ content-length=0 replayable=true
 ## ListObjects / malformed
 GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app
 content-length=0 replayable=true
-=> error (exit 50): storage.objects.list on pubsite_prod_rev_01234: decode response: invalid character 'o' in literal null (expecting 'u')
+=> error (exit 30): storage.objects.list on pubsite_prod_rev_01234: decode response: invalid character 'o' in literal null (expecting 'u') (HTTP 200)
 
 ## ListObjects / two pages
 GET https://storage.googleapis.com/storage/v1/b/pubsite_prod_rev_01234/o?prefix=reviews%2Freviews_com.example.app

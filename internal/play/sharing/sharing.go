@@ -75,7 +75,7 @@ func upload(ctx context.Context, hc *http.Client, m apiregistry.Method, op, pkg,
 	}
 	var art Artifact
 	if err := json.Unmarshal(raw, &art); err != nil {
-		return Artifact{}, nil, &api.Error{Operation: op, Package: pkg, StatusCode: http.StatusOK, Message: "decode response: " + err.Error(), Cause: err}
+		return Artifact{}, nil, api.DecodeFailure(api.Error{Operation: op, Package: pkg, Message: "decode response: " + err.Error(), Cause: err})
 	}
 	return art, raw, nil
 }

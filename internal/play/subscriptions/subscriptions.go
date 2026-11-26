@@ -75,10 +75,10 @@ func List(ctx context.Context, hc *http.Client, pkg string) ([]Item, error) {
 					ProductID string `json:"productId"`
 				}
 				if err := json.Unmarshal(rawSub, &s); err != nil {
-					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "decode subscription: " + err.Error(), Cause: err}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opList, Package: pkg, Message: "decode subscription: " + err.Error(), Cause: err})
 				}
 				if s.ProductID == "" {
-					return nil, "", &api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId: refusing a catalog entry that cannot be addressed"}
+					return nil, "", api.DecodeFailure(api.Error{Operation: opList, Package: pkg, Message: "response contains a subscription without a productId: refusing a catalog entry that cannot be addressed"})
 				}
 				page = append(page, Item{ProductID: s.ProductID, Raw: rawSub})
 			}

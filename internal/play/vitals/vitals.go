@@ -93,7 +93,7 @@ func Query(ctx context.Context, hc *http.Client, set MetricSet, pkg string, body
 			}
 			page, next, derr := decodePage(raw, "rows")
 			if derr != nil {
-				return nil, "", &api.Error{Operation: opQuery, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr}
+				return nil, "", api.DecodeFailure(api.Error{Operation: opQuery, Package: pkg, Message: "decode response: " + derr.Error(), Cause: derr})
 			}
 			return page, next, nil
 		})
