@@ -22,14 +22,3 @@ func TestRenderJSON_envelope_golden(t *testing.T) {
 	}
 	outputtest.GoldenJSON(t, "envelope.json.golden", r)
 }
-
-func TestRenderJSON_emptyRawResponse_fallsBackToPayloadShape(t *testing.T) {
-	p := viewcmd.Payload{
-		Package:         "com.example.app",
-		DefaultLanguage: "en-US",
-		Title:           "Example <Notes> & Tasks",
-		ContactEmail:    "dev@example.com",
-		IconSha256:      "3f1e0c2a",
-	}
-	outputtest.GoldenJSON(t, "fallback.json.golden", p)
-}

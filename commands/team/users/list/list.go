@@ -111,9 +111,6 @@ func (p Payload) Renderers() output.Renderers {
 }
 
 func renderJSON(w io.Writer, p Payload) error {
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw users.list payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

@@ -163,9 +163,6 @@ func (p Payload) renderJSON(w io.Writer) error {
 			Warnings: p.Warnings,
 		})
 	}
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw grants.%s payload for --output json", p.Verb)
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

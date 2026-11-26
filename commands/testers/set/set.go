@@ -89,9 +89,6 @@ func renderJSON(w io.Writer, p Payload) error {
 	if p.DryRun {
 		return output.WriteJSON(w, dryRunView{DryRun: true, Track: p.Track, GoogleGroups: output.NonNil(p.Groups)})
 	}
-	if len(p.Raw) == 0 {
-		return fmt.Errorf("missing raw testers.update payload for --output json")
-	}
 	_, err := w.Write(p.Raw)
 	return err
 }

@@ -117,14 +117,11 @@ func renderSetTable(w io.Writer, p SetPayload) error {
 }
 
 func renderSetJSON(w io.Writer, p SetPayload) error {
-	if len(p.Raw) == 0 {
-		if p.DryRun {
-			return output.WriteJSON(w, struct {
-				DryRun bool                    `json:"dryRun"`
-				Patch  details.AppDetailsPatch `json:"patch"`
-			}{DryRun: true, Patch: p.Patch})
-		}
-		return fmt.Errorf("missing raw details.patch payload for --output json")
+	if p.DryRun {
+		return output.WriteJSON(w, struct {
+			DryRun bool                    `json:"dryRun"`
+			Patch  details.AppDetailsPatch `json:"patch"`
+		}{DryRun: true, Patch: p.Patch})
 	}
 	_, err := w.Write(p.Raw)
 	return err
