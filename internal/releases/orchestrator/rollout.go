@@ -256,12 +256,15 @@ func patchTrackRelease(from api.Source, rawTrack json.RawMessage, idx int, edit 
 		return nil, from.DecodeFailure("decode releases for update", err)
 	}
 	if idx < 0 || idx >= len(releases) {
-		return nil, fmt.Errorf("target release index %d out of range (%d releases)", idx, len(releases))
+		return nil, from.DecodeFailure(fmt.Sprintf("target release index %d out of range (%d releases)", idx, len(releases)), nil)
 	}
 
 	var target map[string]json.RawMessage
 	if err := json.Unmarshal(releases[idx], &target); err != nil {
 		return nil, from.DecodeFailure("decode target release for update", err)
+	}
+	if target == nil {
+		return nil, from.DecodeFailure("target release is null", nil)
 	}
 	if err := edit.apply(target); err != nil {
 		return nil, err
