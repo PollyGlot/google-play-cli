@@ -78,9 +78,11 @@ the comment purge (the `scripts/lint/comments.py` ratchet) gathers them here.
 - **A 2xx body that reads whole but does not decode is exit 30**, not
   retryable. The API answered something gplay cannot read, and a re-run gets
   the same body. The same holds for a body that decodes but lacks a field
-  gplay needs (an Edit ID, a product's identity). Every decoder builds the
-  error with `api.DecodeFailure`, which keeps the 2xx status received, or 200
-  when the caller no longer has it; no module stamps a status of its own.
+  gplay needs (an Edit ID, a product's identity). The decoders that read a
+  response through `api.Do` or `DoJSON` build the error with
+  `api.DecodeFailure`, which keeps the 2xx status received, or 200 when the
+  caller no longer has it; no module stamps a status of its own. Three
+  commands that decode a second time still exit 1 on such a body (#917).
 - **A request that fails before it is sent is exit 20 or 1.** A request body
   that cannot be opened is a local file problem, exit 20
   ([ADR-0056](./0056-media-upload-protocol.md)). A request that cannot be
