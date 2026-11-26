@@ -36,6 +36,11 @@ func TestRollout_malformedTrackIn2xx_exit30(t *testing.T) {
 			if !strings.Contains(err.Error(), "tracks.get on com.example.app: ") {
 				t.Errorf("err = %q, want it to name tracks.get on the package", err)
 			}
+			for _, call := range apiCalls(rt) {
+				if strings.HasPrefix(call, http.MethodPut+" ") {
+					t.Errorf("track update sent (%s) on a track that did not decode", call)
+				}
+			}
 		})
 	}
 }
