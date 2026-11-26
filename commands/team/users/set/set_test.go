@@ -155,3 +155,13 @@ func TestSet_blankSelector_exit2PointsToClear(t *testing.T) {
 		})
 	}
 }
+
+func TestSet_empty2xxBody_exit30(t *testing.T) {
+	rt := teamtest.New(teamtest.Fail("PATCH", "/users/bob@example.com", 200, ""))
+	rc := teamtest.NewRC(t, rt)
+
+	_, err := setcmd.Run(rc, setcmd.Input{Email: "bob@example.com", Role: "reviewer", RoleSet: true})
+	if got := exitCodeOf(t, err); got != 30 {
+		t.Errorf("exit = %d, want 30 (undecodable 2xx body); err=%v", got, err)
+	}
+}

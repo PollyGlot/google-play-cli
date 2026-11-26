@@ -219,3 +219,16 @@ func TestGrantsSet_blankSelector_exit2(t *testing.T) {
 		})
 	}
 }
+
+func TestGrantsSet_empty2xxBody_exit30(t *testing.T) {
+	rt := teamtest.New(
+		teamtest.UsersList(bobNoGrant),
+		teamtest.Fail("POST", "/grants", 200, ""),
+	)
+	rc := teamtest.NewRC(t, rt)
+
+	_, err := setcmd.Run(rc, setcmd.Input{Email: "bob@example.com", Package: "com.example.foo", Permissions: []string{"reply-reviews"}, PermsSet: true})
+	if got := exitCodeOf(t, err); got != 30 {
+		t.Errorf("exit = %d, want 30 (undecodable 2xx body); err=%v", got, err)
+	}
+}
