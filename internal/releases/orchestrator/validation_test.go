@@ -95,3 +95,38 @@ func TestPromote_invalidInput_exit2_beforeAnyHTTP(t *testing.T) {
 		}
 	}
 }
+
+func TestValidate_namesTheFlag(t *testing.T) {
+	const exclusive = "--release-notes and --release-notes-dir are mutually exclusive"
+	aab := []orchestrator.Artifact{{Path: "app.aab"}}
+	upload := []struct {
+		name string
+		opts orchestrator.Opts
+		want string
+	}{
+		{"notes text and dir", orchestrator.Opts{Artifacts: aab, ReleaseNotes: "hello", ReleaseNotesDir: "notes"}, exclusive},
+		{"notes explicit empty and dir", orchestrator.Opts{Artifacts: aab, ReleaseNotesSet: true, ReleaseNotesDir: "notes"}, exclusive},
+		{"update priority 9", orchestrator.Opts{Artifacts: aab, UpdatePriority: priority(9)}, "--update-priority must be in 0..5, got 9"},
+		{"release name blank", orchestrator.Opts{Artifacts: aab, ReleaseName: "  "}, "--release-name must not be empty or blank"},
+		{"release name explicit empty", orchestrator.Opts{Artifacts: aab, ReleaseNameSet: true}, "--release-name must not be empty or blank"},
+	}
+	for _, tc := range upload {
+		if err := tc.opts.Validate(); err == nil || err.Error() != tc.want || exit.For(err) != 2 {
+			t.Errorf("Opts.Validate(%s) = %v (exit %d), want %q exit 2", tc.name, err, exit.For(err), tc.want)
+		}
+	}
+	promote := []struct {
+		name string
+		opts orchestrator.PromoteOpts
+		want string
+	}{
+		{"notes text and dir", orchestrator.PromoteOpts{FromTrack: "beta", ToTrack: "alpha", ReleaseNotes: "hello", ReleaseNotesDir: "notes"}, exclusive},
+		{"notes explicit empty and dir", orchestrator.PromoteOpts{FromTrack: "beta", ToTrack: "alpha", ReleaseNotesSet: true, ReleaseNotesDir: "notes"}, exclusive},
+		{"update priority -1", orchestrator.PromoteOpts{FromTrack: "beta", ToTrack: "alpha", UpdatePriority: priority(-1)}, "--update-priority must be in 0..5, got -1"},
+	}
+	for _, tc := range promote {
+		if err := tc.opts.Validate(); err == nil || err.Error() != tc.want || exit.For(err) != 2 {
+			t.Errorf("PromoteOpts.Validate(%s) = %v (exit %d), want %q exit 2", tc.name, err, exit.For(err), tc.want)
+		}
+	}
+}

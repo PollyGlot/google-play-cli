@@ -14,7 +14,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
-	"github.com/PollyGlot/google-play-cli/internal/play/edits"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
 	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
@@ -236,6 +235,26 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, err
 	}
 
+	opts := orchestrator.PromoteOpts{
+		Package:           pkg,
+		FromTrack:         in.FromTrack,
+		ToTrack:           in.ToTrack,
+		VersionCode:       in.VersionCode,
+		ReleaseName:       in.ReleaseName,
+		State:             state,
+		UpdatePriority:    updatePriority(in),
+		ReleaseNotes:      in.ReleaseNotes,
+		ReleaseNotesSet:   in.ReleaseNotesSet,
+		ReleaseNotesDir:   in.ReleaseNotesDir,
+		KeepEditOnFailure: in.KeepEditOnFailure,
+		Confirm:           in.Confirm,
+		DryRun:            in.DryRun,
+		Plan:              in.Plan,
+	}
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	var (
 		httpClient     *http.Client
 		explicitEditID string
@@ -249,29 +268,11 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, err
 		}
 	}
-
-	var commit edits.CommitOptions
+	opts.ExplicitEditID = explicitEditID
 	if !in.Plan {
-		commit = in.Commit.For(rc, explicitEditID)
+		opts.Commit = in.Commit.For(rc, explicitEditID)
 	}
-	result, err := orchestrator.Promote(rc.Ctx, httpClient, orchestrator.PromoteOpts{
-		Package:           pkg,
-		FromTrack:         in.FromTrack,
-		ToTrack:           in.ToTrack,
-		VersionCode:       in.VersionCode,
-		ReleaseName:       in.ReleaseName,
-		State:             state,
-		UpdatePriority:    updatePriority(in),
-		ReleaseNotes:      in.ReleaseNotes,
-		ReleaseNotesSet:   in.ReleaseNotesSet,
-		ReleaseNotesDir:   in.ReleaseNotesDir,
-		KeepEditOnFailure: in.KeepEditOnFailure,
-		ExplicitEditID:    explicitEditID,
-		Commit:            commit,
-		Confirm:           in.Confirm,
-		DryRun:            in.DryRun,
-		Plan:              in.Plan,
-	})
+	result, err := orchestrator.Promote(rc.Ctx, httpClient, opts)
 	if err != nil {
 		return nil, trackhint.Classify(in.ToTrack, err)
 	}

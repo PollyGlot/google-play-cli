@@ -49,19 +49,24 @@ func TestRun_invalidInput_exit2_namesTheFlag_noHTTP(t *testing.T) {
 			"^release-notes file name\\(s\\) are not a valid BCP-47 locale tag: .*en_US\\.txt: rename them"},
 	}
 	modes := []struct {
-		name string
-		in   func(*promote.Input)
+		name      string
+		in        func(*promote.Input)
+		noAccount bool
 	}{
-		{"to alpha", func(in *promote.Input) {}},
-		{"production without confirm", func(in *promote.Input) { in.ToTrack, in.Complete = "production", true }},
-		{"dry-run", func(in *promote.Input) { in.DryRun = true }},
-		{"plan", func(in *promote.Input) { in.Plan = true }},
+		{"to alpha", func(in *promote.Input) {}, false},
+		{"to alpha without an Account", func(in *promote.Input) {}, true},
+		{"production without confirm", func(in *promote.Input) { in.ToTrack, in.Complete = "production", true }, false},
+		{"dry-run", func(in *promote.Input) { in.DryRun = true }, false},
+		{"plan", func(in *promote.Input) { in.Plan = true }, false},
 	}
 	for _, tc := range cases {
 		for _, m := range modes {
 			t.Run(tc.name+"/"+m.name, func(t *testing.T) {
 				rt := newPromoteFake(promoteAPI{editID: "edit-invalid"})
 				rc, _ := newRC(t, rt)
+				if m.noAccount {
+					rc.Account = nil
+				}
 				in := promote.Input{Package: "com.example.app", FromTrack: "beta", ToTrack: "alpha"}
 				m.in(&in)
 				tc.in(&in)

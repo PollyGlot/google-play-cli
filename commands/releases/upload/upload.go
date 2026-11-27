@@ -317,21 +317,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		artifacts = append(artifacts, orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
 	}
 
-	var (
-		httpClient     *http.Client
-		explicitEditID string
-	)
-	if !in.DryRun {
-		var err error
-		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
-			return nil, err
-		}
-		if httpClient, err = rc.UploadClient(); err != nil {
-			return nil, err
-		}
-	}
-
-	result, err := orchestrator.Upload(rc.Ctx, httpClient, orchestrator.Opts{
+	opts := orchestrator.Opts{
 		Package:            pkg,
 		Track:              in.Track,
 		Artifacts:          artifacts,
@@ -346,11 +332,30 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		ReleaseNotesSet:    in.ReleaseNotesSet,
 		ReleaseNotesDir:    in.ReleaseNotesDir,
 		KeepEditOnFailure:  in.KeepEditOnFailure,
-		ExplicitEditID:     explicitEditID,
-		Commit:             in.Commit.For(rc, explicitEditID),
 		Confirm:            in.Confirm,
 		DryRun:             in.DryRun,
-	})
+	}
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
+	var (
+		httpClient     *http.Client
+		explicitEditID string
+	)
+	if !in.DryRun {
+		var err error
+		if explicitEditID, err = rc.ExplicitEditID(pkg); err != nil {
+			return nil, err
+		}
+		if httpClient, err = rc.UploadClient(); err != nil {
+			return nil, err
+		}
+	}
+	opts.ExplicitEditID = explicitEditID
+	opts.Commit = in.Commit.For(rc, explicitEditID)
+
+	result, err := orchestrator.Upload(rc.Ctx, httpClient, opts)
 	if err != nil {
 		return nil, trackhint.Classify(in.Track, err)
 	}

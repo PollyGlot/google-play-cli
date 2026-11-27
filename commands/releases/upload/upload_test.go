@@ -198,28 +198,6 @@ func TestRun_internalTrack_happyPath_hitsTokenAndAndroidPublisher(t *testing.T) 
 	assertSequence(t, rt, wantSequence)
 }
 
-func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
-	rt, transport := newUploadTransport(uploadAPI{})
-	rc, _ := newRC(t, transport)
-
-	_, err := upload.Run(rc, upload.Input{
-		Package:         "com.example.app",
-		Track:           "internal",
-		Artifacts:       []string{writeFakeAAB(t)},
-		ReleaseNotes:    "hello",
-		ReleaseNotesDir: "/tmp/notes",
-	})
-	if err == nil {
-		t.Fatal("Run returned nil error; want usage error")
-	}
-	if got := exit.For(err); got != 2 {
-		t.Errorf("exit.For(err) = %d, want 2; err=%v", got, err)
-	}
-	if touched(rt) {
-		t.Errorf("RoundTripper saw %d calls on a usage error: %v", len(apiCalls(rt)), apiCalls(rt))
-	}
-}
-
 func TestRun_stagedOne_exit2PointingAtComplete_noHTTP(t *testing.T) {
 	aab := writeFakeAAB(t)
 	rt, transport := newUploadTransport(uploadAPI{})

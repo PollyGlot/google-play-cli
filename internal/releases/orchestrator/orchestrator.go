@@ -119,7 +119,7 @@ type Artifact struct {
 }
 
 func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
-	if err := validateOpts(opts); err != nil {
+	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
 	hosted, err := loadHosted(opts)
@@ -226,7 +226,7 @@ func highest(codes []int) int {
 	return top
 }
 
-func validateOpts(opts Opts) error {
+func (opts Opts) Validate() error {
 	if len(opts.Artifacts) == 0 {
 		return &InvalidOptsError{Message: "Artifacts must name at least one file to upload"}
 	}

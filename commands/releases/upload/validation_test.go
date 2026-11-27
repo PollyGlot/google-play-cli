@@ -52,18 +52,23 @@ func TestRun_invalidInput_exit2_namesTheFlag_noHTTP(t *testing.T) {
 			"^release-notes file name\\(s\\) are not a valid BCP-47 locale tag: .*en_US\\.txt: rename them"},
 	}
 	modes := []struct {
-		name string
-		in   func(*upload.Input)
+		name      string
+		in        func(*upload.Input)
+		noAccount bool
 	}{
-		{"internal", func(in *upload.Input) {}},
-		{"production without confirm", func(in *upload.Input) { in.Track, in.Complete = "production", true }},
-		{"dry-run", func(in *upload.Input) { in.DryRun = true }},
+		{"internal", func(in *upload.Input) {}, false},
+		{"internal without an Account", func(in *upload.Input) {}, true},
+		{"production without confirm", func(in *upload.Input) { in.Track, in.Complete = "production", true }, false},
+		{"dry-run", func(in *upload.Input) { in.DryRun = true }, false},
 	}
 	for _, tc := range cases {
 		for _, m := range modes {
 			t.Run(tc.name+"/"+m.name, func(t *testing.T) {
 				rt, transport := newUploadTransport(uploadAPI{editID: "edit-invalid", versionCode: 142})
 				rc, _ := newRC(t, transport)
+				if m.noAccount {
+					rc.Account = nil
+				}
 				in := upload.Input{Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)}}
 				m.in(&in)
 				tc.in(&in)

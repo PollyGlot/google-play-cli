@@ -151,7 +151,7 @@ func (e *DestinationReadError) Error() string { return e.Err.Error() }
 func (e *DestinationReadError) Unwrap() error { return e.Err }
 
 func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, error) {
-	if err := validatePromoteOpts(opts); err != nil {
+	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
 	if err := notes.Precheck(opts.ReleaseNotes, opts.ReleaseNotesDir); err != nil {
@@ -305,7 +305,7 @@ func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Resul
 	}, nil
 }
 
-func validatePromoteOpts(opts PromoteOpts) error {
+func (opts PromoteOpts) Validate() error {
 	if err := validateNotesSources(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
 		return err
 	}
