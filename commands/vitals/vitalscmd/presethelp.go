@@ -88,6 +88,10 @@ func PresetMetricHelp(idx schemaindex.Index, set vitals.MetricSet) string {
 	if d := metricDescription(metricsDesc, primary); d != "" {
 		first += " The API defines " + primary + " as: " + d
 	}
+	required := vitals.RequiredDimensions(idx, set)
+	for _, d := range required {
+		first += " The API requires the " + d + " dimension for this set, so the preset always splits its rows by " + d + "."
+	}
 
 	others := "a rolling user-weighted average"
 	for _, m := range metrics[1:] {
@@ -99,6 +103,9 @@ func PresetMetricHelp(idx schemaindex.Index, set vitals.MetricSet) string {
 	second := "The Play Console may show another metric of the set, such as " + others + ", so its figure can differ. The " + set.Name + " set has: " + strings.Join(metrics, ", ") + ". To print them side by side, use gplay vitals query:"
 
 	example := "  gplay vitals query " + set.Name + " --package com.example.app --since 7d --metrics " + strings.Join(metrics, ",")
+	if len(required) > 0 {
+		example += " --dimensions " + strings.Join(required, ",")
+	}
 	return wrap(first) + "\n\n" + wrap(second) + "\n\n" + example
 }
 

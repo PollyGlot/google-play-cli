@@ -108,7 +108,8 @@ func newCountsCommand(boot kernel.Boot) *cobra.Command {
 		Use:   "counts",
 		Short: "Error report counts over a window (errorCount metric set)",
 		Long: `Query the errorCount metric set (errorReportCount / distinctUsers) as a
-timeline, the count side of vitals errors.
+timeline, the count side of vitals errors. The API requires the error report
+type dimension for this set, so the rows are always split by it.
 
 --by slices the timeline (` + vitalscmd.ByChoices() + `); --version-code filters to
 one versionCode. Read-only; --output json mirrors the API response verbatim.
