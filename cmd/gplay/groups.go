@@ -359,16 +359,27 @@ func newReportsGroup(boot kernel.Boot) *cobra.Command {
 }
 
 func newVitalsGroup(boot kernel.Boot) *cobra.Command {
-	leaves := []*cobra.Command{kernel.WithScope(vitalsquery.NewCommand(boot), token.ReportingScope)}
+	leaves := []*cobra.Command{vitalsquery.NewCommand(boot)}
 	for _, spec := range vitalscmd.Presets {
-		leaves = append(leaves, kernel.WithScope(vitalscmd.NewPresetCommand(boot, spec), token.ReportingScope))
+		leaves = append(leaves, vitalscmd.NewPresetCommand(boot, spec))
 	}
 	leaves = append(leaves,
 		vitalserrors.NewCommand(boot),
-		kernel.WithScope(vitalsanomalies.NewCommand(boot), token.ReportingScope),
-		kernel.Experimental(kernel.WithScope(vitalsreleases.NewCommand(boot), token.ReportingScope)),
+		vitalsanomalies.NewCommand(boot),
+		kernel.Experimental(vitalsreleases.NewCommand(boot)),
 	)
-	return kernel.Group("vitals", "Read post-launch quality signals (crashes, ANRs, …) from Play vitals", leaves...)
+	return withReportingScope(kernel.Group("vitals", "Read post-launch quality signals (crashes, ANRs, …) from Play vitals", leaves...))
+}
+
+func withReportingScope(c *cobra.Command) *cobra.Command {
+	kids := c.Commands()
+	if len(kids) == 0 {
+		return kernel.WithScope(c, token.ReportingScope)
+	}
+	for _, k := range kids {
+		withReportingScope(k)
+	}
+	return c
 }
 
 func newMetadataGroup(boot kernel.Boot) *cobra.Command {

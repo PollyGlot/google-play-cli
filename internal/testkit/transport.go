@@ -100,17 +100,45 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 		f.mu.Unlock()
 		return resp, nil
 	}
+	c, err := f.record(req)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range f.responders {
+		if status, b, ok := r(c); ok {
+			if status == 0 {
+				status = http.StatusOK
+			}
+			resp := Response(status, b)
+			for k, v := range c.Reply {
+				resp.Header[k] = v
+			}
+			return resp, nil
+		}
+	}
+	return nil, fmt.Errorf("testkit: no responder for %s %s", req.Method, req.URL.Redacted())
+}
+
+func (f *Fake) Record(req *http.Request) error {
+	if req.Body != nil {
+		defer func() { _ = req.Body.Close() }()
+	}
+	_, err := f.record(req)
+	return err
+}
+
+func (f *Fake) record(req *http.Request) (Call, error) {
 	var body []byte
 	if req.Body != nil {
 		b, err := io.ReadAll(req.Body)
 		if err != nil {
-			return nil, fmt.Errorf("testkit: read request body: %w", err)
+			return Call{}, fmt.Errorf("testkit: read request body: %w", err)
 		}
 		body = b
 	}
 	replayed, err := replay(req)
 	if err != nil {
-		return nil, err
+		return Call{}, err
 	}
 	c := Call{
 		Method: req.Method,
@@ -136,23 +164,11 @@ func (f *Fake) RoundTrip(req *http.Request) (*http.Response, error) {
 	f.mu.Unlock()
 	if why != "" {
 		if collect {
-			return nil, fmt.Errorf("testkit: body refused by the constraints table")
+			return Call{}, fmt.Errorf("testkit: body refused by the constraints table")
 		}
 		panic(why)
 	}
-	for _, r := range f.responders {
-		if status, b, ok := r(c); ok {
-			if status == 0 {
-				status = http.StatusOK
-			}
-			resp := Response(status, b)
-			for k, v := range c.Reply {
-				resp.Header[k] = v
-			}
-			return resp, nil
-		}
-	}
-	return nil, fmt.Errorf("testkit: no responder for %s %s", req.Method, req.URL.Redacted())
+	return c, nil
 }
 
 func replay(req *http.Request) ([]byte, error) {
