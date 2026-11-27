@@ -205,7 +205,7 @@ func TestRun_mutualExclusion_releaseNotesAndDir_exit2_noHTTP(t *testing.T) {
 	_, err := upload.Run(rc, upload.Input{
 		Package:         "com.example.app",
 		Track:           "internal",
-		Artifacts:       []string{"/tmp/whatever.aab"},
+		Artifacts:       []string{writeFakeAAB(t)},
 		ReleaseNotes:    "hello",
 		ReleaseNotesDir: "/tmp/notes",
 	})

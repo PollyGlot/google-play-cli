@@ -119,6 +119,7 @@ type PromoteOpts struct {
 	ReleaseName string
 
 	ReleaseNotes      string
+	ReleaseNotesSet   bool
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
@@ -305,6 +306,9 @@ func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Resul
 }
 
 func validatePromoteOpts(opts PromoteOpts) error {
+	if err := validateNotesSources(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
+		return err
+	}
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
 	}
@@ -316,11 +320,6 @@ func validatePromoteOpts(opts PromoteOpts) error {
 	}
 	if opts.FromTrack == opts.ToTrack {
 		return &InvalidOptsError{Message: "FromTrack and ToTrack are both " + opts.ToTrack + ": promote copies a release to another track"}
-	}
-	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
-		return &InvalidOptsError{
-			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
-		}
 	}
 	if err := notes.ValidateDirLocales(opts.ReleaseNotesDir); err != nil {
 		return err

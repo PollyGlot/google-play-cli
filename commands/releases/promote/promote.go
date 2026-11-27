@@ -209,10 +209,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if (in.ReleaseNotesSet || in.ReleaseNotes != "") && in.ReleaseNotesDir != "" {
-		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
-	}
-	if in.ReleaseNotesSet {
+	if in.ReleaseNotesSet && in.ReleaseNotesDir == "" {
 		if err := notes.CheckText(in.ReleaseNotes); err != nil {
 			return nil, err
 		}
@@ -220,9 +217,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	state, err := orchestrator.RequestedState(in.Draft, in.Complete, in.StagedFractionSet, in.StagedFraction)
 	if err != nil {
 		return nil, err
-	}
-	if in.UpdatePrioritySet && (in.UpdatePriority < 0 || in.UpdatePriority > orchestrator.MaxUpdatePriority) {
-		return nil, exit.Usagef("--update-priority must be in 0..%d, got %d", orchestrator.MaxUpdatePriority, in.UpdatePriority)
 	}
 	if in.FromTrack == "" {
 		return nil, exit.Usagef("missing --from: pass --from <track> (the track holding the release to promote)")
@@ -269,6 +263,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		State:             state,
 		UpdatePriority:    updatePriority(in),
 		ReleaseNotes:      in.ReleaseNotes,
+		ReleaseNotesSet:   in.ReleaseNotesSet,
 		ReleaseNotesDir:   in.ReleaseNotesDir,
 		KeepEditOnFailure: in.KeepEditOnFailure,
 		ExplicitEditID:    explicitEditID,

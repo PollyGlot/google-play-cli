@@ -106,9 +106,6 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ValidateDirLocales(dir); err != nil {
-		return nil, err
-	}
 	root, err := pathguard.Root(dir)
 	if err != nil {
 		return nil, err
