@@ -28,7 +28,7 @@ The four state transitions gain `--plan`, an online, read-only preview:
   pinned Edit, which a plan never does.
 - It reports the target release, the status and fraction it would end with,
   and the releases it would supersede and keep. These come from the same
-  `pickTargetRelease` and `superseded` the write path uses, so a plan cannot
+  `targetRelease` and `superseded` the write path uses, so a plan cannot
   disagree with the update it previews.
 - No `--confirm` is needed, because nothing reaches users. An ambiguous or
   unmatched selection fails with the live path's exit code (60, 30).
