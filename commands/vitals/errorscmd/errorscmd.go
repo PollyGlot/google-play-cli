@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/PollyGlot/google-play-cli/commands/vitals/vitalscmd"
-	"github.com/PollyGlot/google-play-cli/internal/auth/token"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
@@ -31,9 +30,9 @@ func NewCommand(boot kernel.Boot) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	group.AddCommand(kernel.WithScope(newCountsCommand(boot), token.ReportingScope))
-	group.AddCommand(kernel.WithScope(newIssuesCommand(boot), token.ReportingScope))
-	group.AddCommand(kernel.WithScope(newReportsCommand(boot), token.ReportingScope))
+	group.AddCommand(newCountsCommand(boot))
+	group.AddCommand(newIssuesCommand(boot))
+	group.AddCommand(newReportsCommand(boot))
 	return group
 }
 
