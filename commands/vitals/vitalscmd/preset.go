@@ -124,21 +124,13 @@ func NewPresetCommand(boot kernel.Boot, spec PresetSpec) *cobra.Command {
 		panic("vitalscmd: preset " + spec.Use + " references unknown metric set " + spec.Set)
 	}
 
-	var (
-		outputFlag string
-		in         presetInput
-	)
-	cmd := &cobra.Command{
-		Use:   spec.Use,
-		Short: spec.Short,
-		Long: spec.Short + `.
+	intro := spec.Short + `.
 
 An opinionated preset over ` + "`gplay vitals query " + spec.Set + "`" + `: no
-metric or dimension knowledge required: the set's primary metric is reported
-over the default 28-day DAILY window. The window ends at the latest time with
-data (the --describe freshness), so --since counts back from there.
-
---by slices the timeline (` + ByChoices() + `); --version-code filters to one
+metric or dimension knowledge required. It covers the default 28-day DAILY
+window, which ends at the latest time with data (the --describe freshness), so
+--since counts back from there.`
+	rest := `--by slices the timeline (` + ByChoices() + `); --version-code filters to one
 versionCode. This is a READ-ONLY surface on the Play Developer Reporting
 service. --output json mirrors the API response verbatim; a freshness note is
 printed to stderr so an empty window is not mistaken for zero.
@@ -146,7 +138,14 @@ printed to stderr so an empty window is not mistaken for zero.
 --describe fetches the metric set's descriptor instead of a timeline: the
 latest end time for which data is available, per aggregation period, in the
 set's timezone. It answers "up to when is this data complete?"; the window
-flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
+flags (--since, --period, --by, --version-code) do not apply and are rejected.`
+	var (
+		outputFlag string
+		in         presetInput
+	)
+	cmd := &cobra.Command{
+		Use:   spec.Use,
+		Short: spec.Short,
 		Example: `  gplay vitals ` + spec.Use + ` --package com.example.app
 
   # The last week, one row per versionCode
@@ -164,6 +163,7 @@ flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
 			})
 		},
 	}
+	setPresetHelp(cmd, set, intro, rest)
 	output.RegisterFlag(cmd, &outputFlag)
 	cmd.Flags().StringVar(&in.Package, "package", "", "Android package name (overrides .gplay/config.json pin)")
 	cmd.Flags().StringVar(&in.VersionCode, VersionCodeFlag, "", "filter to a single versionCode")
