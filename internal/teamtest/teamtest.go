@@ -24,7 +24,7 @@ type Responder = testkit.Responder
 type RT = testkit.Fake
 
 func New(responders ...Responder) *RT {
-	return testkit.NewFake(append(responders, testkit.Any(200, ""))...)
+	return testkit.NewFake(responders...)
 }
 
 func UsersList(body string) Responder {

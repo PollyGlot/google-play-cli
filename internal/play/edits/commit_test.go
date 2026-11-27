@@ -17,14 +17,17 @@ import (
 
 const commitPkg = "com.example.app"
 
-func editLifecycle(commitStatus int, commitBody string) *testkit.Fake {
+type commitReply struct {
+	status  int
+	body    string
+	dropped bool
+}
+
+func editLifecycle(commit commitReply) *testkit.Fake {
 	return testkit.NewFake(func(c testkit.Call) (int, string, bool) {
 		switch {
 		case strings.HasSuffix(c.Path, ":commit"):
-			if commitStatus < 0 {
-				return 0, "", false
-			}
-			return commitStatus, commitBody, true
+			return commit.status, commit.body, !commit.dropped
 		case c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/edits"):
 			return http.StatusOK, `{"id":"edit-1"}`, true
 		case c.Method == http.MethodDelete:
@@ -63,7 +66,7 @@ func TestCommit_queryParameters(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name+"/implicit", func(t *testing.T) {
-			f := editLifecycle(http.StatusOK, `{"id":"edit-1"}`)
+			f := editLifecycle(commitReply{status: http.StatusOK, body: `{"id":"edit-1"}`})
 			err := edits.WithEdit(context.Background(), &http.Client{Transport: f}, commitPkg,
 				edits.Options{Commit: tc.opts}, func(string) error { return nil })
 			if err != nil {
@@ -72,7 +75,7 @@ func TestCommit_queryParameters(t *testing.T) {
 			assertQuery(t, commitCall(t, f).Query, tc.want)
 		})
 		t.Run(tc.name+"/explicit", func(t *testing.T) {
-			f := editLifecycle(http.StatusOK, `{"id":"edit-9"}`)
+			f := editLifecycle(commitReply{status: http.StatusOK, body: `{"id":"edit-9"}`})
 			if err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", tc.opts); err != nil {
 				t.Fatalf("CommitExplicit: %v", err)
 			}
@@ -108,15 +111,15 @@ func TestParseChangesInReview(t *testing.T) {
 func TestCommit_outcomeUnknown(t *testing.T) {
 	cases := []struct {
 		name     string
-		status   int
+		dropped  bool
 		wantExit int
 	}{
-		{"5xx", http.StatusServiceUnavailable, 40},
-		{"transport failure after send", -1, 50},
+		{"5xx", false, 40},
+		{"transport failure after send", true, 50},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := editLifecycle(tc.status, `{"error":{"code":503,"message":"backend error"}}`)
+			f := editLifecycle(commitReply{status: http.StatusServiceUnavailable, body: `{"error":{"code":503,"message":"backend error"}}`, dropped: tc.dropped})
 			err := edits.WithEdit(context.Background(), &http.Client{Transport: f}, commitPkg,
 				edits.Options{}, func(string) error { return nil })
 			var unknown *edits.CommitOutcomeUnknownError
@@ -145,7 +148,7 @@ func TestCommit_outcomeUnknown(t *testing.T) {
 }
 
 func TestCommitExplicit_outcomeUnknownPointsAtStatusLive(t *testing.T) {
-	f := editLifecycle(http.StatusInternalServerError, "")
+	f := editLifecycle(commitReply{status: http.StatusInternalServerError})
 	err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", edits.CommitOptions{})
 	var unknown *edits.CommitOutcomeUnknownError
 	if !errors.As(err, &unknown) || !unknown.Explicit {
@@ -158,12 +161,12 @@ func TestCommitExplicit_outcomeUnknownPointsAtStatusLive(t *testing.T) {
 
 func TestCommit_definiteFailuresStayPlain(t *testing.T) {
 	t.Run("400", func(t *testing.T) {
-		f := editLifecycle(http.StatusBadRequest, `{"error":{"code":400,"message":"bad"}}`)
+		f := editLifecycle(commitReply{status: http.StatusBadRequest, body: `{"error":{"code":400,"message":"bad"}}`})
 		err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", edits.CommitOptions{})
 		assertPlain(t, err, 30, exit.CodeInvalidArgument)
 	})
 	t.Run("429", func(t *testing.T) {
-		f := editLifecycle(http.StatusTooManyRequests, `{"error":{"code":429,"message":"slow down"}}`)
+		f := editLifecycle(commitReply{status: http.StatusTooManyRequests, body: `{"error":{"code":429,"message":"slow down"}}`})
 		err := edits.CommitExplicit(context.Background(), &http.Client{Transport: f}, commitPkg, "edit-9", edits.CommitOptions{})
 		assertPlain(t, err, 60, exit.CodeRateLimitExceeded)
 	})
