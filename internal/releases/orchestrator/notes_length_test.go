@@ -262,6 +262,9 @@ func TestUpload_unreadableDefaultTxt_refusedBeforeBundleUpload(t *testing.T) {
 	if err == nil {
 		t.Fatal("Upload: got nil, want default.txt refused: it would ship as fr-FR and cannot be read")
 	}
+	if !strings.Contains(err.Error(), "default.txt") {
+		t.Errorf("error %q does not name default.txt", err)
+	}
 	for _, c := range apiCalls(rt) {
 		if strings.Contains(c, "/bundles") || strings.Contains(c, "/tracks/") {
 			t.Errorf("call %s issued after a refused note, want none", c)
