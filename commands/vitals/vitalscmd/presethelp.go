@@ -90,7 +90,7 @@ func PresetMetricHelp(idx schemaindex.Index, set vitals.MetricSet) string {
 	}
 	required := vitals.RequiredDimensions(idx, set)
 	for _, d := range required {
-		first += " The API requires the " + d + " dimension for this set, so the preset prints one row per " + d + "."
+		first += " The API requires the " + d + " dimension for this set, so the preset always splits its rows by " + d + "."
 	}
 
 	others := "a rolling user-weighted average"

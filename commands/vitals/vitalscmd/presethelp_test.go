@@ -114,7 +114,7 @@ func TestPresetHelp_slowstartNamesItsRequiredDimension(t *testing.T) {
 			continue
 		}
 		help := strings.Join(strings.Fields(renderPresetHelp(t, spec)), " ")
-		for _, want := range []string{"one row per startType", "--dimensions startType"} {
+		for _, want := range []string{"always splits its rows by startType", "--dimensions startType"} {
 			if !strings.Contains(help, want) {
 				t.Errorf("vitals slowstart --help lacks %q:\n%s", want, help)
 			}
