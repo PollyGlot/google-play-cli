@@ -100,3 +100,17 @@ func TestPresetHelp_crashesPointsAtTheConsoleMetrics(t *testing.T) {
 		}
 	}
 }
+
+func TestPresetHelp_keepsTheExperimentalNotice(t *testing.T) {
+	parent := &cobra.Command{Use: "vitals"}
+	cmd := kernel.Experimental(vitalscmd.NewPresetCommand(kernel.Boot{}, vitalscmd.Presets[0]))
+	parent.AddCommand(cmd)
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	if err := cmd.Help(); err != nil {
+		t.Fatal(err)
+	}
+	if help := buf.String(); !strings.HasPrefix(help, "[experimental] ") || !strings.Contains(help, "It prints one metric, crashRate,") {
+		t.Errorf("experimental preset --help lost the notice or the metric:\n%s", help)
+	}
+}

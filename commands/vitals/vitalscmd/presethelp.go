@@ -81,7 +81,7 @@ func PresetMetricHelp(idx schemaindex.Index, set vitals.MetricSet) string {
 		timelineDesc = s.Properties["timelineSpec"].Description
 	}
 
-	first := "It prints one metric, " + primary + ", as the raw value the Reporting API returns for each interval of the window (one row per interval, never rounded or averaged by gplay)."
+	first := "It prints one metric, " + primary + ", as the raw value the Reporting API returns for each interval of the window, never rounded or averaged by gplay."
 	if zones := periodZones(timelineDesc, vitals.SupportedPeriods(idx, set)); len(zones) > 0 {
 		first += " " + strings.Join(zones, "; ") + "."
 	}
@@ -103,11 +103,12 @@ func PresetMetricHelp(idx schemaindex.Index, set vitals.MetricSet) string {
 }
 
 func setPresetHelp(cmd *cobra.Command, set vitals.MetricSet, intro, rest string) {
-	cmd.Long = intro + "\n\n" + rest
+	static := intro + "\n\n" + rest
+	cmd.Long = static
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		if idx, err := schemaindex.Embedded(); err == nil {
 			if metric := PresetMetricHelp(idx, set); metric != "" {
-				c.Long = intro + "\n\n" + metric + "\n\n" + rest
+				c.Long = strings.Replace(c.Long, static, intro+"\n\n"+metric+"\n\n"+rest, 1)
 			}
 		}
 		if c.HasParent() {
