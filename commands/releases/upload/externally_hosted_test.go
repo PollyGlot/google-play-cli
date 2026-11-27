@@ -150,6 +150,27 @@ func TestRun_externallyHosted_dryRun_previewWithoutNetwork(t *testing.T) {
 	}
 }
 
+func TestRun_externallyHostedWithAAB_dryRun_listsBothArtifacts(t *testing.T) {
+	_, transport := newUploadTransport(uploadAPI{})
+	rc, _ := newRC(t, transport)
+	hostedPath := writeHostedFile(t, hostedResource)
+
+	r, err := upload.Run(rc, upload.Input{
+		Package:          "com.example.app",
+		Track:            "internal",
+		Artifacts:        []string{writeNamedAAB(t, "phone.aab")},
+		ExternallyHosted: hostedPath,
+		DryRun:           true,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := string(outputtest.RenderJSON(t, r))
+	if !strings.Contains(got, `"format": "externallyHosted"`) || !strings.Contains(got, "phone.aab") {
+		t.Errorf("dry-run JSON = %s, want the bundle and the externally hosted APK in artifacts", got)
+	}
+}
+
 func TestNewCommand_externallyHostedFlag_experimentalAndStandsInForArtifact(t *testing.T) {
 	cmd := upload.NewCommand(kernel.Boot{})
 	f := cmd.Flags().Lookup("externally-hosted")

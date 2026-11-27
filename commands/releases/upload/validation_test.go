@@ -58,6 +58,7 @@ func TestRun_invalidInput_exit2_namesTheFlag_noHTTP(t *testing.T) {
 	}{
 		{"internal", func(in *upload.Input) {}, false},
 		{"internal without an Account", func(in *upload.Input) {}, true},
+		{"artifact not built yet", func(in *upload.Input) { in.Artifacts = []string{filepath.Join(t.TempDir(), "app.aab")} }, false},
 		{"production without confirm", func(in *upload.Input) { in.Track, in.Complete = "production", true }, false},
 		{"dry-run", func(in *upload.Input) { in.DryRun = true }, false},
 	}

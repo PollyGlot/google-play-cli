@@ -301,22 +301,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
 	}
 
-	for _, a := range artifacts {
-		if err := artifact.Verify(rc.Stderr, a.Path, artifact.Expect{
-			Kinds:   []artifact.Kind{preflightKind(a.Format)},
-			Package: pkg,
-		}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
-			return nil, err
-		}
-	}
-
-	if hosted {
-		if _, err := orchestrator.LoadExternallyHosted(in.ExternallyHosted, pkg); err != nil {
-			return nil, err
-		}
-		artifacts = append(artifacts, orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
-	}
-
 	opts := orchestrator.Opts{
 		Package:            pkg,
 		Track:              in.Track,
@@ -335,8 +319,26 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		Confirm:            in.Confirm,
 		DryRun:             in.DryRun,
 	}
+	if hosted {
+		opts.Artifacts = append(slices.Clip(artifacts), orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
+	}
 	if err := opts.Validate(); err != nil {
 		return nil, err
+	}
+
+	for _, a := range artifacts {
+		if err := artifact.Verify(rc.Stderr, a.Path, artifact.Expect{
+			Kinds:   []artifact.Kind{preflightKind(a.Format)},
+			Package: pkg,
+		}, artifact.Options{Skip: in.SkipPreflight, Report: in.DryRun}); err != nil {
+			return nil, err
+		}
+	}
+
+	if hosted {
+		if _, err := orchestrator.LoadExternallyHosted(in.ExternallyHosted, pkg); err != nil {
+			return nil, err
+		}
 	}
 
 	var (
@@ -377,7 +379,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.ConfirmMutation(explicitEditID, "uploaded %s to track %q (status %s%s)",
 			codes, result.Track, result.Status, extra)
 	}
-	return Payload{Result: result, DryRun: in.DryRun, Artifacts: artifacts}, nil
+	return Payload{Result: result, DryRun: in.DryRun, Artifacts: opts.Artifacts}, nil
 }
 
 func NewCommand(boot kernel.Boot) *cobra.Command {
