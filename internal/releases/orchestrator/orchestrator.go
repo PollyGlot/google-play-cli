@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,7 +35,14 @@ const MaxUpdatePriority = 5
 
 func validateUpdatePriority(p *int) error {
 	if p != nil && (*p < 0 || *p > MaxUpdatePriority) {
-		return &InvalidOptsError{Message: "UpdatePriority must be in 0..5"}
+		return &InvalidOptsError{Message: fmt.Sprintf("--update-priority must be in 0..%d, got %d", MaxUpdatePriority, *p)}
+	}
+	return nil
+}
+
+func validateNotesSources(text string, textSet bool, dir string) error {
+	if (textSet || text != "") && dir != "" {
+		return &InvalidOptsError{Message: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
 	return nil
 }
@@ -52,7 +60,9 @@ type Opts struct {
 	State             ReleaseState
 	UpdatePriority    *int
 	ReleaseName       string
+	ReleaseNameSet    bool
 	ReleaseNotes      string
+	ReleaseNotesSet   bool
 	ReleaseNotesDir   string
 	KeepEditOnFailure bool
 
@@ -109,7 +119,7 @@ type Artifact struct {
 }
 
 func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
-	if err := validateOpts(opts); err != nil {
+	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
 	hosted, err := loadHosted(opts)
@@ -216,23 +226,21 @@ func highest(codes []int) int {
 	return top
 }
 
-func validateOpts(opts Opts) error {
+func (opts Opts) Validate() error {
 	if len(opts.Artifacts) == 0 {
 		return &InvalidOptsError{Message: "Artifacts must name at least one file to upload"}
 	}
 	if opts.MappingPath != "" && len(opts.Artifacts) > 1 {
 		return &InvalidOptsError{Message: "MappingPath applies to a single artifact, got " + strconv.Itoa(len(opts.Artifacts))}
 	}
+	if err := validateNotesSources(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
+		return err
+	}
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
 		return err
 	}
-	if opts.ReleaseName != "" && strings.TrimSpace(opts.ReleaseName) == "" {
-		return &InvalidOptsError{Message: "ReleaseName must not be blank"}
-	}
-	if opts.ReleaseNotes != "" && opts.ReleaseNotesDir != "" {
-		return &InvalidOptsError{
-			Message: "ReleaseNotes and ReleaseNotesDir are mutually exclusive: pick one",
-		}
+	if (opts.ReleaseNameSet || opts.ReleaseName != "") && strings.TrimSpace(opts.ReleaseName) == "" {
+		return &InvalidOptsError{Message: "--release-name must not be empty or blank"}
 	}
 	if err := notes.ValidateDirLocales(opts.ReleaseNotesDir); err != nil {
 		return err
