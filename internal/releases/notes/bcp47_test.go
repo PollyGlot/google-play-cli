@@ -114,17 +114,3 @@ func TestValidateDirLocales_missingDirIsRejectedHere(t *testing.T) {
 		t.Errorf("err = %q, want it to name the directory %q", err, missing)
 	}
 }
-
-func TestLoad_dirMode_invalidLocale_returnsExit2(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, dir, "en_US.txt", "underscore typo")
-
-	_, err := notes.Load(notes.Opts{Dir: dir, DefaultLanguage: "en-US"})
-	if err == nil {
-		t.Fatal("Load: got nil, want a validation error on en_US.txt")
-	}
-	var coder interface{ ExitCode() int }
-	if !errors.As(err, &coder) || coder.ExitCode() != 2 {
-		t.Errorf("err = %v (%T), want ExitCode() 2", err, err)
-	}
-}

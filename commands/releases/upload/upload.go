@@ -262,10 +262,7 @@ func renderMarkdown(w io.Writer, p Payload) error {
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if (in.ReleaseNotesSet || in.ReleaseNotes != "") && in.ReleaseNotesDir != "" {
-		return nil, &exit.UsageError{Msg: "--release-notes and --release-notes-dir are mutually exclusive"}
-	}
-	if in.ReleaseNotesSet {
+	if in.ReleaseNotesSet && in.ReleaseNotesDir == "" {
 		if err := notes.CheckText(in.ReleaseNotes); err != nil {
 			return nil, err
 		}
@@ -273,12 +270,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 	state, err := orchestrator.RequestedState(in.Draft, in.Complete, in.StagedFractionSet, in.StagedFraction)
 	if err != nil {
 		return nil, err
-	}
-	if in.UpdatePrioritySet && (in.UpdatePriority < 0 || in.UpdatePriority > orchestrator.MaxUpdatePriority) {
-		return nil, exit.Usagef("--update-priority must be in 0..%d, got %d", orchestrator.MaxUpdatePriority, in.UpdatePriority)
-	}
-	if (in.ReleaseNameSet || in.ReleaseName != "") && strings.TrimSpace(in.ReleaseName) == "" {
-		return nil, exit.Usagef("--release-name must not be empty or blank")
 	}
 	hosted := strings.TrimSpace(in.ExternallyHosted) != ""
 	if in.ExternallyHosted != "" && !hosted {
@@ -310,6 +301,31 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		return nil, &exit.UsageError{Msg: "--device-tier-config applies to an App Bundle (.aab) only, not an APK"}
 	}
 
+	opts := orchestrator.Opts{
+		Package:            pkg,
+		Track:              in.Track,
+		Artifacts:          artifacts,
+		RetainVersionCodes: in.RetainVersionCodes,
+		MappingPath:        in.Mapping,
+		DeviceTierConfig:   in.DeviceTierConfig,
+		State:              state,
+		UpdatePriority:     updatePriority(in),
+		ReleaseName:        in.ReleaseName,
+		ReleaseNameSet:     in.ReleaseNameSet,
+		ReleaseNotes:       in.ReleaseNotes,
+		ReleaseNotesSet:    in.ReleaseNotesSet,
+		ReleaseNotesDir:    in.ReleaseNotesDir,
+		KeepEditOnFailure:  in.KeepEditOnFailure,
+		Confirm:            in.Confirm,
+		DryRun:             in.DryRun,
+	}
+	if hosted {
+		opts.Artifacts = append(slices.Clip(artifacts), orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
+	}
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	for _, a := range artifacts {
 		if err := artifact.Verify(rc.Stderr, a.Path, artifact.Expect{
 			Kinds:   []artifact.Kind{preflightKind(a.Format)},
@@ -323,7 +339,6 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		if _, err := orchestrator.LoadExternallyHosted(in.ExternallyHosted, pkg); err != nil {
 			return nil, err
 		}
-		artifacts = append(artifacts, orchestrator.Artifact{Path: in.ExternallyHosted, Format: orchestrator.FormatExternallyHosted})
 	}
 
 	var (
@@ -339,25 +354,10 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 			return nil, err
 		}
 	}
+	opts.ExplicitEditID = explicitEditID
+	opts.Commit = in.Commit.For(rc, explicitEditID)
 
-	result, err := orchestrator.Upload(rc.Ctx, httpClient, orchestrator.Opts{
-		Package:            pkg,
-		Track:              in.Track,
-		Artifacts:          artifacts,
-		RetainVersionCodes: in.RetainVersionCodes,
-		MappingPath:        in.Mapping,
-		DeviceTierConfig:   in.DeviceTierConfig,
-		State:              state,
-		UpdatePriority:     updatePriority(in),
-		ReleaseName:        in.ReleaseName,
-		ReleaseNotes:       in.ReleaseNotes,
-		ReleaseNotesDir:    in.ReleaseNotesDir,
-		KeepEditOnFailure:  in.KeepEditOnFailure,
-		ExplicitEditID:     explicitEditID,
-		Commit:             in.Commit.For(rc, explicitEditID),
-		Confirm:            in.Confirm,
-		DryRun:             in.DryRun,
-	})
+	result, err := orchestrator.Upload(rc.Ctx, httpClient, opts)
 	if err != nil {
 		return nil, trackhint.Classify(in.Track, err)
 	}
@@ -379,7 +379,7 @@ func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
 		rc.ConfirmMutation(explicitEditID, "uploaded %s to track %q (status %s%s)",
 			codes, result.Track, result.Status, extra)
 	}
-	return Payload{Result: result, DryRun: in.DryRun, Artifacts: artifacts}, nil
+	return Payload{Result: result, DryRun: in.DryRun, Artifacts: opts.Artifacts}, nil
 }
 
 func NewCommand(boot kernel.Boot) *cobra.Command {
