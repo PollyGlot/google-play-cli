@@ -163,3 +163,124 @@ func TestUpload_usedEmptyDefaultTxt_refusedBeforeBundleUpload(t *testing.T) {
 		}
 	}
 }
+
+const emptyTextNote = "release notes for the default language (--release-notes) are empty (0 characters): write them, or drop this locale"
+
+func TestUpload_explicitEmptyNotes_exit20_beforeConfirmAndHTTP(t *testing.T) {
+	modes := []struct {
+		name string
+		opts func(*orchestrator.Opts)
+	}{
+		{"internal", func(o *orchestrator.Opts) {}},
+		{"production without confirm", func(o *orchestrator.Opts) { o.Track, o.State = "production", orchestrator.Completed() }},
+		{"dry-run", func(o *orchestrator.Opts) { o.DryRun = true }},
+	}
+	for _, m := range modes {
+		t.Run(m.name, func(t *testing.T) {
+			rt := testkit.NewFake()
+			opts := orchestrator.Opts{
+				Package: "com.example.app", Track: "internal",
+				Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
+				ReleaseNotesSet: true,
+			}
+			m.opts(&opts)
+
+			_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, opts)
+			if got := exit.For(err); got != 20 || err.Error() != emptyTextNote {
+				t.Errorf("Upload = %v (exit %d), want %q exit 20", err, got, emptyTextNote)
+			}
+			if n := requests(rt); n != 0 {
+				t.Errorf("%d HTTP request(s) issued, want 0: %v", n, apiCalls(rt))
+			}
+		})
+	}
+}
+
+func TestPromote_explicitEmptyNotes_exit20_beforeConfirmAndHTTP(t *testing.T) {
+	modes := []struct {
+		name string
+		opts func(*orchestrator.PromoteOpts)
+	}{
+		{"to beta", func(o *orchestrator.PromoteOpts) {}},
+		{"production without confirm", func(o *orchestrator.PromoteOpts) { o.ToTrack, o.State = "production", orchestrator.Completed() }},
+		{"dry-run", func(o *orchestrator.PromoteOpts) { o.DryRun = true }},
+		{"plan", func(o *orchestrator.PromoteOpts) { o.Plan = true }},
+	}
+	for _, m := range modes {
+		t.Run(m.name, func(t *testing.T) {
+			rt := testkit.NewFake()
+			opts := orchestrator.PromoteOpts{Package: "com.example.app", FromTrack: "internal", ToTrack: "beta", ReleaseNotesSet: true}
+			m.opts(&opts)
+
+			_, err := orchestrator.Promote(context.Background(), &http.Client{Transport: rt}, opts)
+			if got := exit.For(err); got != 20 || err.Error() != emptyTextNote {
+				t.Errorf("Promote = %v (exit %d), want %q exit 20", err, got, emptyTextNote)
+			}
+			if n := requests(rt); n != 0 {
+				t.Errorf("%d HTTP request(s) issued, want 0: %v", n, apiCalls(rt))
+			}
+		})
+	}
+}
+
+func TestUpload_dryRun_onlyDefaultTxt_previewsDefaultLanguage(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "default.txt"), []byte("Bug fixes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rt := testkit.NewFake()
+	res, err := orchestrator.Upload(context.Background(), &http.Client{Transport: rt}, orchestrator.Opts{
+		Package: "com.example.app", Track: "internal", DryRun: true,
+		Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
+		ReleaseNotesDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("Upload dry-run: %v (exit %d), want accepted", err, exit.For(err))
+	}
+	if strings.Join(res.Locales, ",") != "(default-language)" {
+		t.Errorf("previewed locales = %v, want [(default-language)]", res.Locales)
+	}
+	if n := requests(rt); n != 0 {
+		t.Errorf("%d HTTP request(s) issued, want 0: %v", n, apiCalls(rt))
+	}
+}
+
+func TestUpload_unreadableDefaultTxt_readsTheDefaultLanguage(t *testing.T) {
+	for _, tc := range []struct {
+		lang    string
+		refused bool
+	}{{"fr-FR", true}, {"en-US", false}} {
+		t.Run(tc.lang, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Bug fixes\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "default.txt")); err != nil {
+				t.Fatal(err)
+			}
+			rt, transport := newPlay(playAPI{editID: "e1", versionCode: 7, defaultLanguage: tc.lang})
+			_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
+				Package: "com.example.app", Track: "internal",
+				Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
+				ReleaseNotesDir: dir,
+			})
+			calls := strings.Join(apiCalls(rt), "\n")
+			if !strings.Contains(calls, "/details") {
+				t.Errorf("no details.get issued, want the default language read before deciding on default.txt: %s", calls)
+			}
+			if !tc.refused {
+				if err != nil {
+					t.Errorf("Upload = %v, want accepted: en-US.txt covers the default language, default.txt is unused", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "default.txt") {
+				t.Fatalf("Upload = %v, want default.txt refused: it would ship as fr-FR and cannot be read", err)
+
+			}
+			if strings.Contains(calls, "/bundles") || strings.Contains(calls, "/tracks/") {
+				t.Errorf("upload or track update issued after a refused note: %s", calls)
+			}
+		})
+	}
+}

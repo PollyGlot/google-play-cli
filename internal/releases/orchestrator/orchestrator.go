@@ -40,11 +40,12 @@ func validateUpdatePriority(p *int) error {
 	return nil
 }
 
-func validateNotesSources(text string, textSet bool, dir string) error {
+func validateNotes(text string, textSet bool, dir string) error {
 	if (textSet || text != "") && dir != "" {
 		return &InvalidOptsError{Message: "--release-notes and --release-notes-dir are mutually exclusive"}
 	}
-	return nil
+	_, err := notes.Load(notes.Opts{Text: text, TextSet: textSet})
+	return err
 }
 
 func requiresConfirm(track string, state ReleaseState) bool {
@@ -135,7 +136,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 		return nil, confirmRequired(opts.State.resolve(opts.Track).Status())
 	}
 
-	if err := notes.Precheck(opts.ReleaseNotes, opts.ReleaseNotesDir); err != nil {
+	if _, err := notes.Load(notes.Opts{Dir: opts.ReleaseNotesDir}); err != nil {
 		return nil, err
 	}
 
@@ -155,7 +156,7 @@ func Upload(ctx context.Context, hc *http.Client, opts Opts) (*Result, error) {
 					return err
 				}
 				result.DefaultLanguage = lang
-				loadOpts.DefaultLanguage = lang
+				loadOpts.DefaultLanguage = notes.KnownLanguage(lang)
 			}
 			loaded, err := notes.Load(loadOpts)
 			if err != nil {
@@ -233,7 +234,7 @@ func (opts Opts) Validate() error {
 	if opts.MappingPath != "" && len(opts.Artifacts) > 1 {
 		return &InvalidOptsError{Message: "MappingPath applies to a single artifact, got " + strconv.Itoa(len(opts.Artifacts))}
 	}
-	if err := validateNotesSources(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
+	if err := validateNotes(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
 		return err
 	}
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {
@@ -252,7 +253,7 @@ func hasDefaultTxt(dir string) bool {
 	if dir == "" {
 		return false
 	}
-	if _, err := os.Stat(filepath.Join(dir, "default.txt")); err == nil {
+	if _, err := os.Lstat(filepath.Join(dir, "default.txt")); err == nil {
 		return true
 	}
 	return false
@@ -356,12 +357,6 @@ func dryRunResult(opts Opts) (*Result, error) {
 		}
 	}
 
-	if opts.ReleaseNotes != "" {
-		if err := notes.Precheck(opts.ReleaseNotes, ""); err != nil {
-			return nil, &dryRunError{msg: err.Error()}
-		}
-	}
-
 	var previewLocales []string
 	if opts.ReleaseNotesDir != "" {
 		st, err := os.Stat(opts.ReleaseNotesDir)
@@ -371,15 +366,12 @@ func dryRunResult(opts Opts) (*Result, error) {
 		if !st.IsDir() {
 			return nil, &dryRunError{msg: "release-notes-dir is not a directory: " + opts.ReleaseNotesDir}
 		}
-		loaded, err := notes.Load(notes.Opts{
-			Dir:             opts.ReleaseNotesDir,
-			DefaultLanguage: notes.OfflineDefaultLanguage,
-		})
+		loaded, err := notes.Load(notes.Opts{Dir: opts.ReleaseNotesDir})
 		if err != nil {
 			return nil, &dryRunError{msg: err.Error(), cause: err}
 		}
 		for _, n := range loaded {
-			if n.Locale == notes.OfflineDefaultLanguage {
+			if n.Fallback {
 				previewLocales = append(previewLocales, "(default-language)")
 			} else {
 				previewLocales = append(previewLocales, n.Locale)

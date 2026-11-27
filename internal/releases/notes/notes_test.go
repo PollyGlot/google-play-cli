@@ -14,7 +14,7 @@ import (
 func TestLoad_textMode_singleEntryForDefaultLanguage(t *testing.T) {
 	got, err := notes.Load(notes.Opts{
 		Text:            "Bug fixes and performance improvements.",
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -51,7 +51,7 @@ func TestLoad_dirMode_perLocaleFiles_emitsAllLocales(t *testing.T) {
 
 	got, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -77,7 +77,7 @@ func TestLoad_dirMode_defaultTxt_emittedAsDefaultLanguage(t *testing.T) {
 
 	got, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -97,7 +97,7 @@ func TestLoad_dirMode_explicitLocaleWinsOverDefaultTxt(t *testing.T) {
 
 	got, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -110,65 +110,13 @@ func TestLoad_dirMode_explicitLocaleWinsOverDefaultTxt(t *testing.T) {
 	}
 }
 
-func TestLoad_bothTextAndDir_returnsExit2Error(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, dir, "en-US.txt", "irrelevant")
-
-	_, err := notes.Load(notes.Opts{
-		Text:            "Some text",
-		Dir:             dir,
-		DefaultLanguage: "en-US",
-	})
-	if err == nil {
-		t.Fatal("Load(Text+Dir): want error, got nil")
-	}
-	var coder interface{ ExitCode() int }
-	if !errors.As(err, &coder) {
-		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
-	}
-	if coder.ExitCode() != 2 {
-		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
-	}
-}
-
 func TestLoad_neitherTextNorDir_returnsEmpty(t *testing.T) {
-	got, err := notes.Load(notes.Opts{DefaultLanguage: "en-US"})
+	got, err := notes.Load(notes.Opts{DefaultLanguage: notes.KnownLanguage("en-US")})
 	if err != nil {
 		t.Fatalf("Load(empty opts): %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("got %v, want empty slice", got)
-	}
-}
-
-func TestLoad_textMode_missingDefaultLanguage_returnsExit2(t *testing.T) {
-	_, err := notes.Load(notes.Opts{Text: "Bug fixes"})
-	if err == nil {
-		t.Fatal("Load(Text without DefaultLanguage): want error, got nil")
-	}
-	var coder interface{ ExitCode() int }
-	if !errors.As(err, &coder) {
-		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
-	}
-	if coder.ExitCode() != 2 {
-		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
-	}
-}
-
-func TestLoad_defaultTxt_missingDefaultLanguage_returnsExit2(t *testing.T) {
-	dir := t.TempDir()
-	writeFile(t, dir, "default.txt", "Fallback")
-
-	_, err := notes.Load(notes.Opts{Dir: dir})
-	if err == nil {
-		t.Fatal("Load(default.txt without DefaultLanguage): want error, got nil")
-	}
-	var coder interface{ ExitCode() int }
-	if !errors.As(err, &coder) {
-		t.Fatalf("err = %v (%T), want one implementing ExitCode()", err, err)
-	}
-	if coder.ExitCode() != 2 {
-		t.Errorf("ExitCode() = %d, want 2", coder.ExitCode())
 	}
 }
 
@@ -178,7 +126,7 @@ func TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode(t *testing.T) {
 
 	textGot, err := notes.Load(notes.Opts{
 		Text:            noisy,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load(Text): %v", err)
@@ -191,7 +139,7 @@ func TestLoad_textMode_trimsTrailingWhitespace_matchesDirMode(t *testing.T) {
 	writeFile(t, dir, "default.txt", noisy)
 	dirGot, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load(Dir): %v", err)
@@ -213,7 +161,7 @@ func TestLoad_dirMode_fileExceedsCap_returnsExit2(t *testing.T) {
 
 	_, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err == nil {
 		t.Fatal("Load(huge file): want error, got nil")
@@ -242,7 +190,7 @@ func TestLoad_dirMode_defaultTxtExceedsCap_returnsExit2(t *testing.T) {
 
 	_, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err == nil {
 		t.Fatal("Load(huge default.txt): want error, got nil")
@@ -271,7 +219,7 @@ func TestLoad_dirMode_atCapBoundary_passesTheByteCap(t *testing.T) {
 
 	_, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	var noteErr *notes.NoteError
 	if !errors.As(err, &noteErr) {
@@ -293,13 +241,13 @@ func TestLoad_noteLength(t *testing.T) {
 		{
 			name: "text mode at the limit in runes loads",
 			opts: func(string) notes.Opts {
-				return notes.Opts{Text: accented, DefaultLanguage: "fr-FR"}
+				return notes.Opts{Text: accented, DefaultLanguage: notes.KnownLanguage("fr-FR")}
 			},
 		},
 		{
 			name: "text mode one rune over",
 			opts: func(string) notes.Opts {
-				return notes.Opts{Text: accented + "é", DefaultLanguage: "fr-FR"}
+				return notes.Opts{Text: accented + "é", DefaultLanguage: notes.KnownLanguage("fr-FR")}
 			},
 			wantErr:  true,
 			wantText: []string{"fr-FR", "--release-notes", "501 characters", "at most 500"},
@@ -307,7 +255,7 @@ func TestLoad_noteLength(t *testing.T) {
 		{
 			name: "text mode whitespace only is empty",
 			opts: func(string) notes.Opts {
-				return notes.Opts{Text: "  \n\t", DefaultLanguage: "en-US"}
+				return notes.Opts{Text: "  \n\t", DefaultLanguage: notes.KnownLanguage("en-US")}
 			},
 			wantErr:  true,
 			wantText: []string{"en-US", "--release-notes", "empty (0 characters)"},
@@ -335,7 +283,7 @@ func TestLoad_noteLength(t *testing.T) {
 			name: "dir mode over-long default.txt names the default language",
 			opts: func(dir string) notes.Opts {
 				writeFile(t, dir, "default.txt", strings.Repeat("a", 501))
-				return notes.Opts{Dir: dir, DefaultLanguage: notes.OfflineDefaultLanguage}
+				return notes.Opts{Dir: dir}
 			},
 			wantErr:  true,
 			wantText: []string{"the default language", "default.txt", "501 characters"},
@@ -373,7 +321,7 @@ func TestLoad_dirMode_caseInsensitiveCoversDedupes(t *testing.T) {
 
 	got, err := notes.Load(notes.Opts{
 		Dir:             dir,
-		DefaultLanguage: "en-US",
+		DefaultLanguage: notes.KnownLanguage("en-US"),
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -389,24 +337,57 @@ func TestLoad_dirMode_caseInsensitiveCoversDedupes(t *testing.T) {
 	}
 }
 
-func TestPrecheck_defaultTxt_refusedOnlyWhenCertainlySent(t *testing.T) {
+func TestLoad_unknownLanguage_defaultTxtRefusedOnlyWhenCertainlySent(t *testing.T) {
 	covered := t.TempDir()
 	writeFile(t, covered, "en-US.txt", "Bug fixes\n")
 	writeFile(t, covered, "default.txt", "")
-	if err := notes.Precheck("", covered); err != nil {
-		t.Errorf("Precheck(en-US.txt + empty default.txt) = %v, want nil: the default language may be en-US", err)
+	if _, err := notes.Load(notes.Opts{Dir: covered}); err != nil {
+		t.Errorf("Load(en-US.txt + empty default.txt, language unknown) = %v, want nil: the default language may be en-US", err)
 	}
-	if _, err := notes.Load(notes.Opts{Dir: covered, DefaultLanguage: "en-US"}); err != nil {
+	if _, err := notes.Load(notes.Opts{Dir: covered, DefaultLanguage: notes.KnownLanguage("en-US")}); err != nil {
 		t.Errorf("Load(default en-US) = %v, want nil: default.txt is unused", err)
 	}
 	var noteErr *notes.NoteError
-	if _, err := notes.Load(notes.Opts{Dir: covered, DefaultLanguage: "fr-FR"}); !errors.As(err, &noteErr) {
+	if _, err := notes.Load(notes.Opts{Dir: covered, DefaultLanguage: notes.KnownLanguage("fr-FR")}); !errors.As(err, &noteErr) {
 		t.Errorf("Load(default fr-FR) = %v, want *notes.NoteError: default.txt ships as fr-FR", err)
 	}
 
 	alone := t.TempDir()
 	writeFile(t, alone, "default.txt", "")
-	if err := notes.Precheck("", alone); !errors.As(err, &noteErr) {
-		t.Errorf("Precheck(only empty default.txt) = %v, want *notes.NoteError", err)
+	if _, err := notes.Load(notes.Opts{Dir: alone}); !errors.As(err, &noteErr) {
+		t.Errorf("Load(only empty default.txt, language unknown) = %v, want *notes.NoteError", err)
+	}
+}
+
+func TestLoad_defaultLanguageNote_isFallbackOnlyWhileUnknown(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "default.txt", "Bug fixes")
+	cases := []struct {
+		name string
+		opts notes.Opts
+		want notes.LocaleNote
+	}{
+		{"dir unknown", notes.Opts{Dir: dir}, notes.LocaleNote{Text: "Bug fixes", Fallback: true}},
+		{"dir known", notes.Opts{Dir: dir, DefaultLanguage: notes.KnownLanguage("fr-FR")}, notes.LocaleNote{Locale: "fr-FR", Text: "Bug fixes"}},
+		{"text unknown", notes.Opts{Text: "Bug fixes"}, notes.LocaleNote{Text: "Bug fixes", Fallback: true}},
+		{"text known", notes.Opts{Text: "Bug fixes", DefaultLanguage: notes.KnownLanguage("fr-FR")}, notes.LocaleNote{Locale: "fr-FR", Text: "Bug fixes"}},
+	}
+	for _, tc := range cases {
+		got, err := notes.Load(tc.opts)
+		if err != nil || len(got) != 1 || got[0] != tc.want {
+			t.Errorf("%s: Load = %+v, %v; want [%+v]", tc.name, got, err, tc.want)
+		}
+	}
+}
+
+func TestLoad_explicitEmptyText_isEmptyNoteError(t *testing.T) {
+	const want = "release notes for the default language (--release-notes) are empty (0 characters): write them, or drop this locale"
+	_, err := notes.Load(notes.Opts{TextSet: true})
+	var noteErr *notes.NoteError
+	if !errors.As(err, &noteErr) || err.Error() != want || noteErr.ExitCode() != 20 {
+		t.Errorf("Load(TextSet, empty) = %v, want %q exit 20", err, want)
+	}
+	if got, err := notes.Load(notes.Opts{}); err != nil || got != nil {
+		t.Errorf("Load(nothing) = %v, %v; want no notes, no error", got, err)
 	}
 }

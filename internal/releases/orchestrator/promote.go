@@ -154,7 +154,7 @@ func Promote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, e
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
-	if err := notes.Precheck(opts.ReleaseNotes, opts.ReleaseNotesDir); err != nil {
+	if _, err := notes.Load(notes.Opts{Dir: opts.ReleaseNotesDir}); err != nil {
 		return nil, err
 	}
 
@@ -241,12 +241,14 @@ func promoteReleaseNotes(ctx context.Context, hc *http.Client, opts PromoteOpts,
 		return source.ReleaseNotes, "", nil
 	}
 	loadOpts := notes.Opts{Text: opts.ReleaseNotes, Dir: opts.ReleaseNotesDir}
+	var lang string
 	if opts.ReleaseNotes != "" || hasDefaultTxt(opts.ReleaseNotesDir) {
-		lang, err := details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
+		var err error
+		lang, err = details.GetDefaultLanguage(ctx, hc, opts.Package, editID)
 		if err != nil {
 			return nil, "", err
 		}
-		loadOpts.DefaultLanguage = lang
+		loadOpts.DefaultLanguage = notes.KnownLanguage(lang)
 	}
 	loaded, err := notes.Load(loadOpts)
 	if err != nil {
@@ -263,7 +265,7 @@ func promoteReleaseNotes(ctx context.Context, hc *http.Client, opts PromoteOpts,
 	for _, n := range loaded {
 		releaseNotes = append(releaseNotes, tracks.LocalizedText{Language: n.Locale, Text: n.Text})
 	}
-	return releaseNotes, loadOpts.DefaultLanguage, nil
+	return releaseNotes, lang, nil
 }
 
 func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Result, error) {
@@ -306,7 +308,7 @@ func planPromote(ctx context.Context, hc *http.Client, opts PromoteOpts) (*Resul
 }
 
 func (opts PromoteOpts) Validate() error {
-	if err := validateNotesSources(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
+	if err := validateNotes(opts.ReleaseNotes, opts.ReleaseNotesSet, opts.ReleaseNotesDir); err != nil {
 		return err
 	}
 	if err := validateUpdatePriority(opts.UpdatePriority); err != nil {

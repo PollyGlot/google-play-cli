@@ -1,30 +1,38 @@
 package upload_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/commands/releases/upload"
 	"github.com/PollyGlot/google-play-cli/internal/exit"
 )
 
+const emptyTextNote = "release notes for the default language (--release-notes) are empty (0 characters): write them, or drop this locale"
+
 func TestRun_explicitEmptyReleaseNotes_exit20_noHTTP(t *testing.T) {
-	for _, dryRun := range []bool{false, true} {
+	modes := []struct {
+		name string
+		in   func(*upload.Input)
+	}{
+		{"internal", func(in *upload.Input) {}},
+		{"dry-run", func(in *upload.Input) { in.DryRun = true }},
+		{"production without confirm", func(in *upload.Input) { in.Track, in.Complete = "production", true }},
+	}
+	for _, m := range modes {
 		rt, transport := newUploadTransport(uploadAPI{})
 		rc, _ := newRC(t, transport)
 
-		_, err := upload.Run(rc, upload.Input{
+		in := upload.Input{
 			Package: "com.example.app", Track: "internal", Artifacts: []string{writeFakeAAB(t)},
-			ReleaseNotes: "", ReleaseNotesSet: true, DryRun: dryRun,
-		})
-		if got := exit.For(err); got != 20 {
-			t.Errorf("dry-run=%v: exit.For(err) = %d, want 20; err=%v", dryRun, got, err)
+			ReleaseNotes: "", ReleaseNotesSet: true,
 		}
-		if err != nil && !strings.Contains(err.Error(), "empty (0 characters)") {
-			t.Errorf("dry-run=%v: error %q does not say the note is empty", dryRun, err)
+		m.in(&in)
+		_, err := upload.Run(rc, in)
+		if got := exit.For(err); got != 20 || err.Error() != emptyTextNote {
+			t.Errorf("%s: Run = %v (exit %d), want %q exit 20", m.name, err, got, emptyTextNote)
 		}
 		if touched(rt) {
-			t.Errorf("dry-run=%v: RoundTripper saw calls: %v", dryRun, apiCalls(rt))
+			t.Errorf("%s: RoundTripper saw calls: %v", m.name, apiCalls(rt))
 		}
 	}
 

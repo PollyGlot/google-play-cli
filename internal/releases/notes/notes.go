@@ -20,16 +20,37 @@ var (
 )
 
 type LocaleNote struct {
-	Locale string
-	Text   string
+	Locale   string
+	Text     string
+	Fallback bool
+}
+
+type DefaultLanguage struct {
+	tag string
+}
+
+func KnownLanguage(tag string) DefaultLanguage { return DefaultLanguage{tag: tag} }
+
+func (l DefaultLanguage) Known() bool { return l.tag != "" }
+
+func (l DefaultLanguage) String() string {
+	if !l.Known() {
+		return "the default language"
+	}
+	return l.tag
+}
+
+func (l DefaultLanguage) note(text string) LocaleNote {
+	return LocaleNote{Locale: l.tag, Text: text, Fallback: !l.Known()}
 }
 
 type Opts struct {
-	Text string
+	Text    string
+	TextSet bool
 
 	Dir string
 
-	DefaultLanguage string
+	DefaultLanguage DefaultLanguage
 }
 
 type ValidationError struct {
@@ -66,34 +87,13 @@ func checkNote(locale, source, text string) error {
 	return nil
 }
 
-func Precheck(text, dir string) error {
-	_, err := Load(Opts{Text: text, Dir: dir, DefaultLanguage: OfflineDefaultLanguage})
-	return err
-}
-
-func CheckText(text string) error {
-	return checkNote(OfflineDefaultLanguage, "--release-notes", trimTrailingWS(text))
-}
-
-const OfflineDefaultLanguage = "the default language"
-
 func Load(opts Opts) ([]LocaleNote, error) {
-	if opts.Text != "" && opts.Dir != "" {
-		return nil, &ValidationError{
-			Message: "release-notes and release-notes-dir are mutually exclusive: pick one",
-		}
-	}
-	if opts.Text != "" {
-		if opts.DefaultLanguage == "" {
-			return nil, &ValidationError{
-				Message: "DefaultLanguage is required when using --release-notes (no locale to assign the text to)",
-			}
-		}
+	if opts.TextSet || opts.Text != "" {
 		text := trimTrailingWS(opts.Text)
-		if err := checkNote(opts.DefaultLanguage, "--release-notes", text); err != nil {
+		if err := checkNote(opts.DefaultLanguage.String(), "--release-notes", text); err != nil {
 			return nil, err
 		}
-		return []LocaleNote{{Locale: opts.DefaultLanguage, Text: text}}, nil
+		return []LocaleNote{opts.DefaultLanguage.note(text)}, nil
 	}
 	if opts.Dir == "" {
 		return nil, nil
@@ -101,7 +101,7 @@ func Load(opts Opts) ([]LocaleNote, error) {
 	return loadDir(opts.Dir, opts.DefaultLanguage)
 }
 
-func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
+func loadDir(dir string, defaultLang DefaultLanguage) ([]LocaleNote, error) {
 	entries, err := osReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -136,29 +136,31 @@ func loadDir(dir, defaultLang string) ([]LocaleNote, error) {
 		}
 		out = append(out, LocaleNote{Locale: locale, Text: text})
 	}
-	if hasDefault && defaultLang == OfflineDefaultLanguage && len(out) > 0 {
+	if !hasDefault || defaultMayBeCovered(out, defaultLang) {
 		return out, nil
 	}
-	if hasDefault {
-		if defaultLang == "" {
-			return nil, &ValidationError{
-				Message: "DefaultLanguage is required when default.txt is present in the release-notes directory (no locale to assign the fallback to)",
-			}
-		}
-		if !covers(out, defaultLang) {
-			path := filepath.Join(dir, defaultLocaleFile+".txt")
-			raw, err := readCapped(root, path)
-			if err != nil {
-				return nil, err
-			}
-			text := trimTrailingWS(string(raw))
-			if err := checkNote(defaultLang, path, text); err != nil {
-				return nil, err
-			}
-			out = append(out, LocaleNote{Locale: defaultLang, Text: text})
+	path := filepath.Join(dir, defaultLocaleFile+".txt")
+	raw, err := readCapped(root, path)
+	if err != nil {
+		return nil, err
+	}
+	text := trimTrailingWS(string(raw))
+	if err := checkNote(defaultLang.String(), path, text); err != nil {
+		return nil, err
+	}
+	return append(out, defaultLang.note(text)), nil
+}
+
+func defaultMayBeCovered(out []LocaleNote, defaultLang DefaultLanguage) bool {
+	if !defaultLang.Known() {
+		return len(out) > 0
+	}
+	for _, n := range out {
+		if strings.EqualFold(n.Locale, defaultLang.tag) {
+			return true
 		}
 	}
-	return out, nil
+	return false
 }
 
 func readCapped(root, p string) ([]byte, error) {
@@ -184,15 +186,6 @@ func readCapped(root, p string) ([]byte, error) {
 		}
 	}
 	return text, nil
-}
-
-func covers(out []LocaleNote, locale string) bool {
-	for _, n := range out {
-		if strings.EqualFold(n.Locale, locale) {
-			return true
-		}
-	}
-	return false
 }
 
 const defaultLocaleFile = "default"
