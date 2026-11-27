@@ -245,29 +245,42 @@ func TestUpload_dryRun_onlyDefaultTxt_previewsDefaultLanguage(t *testing.T) {
 	}
 }
 
-func TestUpload_unreadableDefaultTxt_refusedBeforeBundleUpload(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Bug fixes\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "default.txt")); err != nil {
-		t.Fatal(err)
-	}
-	rt, transport := newPlay(playAPI{editID: "e1", versionCode: 7, defaultLanguage: "fr-FR"})
-	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
-		Package: "com.example.app", Track: "internal",
-		Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
-		ReleaseNotesDir: dir,
-	})
-	if err == nil {
-		t.Fatal("Upload: got nil, want default.txt refused: it would ship as fr-FR and cannot be read")
-	}
-	if !strings.Contains(err.Error(), "default.txt") {
-		t.Errorf("error %q does not name default.txt", err)
-	}
-	for _, c := range apiCalls(rt) {
-		if strings.Contains(c, "/bundles") || strings.Contains(c, "/tracks/") {
-			t.Errorf("call %s issued after a refused note, want none", c)
-		}
+func TestUpload_unreadableDefaultTxt_readsTheDefaultLanguage(t *testing.T) {
+	for _, tc := range []struct {
+		lang    string
+		refused bool
+	}{{"fr-FR", true}, {"en-US", false}} {
+		t.Run(tc.lang, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Bug fixes\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "default.txt")); err != nil {
+				t.Fatal(err)
+			}
+			rt, transport := newPlay(playAPI{editID: "e1", versionCode: 7, defaultLanguage: tc.lang})
+			_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
+				Package: "com.example.app", Track: "internal",
+				Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
+				ReleaseNotesDir: dir,
+			})
+			calls := strings.Join(apiCalls(rt), "\n")
+			if !strings.Contains(calls, "/details") {
+				t.Errorf("no details.get issued, want the default language read before deciding on default.txt: %s", calls)
+			}
+			if !tc.refused {
+				if err != nil {
+					t.Errorf("Upload = %v, want accepted: en-US.txt covers the default language, default.txt is unused", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "default.txt") {
+				t.Fatalf("Upload = %v, want default.txt refused: it would ship as fr-FR and cannot be read", err)
+
+			}
+			if strings.Contains(calls, "/bundles") || strings.Contains(calls, "/tracks/") {
+				t.Errorf("upload or track update issued after a refused note: %s", calls)
+			}
+		})
 	}
 }
