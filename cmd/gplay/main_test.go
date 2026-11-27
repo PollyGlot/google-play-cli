@@ -50,6 +50,24 @@ func TestVitalsLeavesAreReportingScoped(t *testing.T) {
 	}
 }
 
+func TestWithReportingScope_scopesLeavesAddedUnscoped(t *testing.T) {
+	leaf := &cobra.Command{Use: "new-leaf"}
+	nested := &cobra.Command{Use: "nested-leaf"}
+	group := kernel.Group("sub", "", nested)
+	vitals := withReportingScope(kernel.Group("vitals", "", leaf, group))
+
+	for _, c := range []*cobra.Command{leaf, nested} {
+		if got := kernel.ScopeFor(c); got != token.ReportingScope {
+			t.Errorf("leaf %q scope = %q, want the reporting scope", c.CommandPath(), got)
+		}
+	}
+	for _, c := range []*cobra.Command{vitals, group} {
+		if got := kernel.ScopeFor(c); got != "" {
+			t.Errorf("group %q scope = %q, want none", c.CommandPath(), got)
+		}
+	}
+}
+
 func TestVitalsVersionCodeFlagsComplete(t *testing.T) {
 	root := newRootCmd(kernel.Boot{ConfigPath: "/tmp/x", KeystoreRoot: "/tmp/x"})
 	withFlag := 0
