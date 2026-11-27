@@ -181,7 +181,7 @@ flags (--since, --period, --by, --version-code) do not apply and are rejected.`,
 var Presets = []PresetSpec{
 	{Use: "crashes", Short: "Crash rate for a package (vitals crashrate preset)", Set: "crashrate"},
 	{Use: "anr", Short: "ANR (App Not Responding) rate for a package (vitals anrrate preset)", Set: "anrrate"},
-	{Use: "slowstart", Short: "Slow cold-start rate for a package (vitals slowstartrate preset)", Set: "slowstartrate"},
+	{Use: "slowstart", Short: "Slow start rate per start type for a package (vitals slowstartrate preset)", Set: "slowstartrate"},
 	{Use: "slowrendering", Short: "Slow rendering (janky frames) rate for a package (vitals slowrenderingrate preset)", Set: "slowrenderingrate"},
 	{Use: "excessivewakeup", Short: "Excessive wakeup rate for a package (vitals excessivewakeuprate preset)", Set: "excessivewakeuprate"},
 	{Use: "lmk", Short: "Low-memory-kill rate for a package (vitals lmkrate preset)", Set: "lmkrate"},
