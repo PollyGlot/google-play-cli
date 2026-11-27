@@ -224,14 +224,14 @@ func TestRunCounts_sendsReportTypeAndPrintsItsColumn(t *testing.T) {
 	if err := json.Unmarshal(lastCall(t, fake).Body, &body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if strings.Join(body.Dimensions, ",") != "reportType" {
+	if len(body.Dimensions) != 1 || body.Dimensions[0] != "reportType" {
 		t.Errorf("dimensions = %v, want [reportType]", body.Dimensions)
 	}
 	var buf bytes.Buffer
 	if err := r.Renderers().Table(&buf); err != nil {
 		t.Fatalf("table: %v", err)
 	}
-	if out := buf.String(); !strings.Contains(out, "REPORTTYPE") || !strings.Contains(out, "CRASH") {
-		t.Errorf("table must print one row per reportType:\n%s", out)
+	if lines := strings.Split(strings.TrimSpace(buf.String()), "\n"); len(lines) != 2 || !strings.Contains(lines[0], "REPORTTYPE") || !strings.Contains(lines[1], "CRASH") {
+		t.Errorf("table must print a REPORTTYPE column and one row per reportType:\n%s", buf.String())
 	}
 }

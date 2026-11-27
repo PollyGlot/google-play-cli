@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,16 +37,16 @@ func TestRunPreset_slowstart_sendsStartTypeAndPrintsItsColumn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
-	if got := sentDimensions(t, lastCall(t, fake)); strings.Join(got, ",") != "startType" {
+	if got := sentDimensions(t, lastCall(t, fake)); !slices.Equal(got, []string{"startType"}) {
 		t.Errorf("dimensions = %v, want [startType]", got)
 	}
 	var buf bytes.Buffer
 	if err := r.Renderers().Table(&buf); err != nil {
 		t.Fatalf("table: %v", err)
 	}
-	out := buf.String()
-	if !strings.Contains(out, "STARTTYPE") || !strings.Contains(out, "COLD") || !strings.Contains(out, "WARM") {
-		t.Errorf("table must print one row per startType:\n%s", out)
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 3 || !strings.Contains(lines[0], "STARTTYPE") || !strings.Contains(lines[1], "COLD") || !strings.Contains(lines[2], "WARM") {
+		t.Errorf("table must print a STARTTYPE column and one row per startType:\n%s", buf.String())
 	}
 }
 
@@ -55,7 +56,7 @@ func TestRunPreset_slowstartBy_keepsTheSliceAndAddsStartType(t *testing.T) {
 	if _, err := runPreset(rc, set(t, "slowstartrate"), presetInput{Package: "com.example.app", By: "versionCode"}); err != nil {
 		t.Fatalf("runPreset: %v", err)
 	}
-	if got := sentDimensions(t, lastCall(t, fake)); strings.Join(got, ",") != "versionCode,startType" {
+	if got := sentDimensions(t, lastCall(t, fake)); !slices.Equal(got, []string{"versionCode", "startType"}) {
 		t.Errorf("dimensions = %v, want [versionCode startType]", got)
 	}
 }
@@ -82,13 +83,13 @@ func TestExecute_everyRequiredDimensionIsSent(t *testing.T) {
 			if _, err := Execute(rc, Params{Set: ms, Package: "com.example.app"}); err != nil {
 				t.Fatalf("Execute: %v", err)
 			}
-			sent := strings.Join(sentDimensions(t, lastCall(t, fake)), ",")
+			sent := sentDimensions(t, lastCall(t, fake))
 			entries := requiredEntry.FindAllStringSubmatch(section, -1)
 			if len(entries) == 0 {
 				t.Fatalf("%s declares a required dimension gplay cannot read: %s", ms.Name, section)
 			}
 			for _, m := range entries {
-				if !contains(strings.Split(sent, ","), m[1]) {
+				if !slices.Contains(sent, m[1]) {
 					t.Errorf("%s requires dimension %q, gplay sent %q", ms.Name, m[1], sent)
 				}
 			}

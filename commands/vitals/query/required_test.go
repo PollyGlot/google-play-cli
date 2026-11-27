@@ -3,7 +3,7 @@ package query
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
+	"slices"
 	"testing"
 
 	"github.com/PollyGlot/google-play-cli/internal/testkit"
@@ -28,11 +28,11 @@ func TestRun_slowstartrate_requiredDimension(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		dimensions []string
-		want       string
+		want       []string
 	}{
-		{"added when --dimensions is absent", nil, "startType"},
-		{"added after the asked dimensions", []string{"versionCode"}, "versionCode,startType"},
-		{"accepted and not repeated", []string{"startType", "countryCode"}, "startType,countryCode"},
+		{"added when --dimensions is absent", nil, []string{"startType"}},
+		{"added after the asked dimensions", []string{"versionCode"}, []string{"versionCode", "startType"}},
+		{"accepted and not repeated", []string{"startType", "countryCode"}, []string{"startType", "countryCode"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := testkit.NewFake(testkit.Any(http.StatusOK, `{"rows":[]}`))
@@ -40,7 +40,7 @@ func TestRun_slowstartrate_requiredDimension(t *testing.T) {
 			if _, err := Run(rc, Input{MetricSet: "slowstartrate", Package: "com.example.app", Dimensions: tc.dimensions}); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			if got := strings.Join(queryDimensions(t, fake), ","); got != tc.want {
+			if got := queryDimensions(t, fake); !slices.Equal(got, tc.want) {
 				t.Errorf("dimensions = %q, want %q", got, tc.want)
 			}
 		})

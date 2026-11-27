@@ -148,7 +148,7 @@ flags (--since, --period, --by, --version-code) do not apply and are rejected.`
 		Short: spec.Short,
 		Example: `  gplay vitals ` + spec.Use + ` --package com.example.app
 
-  # The last week, one row per versionCode
+  # The last week, sliced by versionCode
   gplay vitals ` + spec.Use + ` --by versionCode --since 7d
 
   # Up to when is the data complete?

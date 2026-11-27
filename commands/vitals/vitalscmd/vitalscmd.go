@@ -109,16 +109,10 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 		}
 	}
 	required := vitals.RequiredDimensions(idx, p.Set)
-	allowed := append(append([]string(nil), supportedDimensions...), required...)
-	if err := validateAll("dimension", p.Dimensions, allowed, dimensionScope); err != nil {
+	if err := validateAll("dimension", p.Dimensions, union(supportedDimensions, required), dimensionScope); err != nil {
 		return nil, err
 	}
-	dimensions := append([]string(nil), p.Dimensions...)
-	for _, d := range required {
-		if !contains(dimensions, d) {
-			dimensions = append(dimensions, d)
-		}
-	}
+	dimensions := union(p.Dimensions, required)
 
 	since, err := ParseSince(p.Since)
 	if err != nil {
@@ -153,6 +147,16 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 	warnFreshness(rc, p.Set, tl)
 
 	return Payload{Raw: raw, Timeline: tl, Dimensions: dimensions, Metrics: metrics}, nil
+}
+
+func union(base, extra []string) []string {
+	out := append([]string(nil), base...)
+	for _, s := range extra {
+		if !contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func validateAll(kind string, values, allowed []string, set string) error {
