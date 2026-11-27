@@ -98,7 +98,7 @@ func PresetMetricHelp(idx schemaindex.Index, set vitals.MetricSet) string {
 	}
 	second := "The Play Console may show another metric of the set, such as " + others + ", so its figure can differ. The " + set.Name + " set has: " + strings.Join(metrics, ", ") + ". To print them side by side, use gplay vitals query:"
 
-	example := "  gplay vitals query " + set.Name + " --since 7d --metrics " + strings.Join(metrics, ",")
+	example := "  gplay vitals query " + set.Name + " --package com.example.app --since 7d --metrics " + strings.Join(metrics, ",")
 	return wrap(first) + "\n\n" + wrap(second) + "\n\n" + example
 }
 

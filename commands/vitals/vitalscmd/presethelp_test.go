@@ -94,7 +94,7 @@ func TestPresetHelp_crashesPointsAtTheConsoleMetrics(t *testing.T) {
 		t.Fatalf("Presets[0] = %q, want crashes", vitalscmd.Presets[0].Use)
 	}
 	help := strings.Join(strings.Fields(renderPresetHelp(t, vitalscmd.Presets[0])), " ")
-	for _, want := range []string{"crashRate28dUserWeighted", "userPerceivedCrashRate", "user-perceived rate", "HOURLY intervals use the UTC timezone"} {
+	for _, want := range []string{"gplay vitals query crashrate --package com.example.app --since 7d", "crashRate28dUserWeighted", "userPerceivedCrashRate", "user-perceived rate", "HOURLY intervals use the UTC timezone"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("vitals crashes --help lacks %q:\n%s", want, help)
 		}
