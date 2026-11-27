@@ -15,7 +15,6 @@ import (
 	"github.com/PollyGlot/google-play-cli/internal/kernel"
 	"github.com/PollyGlot/google-play-cli/internal/output"
 	"github.com/PollyGlot/google-play-cli/internal/play/tracks"
-	"github.com/PollyGlot/google-play-cli/internal/releases/notes"
 	"github.com/PollyGlot/google-play-cli/internal/releases/orchestrator"
 )
 
@@ -208,11 +207,6 @@ func renderMarkdown(w io.Writer, p Payload) error {
 }
 
 func Run(rc *kernel.RunContext, in Input) (output.Renderable, error) {
-	if in.ReleaseNotesSet && in.ReleaseNotesDir == "" {
-		if err := notes.CheckText(in.ReleaseNotes); err != nil {
-			return nil, err
-		}
-	}
 	state, err := orchestrator.RequestedState(in.Draft, in.Complete, in.StagedFractionSet, in.StagedFraction)
 	if err != nil {
 		return nil, err

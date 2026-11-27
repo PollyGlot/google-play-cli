@@ -28,7 +28,7 @@ func sharedNotes(t *testing.T) string {
 func TestLoadRefusalNamesTheHatch(t *testing.T) {
 	dir := sharedNotes(t)
 
-	_, err := Load(Opts{Dir: dir, DefaultLanguage: "en-US"})
+	_, err := Load(Opts{Dir: dir, DefaultLanguage: KnownLanguage("en-US")})
 	if err == nil {
 		t.Fatal("Load followed a note symlinked out of the tree with the hatch unset")
 	}
@@ -43,7 +43,7 @@ func TestLoadFollowsSharedNoteUnderTheHatch(t *testing.T) {
 	t.Cleanup(pathguard.SetNoteWriter(&stderr))
 	t.Setenv(pathguard.EnvAllowExternalSymlinks, "1")
 
-	out, err := Load(Opts{Dir: dir, DefaultLanguage: "en-US"})
+	out, err := Load(Opts{Dir: dir, DefaultLanguage: KnownLanguage("en-US")})
 	if err != nil {
 		t.Fatalf("the hatch did not lift the refusal: %v", err)
 	}

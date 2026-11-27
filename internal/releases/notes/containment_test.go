@@ -25,7 +25,7 @@ func TestLoadRefusesEscapingSymlink(t *testing.T) {
 	restore := spyReads(t, &read)
 	defer restore()
 
-	out, err := Load(Opts{Dir: dir, DefaultLanguage: "en-US"})
+	out, err := Load(Opts{Dir: dir, DefaultLanguage: KnownLanguage("en-US")})
 	if err == nil {
 		t.Fatalf("Load accepted an escaping symlink, returning %+v", out)
 	}
@@ -51,7 +51,7 @@ func TestLoadAllowsInternalSymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	out, err := Load(Opts{Dir: dir, DefaultLanguage: "en-US"})
+	out, err := Load(Opts{Dir: dir, DefaultLanguage: KnownLanguage("en-US")})
 	if err != nil {
 		t.Fatalf("an internal symlink was refused: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestLoadFullySymlinkedRootPasses(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	out, err := Load(Opts{Dir: link, DefaultLanguage: "en-US"})
+	out, err := Load(Opts{Dir: link, DefaultLanguage: KnownLanguage("en-US")})
 	if err != nil {
 		t.Fatalf("a fully symlinked notes directory was refused: %v", err)
 	}
