@@ -244,3 +244,27 @@ func TestUpload_dryRun_onlyDefaultTxt_previewsDefaultLanguage(t *testing.T) {
 		t.Errorf("%d HTTP request(s) issued, want 0: %v", n, apiCalls(rt))
 	}
 }
+
+func TestUpload_unreadableDefaultTxt_refusedBeforeBundleUpload(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "en-US.txt"), []byte("Bug fixes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "missing"), filepath.Join(dir, "default.txt")); err != nil {
+		t.Fatal(err)
+	}
+	rt, transport := newPlay(playAPI{editID: "e1", versionCode: 7, defaultLanguage: "fr-FR"})
+	_, err := orchestrator.Upload(context.Background(), &http.Client{Transport: transport}, orchestrator.Opts{
+		Package: "com.example.app", Track: "internal",
+		Artifacts:       []orchestrator.Artifact{{Path: writeFakeAAB(t)}},
+		ReleaseNotesDir: dir,
+	})
+	if err == nil {
+		t.Fatal("Upload: got nil, want default.txt refused: it would ship as fr-FR and cannot be read")
+	}
+	for _, c := range apiCalls(rt) {
+		if strings.Contains(c, "/bundles") || strings.Contains(c, "/tracks/") {
+			t.Errorf("call %s issued after a refused note, want none", c)
+		}
+	}
+}
