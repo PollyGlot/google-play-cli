@@ -170,6 +170,32 @@ func TestFake_respondersInOrderAndWrote(t *testing.T) {
 	}
 }
 
+func TestFake_Record_storesTheCallAndServesNothing(t *testing.T) {
+	served := 0
+	fake := testkit.NewFake(func(testkit.Call) (int, string, bool) {
+		served++
+		return 200, `{}`, true
+	})
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPut, "https://example.test/upload/a?uploadType=media", strings.NewReader(`{"x":1}`))
+	if err := fake.Record(req); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if served != 0 {
+		t.Errorf("Record consulted the responders %d times, want 0", served)
+	}
+	calls := fake.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("Calls() = %d, want the one recorded call", len(calls))
+	}
+	c := calls[0]
+	if c.Method != http.MethodPut || c.Host != "example.test" || c.Path != "/upload/a" || c.Query != "uploadType=media" || string(c.Body) != `{"x":1}` || string(c.Replayed) != `{"x":1}` || !c.Replayable {
+		t.Errorf("recorded call = %+v, want the same Call a RoundTrip records", c)
+	}
+	if !fake.Wrote() {
+		t.Error("a recorded PUT is a write")
+	}
+}
+
 func TestFake_recordsTheReplayedBody(t *testing.T) {
 	fake := testkit.NewFake(testkit.Any(200, `{}`))
 	replayable, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.test/a", strings.NewReader(`{"x":1}`))
