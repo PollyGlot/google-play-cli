@@ -188,6 +188,29 @@ func SupportedDimensions(idx schemaindex.Index, set MetricSet) []string {
 	return parseCatalog(s.Properties["dimensions"].Description, "Supported dimensions:")
 }
 
+const requiredMarker = "**Required dimension:**"
+
+func RequiredDimensions(idx schemaindex.Index, set MetricSet) []string {
+	m, ok := idx.Methods[set.GetMethodID()]
+	if !ok {
+		return nil
+	}
+	desc := idx.Schemas[m.Response].Description
+	i := strings.Index(desc, requiredMarker)
+	if i < 0 {
+		return nil
+	}
+	section := desc[i+len(requiredMarker):]
+	if j := strings.Index(section, "**"); j >= 0 {
+		section = section[:j]
+	}
+	var out []string
+	for _, e := range catalogEntry.FindAllStringSubmatch(section, -1) {
+		out = append(out, e[1])
+	}
+	return out
+}
+
 func cohortProperty(idx schemaindex.Index, set MetricSet) (schemaindex.Property, bool) {
 	s, ok := requestSchema(idx, set)
 	if !ok {

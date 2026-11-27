@@ -69,7 +69,9 @@ apply and are rejected.
 --metrics, --dimensions and --period are validated OFFLINE against the embedded
 API schema; unknown values are rejected with the valid set listed (names are
 never invented: they come from the snapshot). With no --metrics the set's
-primary metric is used. Default window: --since 28d, --period DAILY. The
+primary metric is used. A dimension the snapshot marks as required for the set
+is always sent: --dimensions accepts it, and gplay adds it when absent, so the
+rows are split by it. Default window: --since 28d, --period DAILY. The
 window ends at the latest time with data (the --describe freshness), so --since
 counts back from there. Supported periods are per metric set: --period lists
 which sets accept each one.

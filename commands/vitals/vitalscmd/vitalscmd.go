@@ -108,10 +108,11 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 			dimensionScope, supportedDimensions = p.Set.Name+" with user cohort "+cohort, narrowed
 		}
 	}
-	dimensions := p.Dimensions
-	if err := validateAll("dimension", dimensions, supportedDimensions, dimensionScope); err != nil {
+	required := vitals.RequiredDimensions(idx, p.Set)
+	if err := validateAll("dimension", p.Dimensions, union(supportedDimensions, required), dimensionScope); err != nil {
 		return nil, err
 	}
+	dimensions := union(p.Dimensions, required)
 
 	since, err := ParseSince(p.Since)
 	if err != nil {
@@ -146,6 +147,16 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 	warnFreshness(rc, p.Set, tl)
 
 	return Payload{Raw: raw, Timeline: tl, Dimensions: dimensions, Metrics: metrics}, nil
+}
+
+func union(base, extra []string) []string {
+	out := append([]string(nil), base...)
+	for _, s := range extra {
+		if !contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func validateAll(kind string, values, allowed []string, set string) error {

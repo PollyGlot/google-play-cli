@@ -211,3 +211,27 @@ func TestRunIssues_sampleReportsOutOfRange_isUsageErrorBeforeAnyCall(t *testing.
 		}
 	}
 }
+
+func TestRunCounts_sendsReportTypeAndPrintsItsColumn(t *testing.T) {
+	rc, fake, _ := newRC(t, `{"rows":[{"startTime":{"year":2026,"month":6,"day":1},"dimensions":[{"dimension":"reportType","stringValue":"CRASH"}],"metrics":[{"metric":"errorReportCount","decimalValue":{"value":"5"}}]}]}`)
+	r, err := runCounts(rc, countsInput{Package: "com.example.app"})
+	if err != nil {
+		t.Fatalf("runCounts: %v", err)
+	}
+	var body struct {
+		Dimensions []string `json:"dimensions"`
+	}
+	if err := json.Unmarshal(lastCall(t, fake).Body, &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Dimensions) != 1 || body.Dimensions[0] != "reportType" {
+		t.Errorf("dimensions = %v, want [reportType]", body.Dimensions)
+	}
+	var buf bytes.Buffer
+	if err := r.Renderers().Table(&buf); err != nil {
+		t.Fatalf("table: %v", err)
+	}
+	if lines := strings.Split(strings.TrimSpace(buf.String()), "\n"); len(lines) != 2 || !strings.Contains(lines[0], "REPORTTYPE") || !strings.Contains(lines[1], "CRASH") {
+		t.Errorf("table must print a REPORTTYPE column and one row per reportType:\n%s", buf.String())
+	}
+}

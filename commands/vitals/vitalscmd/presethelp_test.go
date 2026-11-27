@@ -85,6 +85,13 @@ func TestPresetHelp_namesItsMetricAndHowToGetTheOthers(t *testing.T) {
 			if !slices.Equal(got, metrics) {
 				t.Errorf("query example --metrics = %v, want the %s catalog %v", got, spec.Set, metrics)
 			}
+			dims, err := q.Flags().GetStringSlice("dimensions")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if required := vitals.RequiredDimensions(idx, s); !slices.Equal(dims, required) {
+				t.Errorf("query example --dimensions = %v, want the required %v", dims, required)
+			}
 		})
 	}
 }
@@ -99,6 +106,22 @@ func TestPresetHelp_crashesPointsAtTheConsoleMetrics(t *testing.T) {
 			t.Errorf("vitals crashes --help lacks %q:\n%s", want, help)
 		}
 	}
+}
+
+func TestPresetHelp_slowstartNamesItsRequiredDimension(t *testing.T) {
+	for _, spec := range vitalscmd.Presets {
+		if spec.Set != "slowstartrate" {
+			continue
+		}
+		help := strings.Join(strings.Fields(renderPresetHelp(t, spec)), " ")
+		for _, want := range []string{"always splits its rows by startType", "--dimensions startType"} {
+			if !strings.Contains(help, want) {
+				t.Errorf("vitals slowstart --help lacks %q:\n%s", want, help)
+			}
+		}
+		return
+	}
+	t.Fatal("no preset over slowstartrate")
 }
 
 func TestPresetHelp_keepsTheExperimentalNotice(t *testing.T) {
