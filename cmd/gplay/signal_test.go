@@ -46,7 +46,7 @@ func (h *hangingPlay) serve(req *http.Request) (*http.Response, error) {
 		} else {
 			fmt.Fprintln(os.Stderr, discardLine)
 		}
-		_, _ = h.fake.RoundTrip(req)
+		_ = h.fake.Record(req)
 		<-req.Context().Done()
 		return nil, req.Context().Err()
 	}

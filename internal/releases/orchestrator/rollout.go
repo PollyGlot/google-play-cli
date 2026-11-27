@@ -129,7 +129,7 @@ func applyState(ctx context.Context, hc *http.Client, opts StateOpts, edit relea
 		if err != nil {
 			return err
 		}
-		idx, err := pickTargetRelease(cur.Releases, opts)
+		idx, err := targetRelease(cur.Releases, opts)
 		if err != nil {
 			return err
 		}
@@ -168,7 +168,7 @@ func planState(ctx context.Context, hc *http.Client, opts StateOpts, edit releas
 		if err != nil {
 			return err
 		}
-		idx, err := pickTargetRelease(cur.Releases, opts)
+		idx, err := targetRelease(cur.Releases, opts)
 		if err != nil {
 			return err
 		}
@@ -312,41 +312,19 @@ func dryRunStateResult(opts StateOpts, edit releaseEdit) *Result {
 	}
 }
 
-func pickTargetRelease(releases []tracks.Release, opts StateOpts) (int, error) {
-	filterApplied := opts.VersionCode != 0 || opts.ReleaseName != ""
-	if len(releases) == 0 {
-		return -1, &ReleaseNotFoundError{Track: opts.Track, VersionCode: opts.VersionCode, ReleaseName: opts.ReleaseName}
-	}
-	var matches []int
-	for i, r := range releases {
-		if filterApplied {
-			if opts.ReleaseName != "" && r.Name != opts.ReleaseName {
-				continue
-			}
-			if opts.VersionCode != 0 && !containsVersionCode(r.VersionCodes, opts.VersionCode) {
-				continue
-			}
-		}
-		matches = append(matches, i)
-	}
-	if len(matches) == 0 {
+func targetRelease(releases []tracks.Release, opts StateOpts) (int, error) {
+	p := pickRelease(releases, opts.VersionCode, opts.ReleaseName)
+	switch p.outcome {
+	case noReleaseOnTrack, noMatchingRelease:
 		return -1, &ReleaseNotFoundError{
 			Track:       opts.Track,
 			VersionCode: opts.VersionCode,
 			ReleaseName: opts.ReleaseName,
-			Available:   releases,
+			Available:   p.releases,
 		}
+	case severalMatchingReleases:
+		return -1, p.ambiguous(opts.Track)
+	case picked:
 	}
-	if len(matches) == 1 {
-		return matches[0], nil
-	}
-	candidates := make([]tracks.Release, 0, len(matches))
-	for _, i := range matches {
-		candidates = append(candidates, releases[i])
-	}
-	return -1, &AmbiguousReleaseError{
-		Track:         opts.Track,
-		Candidates:    candidates,
-		FilterApplied: filterApplied,
-	}
+	return p.index, nil
 }

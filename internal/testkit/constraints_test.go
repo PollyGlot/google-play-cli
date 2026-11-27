@@ -205,6 +205,25 @@ func TestFake_CollectRefusals_failsTheRoundTripInsteadOfPanicking(t *testing.T) 
 	}
 }
 
+func TestFake_Record_appliesTheConstraintsTable(t *testing.T) {
+	fake := testkit.NewFake().CollectRefusals()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, tracksCreateURL, strings.NewReader(`{"track":"beta-wear","type":"CLOSED_TESTING","formFactor":"WEAR"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := fake.Record(req); err == nil {
+		t.Fatal("Record accepted a body the constraints table refuses")
+	}
+	got := fake.Refusals()
+	if len(got) != 1 || !strings.Contains(got[0], "TrackConfig.track") {
+		t.Errorf("Refusals() = %q, want one naming TrackConfig.track", got)
+	}
+	if len(fake.Calls()) != 1 {
+		t.Errorf("Calls() = %d, want the refused call recorded as RoundTrip records it", len(fake.Calls()))
+	}
+}
+
 func TestFake_AllowInvalid_refusesAnUnknownRule(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), `AllowInvalid("TrackRelease.fraction"): no such rule`) {

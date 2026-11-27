@@ -217,7 +217,7 @@ func readPromotion(ctx context.Context, hc *http.Client, opts PromoteOpts, editI
 	if err != nil {
 		return promotion{}, err
 	}
-	source, err := pickSourceRelease(src.Releases, opts)
+	source, err := sourceRelease(src.Releases, opts)
 	if err != nil {
 		return promotion{}, err
 	}
@@ -232,7 +232,7 @@ func readPromotion(ctx context.Context, hc *http.Client, opts PromoteOpts, editI
 	if err != nil {
 		return promotion{}, &DestinationReadError{Err: err}
 	}
-	return promotion{source: *source, versionCode: versionCode, replaced: dst.Releases}, nil
+	return promotion{source: source, versionCode: versionCode, replaced: dst.Releases}, nil
 }
 
 func promoteReleaseNotes(ctx context.Context, hc *http.Client, opts PromoteOpts, editID string, source tracks.Release) ([]tracks.LocalizedText, string, error) {
@@ -341,40 +341,23 @@ func dryRunPromoteResult(opts PromoteOpts) *Result {
 	}
 }
 
-func pickSourceRelease(releases []tracks.Release, opts PromoteOpts) (*tracks.Release, error) {
-	if len(releases) == 0 {
-		return nil, &InvalidOptsError{Message: "source track " + opts.FromTrack + " has no releases to promote"}
-	}
-	candidates := releases
-	if opts.VersionCode != 0 || opts.ReleaseName != "" {
-		filtered := make([]tracks.Release, 0, 1)
-		for _, r := range releases {
-			if opts.ReleaseName != "" && r.Name != opts.ReleaseName {
-				continue
-			}
-			if opts.VersionCode != 0 && !containsVersionCode(r.VersionCodes, opts.VersionCode) {
-				continue
-			}
-			filtered = append(filtered, r)
+func sourceRelease(releases []tracks.Release, opts PromoteOpts) (tracks.Release, error) {
+	p := pickRelease(releases, opts.VersionCode, opts.ReleaseName)
+	switch p.outcome {
+	case noReleaseOnTrack:
+		return tracks.Release{}, &InvalidOptsError{Message: "source track " + opts.FromTrack + " has no releases to promote"}
+	case noMatchingRelease:
+		return tracks.Release{}, &NoMatchingReleaseError{
+			Track:       opts.FromTrack,
+			VersionCode: opts.VersionCode,
+			ReleaseName: opts.ReleaseName,
+			Available:   p.releases,
 		}
-		if len(filtered) == 0 {
-			return nil, &NoMatchingReleaseError{
-				Track:       opts.FromTrack,
-				VersionCode: opts.VersionCode,
-				ReleaseName: opts.ReleaseName,
-				Available:   releases,
-			}
-		}
-		candidates = filtered
+	case severalMatchingReleases:
+		return tracks.Release{}, p.ambiguous(opts.FromTrack)
+	case picked:
 	}
-	if len(candidates) == 1 {
-		return &candidates[0], nil
-	}
-	return nil, &AmbiguousReleaseError{
-		Track:         opts.FromTrack,
-		Candidates:    candidates,
-		FilterApplied: opts.VersionCode != 0 || opts.ReleaseName != "",
-	}
+	return releases[p.index], nil
 }
 
 func droppedSourceLocales(sourceNotes []tracks.LocalizedText, loaded []notes.LocaleNote) []string {
@@ -392,19 +375,6 @@ func droppedSourceLocales(sourceNotes []tracks.LocalizedText, loaded []notes.Loc
 		}
 	}
 	return dropped
-}
-
-func containsVersionCode(codes []string, want int) bool {
-	for _, c := range codes {
-		got, err := strconv.Atoi(c)
-		if err != nil {
-			continue
-		}
-		if got == want {
-			return true
-		}
-	}
-	return false
 }
 
 func buildPromoteRelease(source tracks.Release, opts PromoteOpts) tracks.Release {
