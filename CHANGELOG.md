@@ -5,6 +5,15 @@ All notable changes to `gplay` are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.2](https://github.com/PollyGlot/google-play-cli/compare/v2.6.1...v2.6.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* **releases:** an invalid --release-notes-dir exits 2 before auth, like the other release flag rules ([#938](https://github.com/PollyGlot/google-play-cli/issues/938)) ([a707f93](https://github.com/PollyGlot/google-play-cli/commit/a707f93718dc4c46578b25f5fd18c3f8f70237ac))
+* **vitals:** preset help names the metric it prints and how to query the others ([#935](https://github.com/PollyGlot/google-play-cli/issues/935)) ([5ad33ee](https://github.com/PollyGlot/google-play-cli/commit/5ad33ee0c3621188339c7127882e555450ce171b))
+* **vitals:** slowstart and errors counts send the dimension the API requires ([#939](https://github.com/PollyGlot/google-play-cli/issues/939)) ([46887fd](https://github.com/PollyGlot/google-play-cli/commit/46887fd9bece4a712729589b2b294063ae003ec6))
+
 ## [2.6.1](https://github.com/PollyGlot/google-play-cli/compare/v2.6.0...v2.6.1) (2026-11-26)
 
 
