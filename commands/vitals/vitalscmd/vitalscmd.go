@@ -108,9 +108,16 @@ func Execute(rc *kernel.RunContext, p Params) (output.Renderable, error) {
 			dimensionScope, supportedDimensions = p.Set.Name+" with user cohort "+cohort, narrowed
 		}
 	}
-	dimensions := p.Dimensions
-	if err := validateAll("dimension", dimensions, supportedDimensions, dimensionScope); err != nil {
+	required := vitals.RequiredDimensions(idx, p.Set)
+	allowed := append(append([]string(nil), supportedDimensions...), required...)
+	if err := validateAll("dimension", p.Dimensions, allowed, dimensionScope); err != nil {
 		return nil, err
+	}
+	dimensions := append([]string(nil), p.Dimensions...)
+	for _, d := range required {
+		if !contains(dimensions, d) {
+			dimensions = append(dimensions, d)
+		}
 	}
 
 	since, err := ParseSince(p.Since)
